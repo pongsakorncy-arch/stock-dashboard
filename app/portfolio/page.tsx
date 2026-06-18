@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Position = {
   ticker: string;
@@ -9,10 +9,7 @@ type Position = {
   currentPrice: number;
 };
 
-type WatchItem = {
-  ticker: string;
-  currentPrice: number;
-};
+type TradeMode = "buy" | "sell";
 
 const myPortfolio: Position[] = [
   { ticker: "ALAB", shares: 3.7271679, avgCost: 0, currentPrice: 0 },
@@ -37,14 +34,16 @@ const myPortfolio: Position[] = [
 ];
 
 const colors = [
-  "#22c55e",
+  "#4f7df3",
+  "#69c36b",
+  "#f0aa4f",
+  "#d43d52",
+  "#9650e6",
   "#3b82f6",
-  "#eab308",
+  "#5fc46b",
+  "#f59e0b",
   "#ef4444",
-  "#a855f7",
-  "#14b8a6",
-  "#f97316",
-  "#ec4899",
+  "#8b5cf6",
 ];
 
 const money = (value: number) =>
@@ -55,22 +54,19 @@ const money = (value: number) =>
 
 export default function PortfolioPage() {
   const [positions, setPositions] = useState<Position[]>([]);
-  const [watchlist, setWatchlist] = useState<WatchItem[]>([]);
-
+  const [mode, setMode] = useState<TradeMode>("buy");
   const [ticker, setTicker] = useState("");
   const [shares, setShares] = useState("");
   const [price, setPrice] = useState("");
-  const [mode, setMode] = useState<"buy" | "sell">("buy");
-
-  const [watchTicker, setWatchTicker] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState("-");
+  const autoRefreshed = useRef(false);
 
   useEffect(() => {
-    const savedPositions = localStorage.getItem("positions");
-    const savedWatchlist = localStorage.getItem("watchlist");
+    const saved = localStorage.getItem("positions");
 
-    if (savedPositions) {
-      const parsed = JSON.parse(savedPositions);
+    if (saved) {
+      const parsed = JSON.parse(saved);
 
       setPositions(
         parsed.map((p: any) => ({
@@ -81,19 +77,11 @@ export default function PortfolioPage() {
         }))
       );
     }
-
-    if (savedWatchlist) {
-      setWatchlist(JSON.parse(savedWatchlist));
-    }
   }, []);
 
   useEffect(() => {
     localStorage.setItem("positions", JSON.stringify(positions));
   }, [positions]);
-
-  useEffect(() => {
-    localStorage.setItem("watchlist", JSON.stringify(watchlist));
-  }, [watchlist]);
 
   const totalCost = positions.reduce(
     (sum, p) => sum + p.shares * p.avgCost,
@@ -105,8 +93,8 @@ export default function PortfolioPage() {
     0
   );
 
-  const profit = marketValue - totalCost;
-  const profitPercent = totalCost > 0 ? (profit / totalCost) * 100 : 0;
+  const totalProfit = marketValue - totalCost;
+  const profitPercent = totalCost > 0 ? (totalProfit / totalCost) * 100 : 0;
 
   const sortedPositions = useMemo(() => {
     return [...positions].sort(
@@ -114,34 +102,10 @@ export default function PortfolioPage() {
     );
   }, [positions]);
 
-  const pieStyle = useMemo(() => {
-    if (marketValue <= 0) return { background: "#27272a" };
-
-    let start = 0;
-
-    const slices = sortedPositions.map((p, index) => {
-      const value = p.shares * p.currentPrice;
-      const percent = (value / marketValue) * 100;
-      const end = start + percent;
-      const color = colors[index % colors.length];
-
-      const slice = `${color} ${start}% ${end}%`;
-      start = end;
-      return slice;
-    });
-
-    return {
-      background: `conic-gradient(${slices.join(", ")})`,
-    };
-  }, [sortedPositions, marketValue]);
-
   const getQuote = async (symbol: string) => {
     const apiKey = process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
 
-    if (!apiKey) {
-      alert("Missing NEXT_PUBLIC_FINNHUB_API_KEY");
-      return 0;
-    }
+    if (!apiKey) return 0;
 
     const res = await fetch(
       `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`
@@ -152,44 +116,63 @@ export default function PortfolioPage() {
   };
 
   const refreshPrices = async () => {
+    if (positions.length === 0) return;
+
     setIsRefreshing(true);
 
-    const updatedPositions: Position[] = [];
+    const updated = await Promise.all(
+      positions.map(async (p) => {
+        const latest = await getQuote(p.ticker);
 
-    for (const p of positions) {
-      const currentPrice = await getQuote(p.ticker);
-      updatedPositions.push({
-        ...p,
-        currentPrice: currentPrice || p.currentPrice,
-      });
-    }
+        return {
+          ...p,
+          currentPrice: latest || p.currentPrice,
+        };
+      })
+    );
 
-    const updatedWatchlist: WatchItem[] = [];
-
-    for (const item of watchlist) {
-      const currentPrice = await getQuote(item.ticker);
-      updatedWatchlist.push({
-        ...item,
-        currentPrice: currentPrice || item.currentPrice,
-      });
-    }
-
-    setPositions(updatedPositions);
-    setWatchlist(updatedWatchlist);
+    setPositions(updated);
+    setLastUpdated(new Date().toLocaleTimeString());
     setIsRefreshing(false);
   };
 
-  const handleTrade = () => {
+  useEffect(() => {
+    if (positions.length > 0 && !autoRefreshed.current) {
+      autoRefreshed.current = true;
+      refreshPrices();
+    }
+  }, [positions.length]);
+
+  const loadMyPortfolio = () => {
+    setPositions(myPortfolio);
+  };
+
+  const clearPortfolio = () => {
+    if (confirm("ล้างพอร์ตทั้งหมด?")) {
+      setPositions([]);
+    }
+  };
+
+  const saveTrade = () => {
     if (!ticker || !shares || !price) return;
 
     const symbol = ticker.toUpperCase();
     const qty = Number(shares);
     const tradePrice = Number(price);
-
     const existing = positions.find((p) => p.ticker === symbol);
 
     if (mode === "buy") {
-      if (existing) {
+      if (!existing) {
+        setPositions([
+          ...positions,
+          {
+            ticker: symbol,
+            shares: qty,
+            avgCost: tradePrice,
+            currentPrice: tradePrice,
+          },
+        ]);
+      } else {
         setPositions(
           positions.map((p) => {
             if (p.ticker !== symbol) return p;
@@ -205,33 +188,18 @@ export default function PortfolioPage() {
             };
           })
         );
-      } else {
-        setPositions([
-          ...positions,
-          {
-            ticker: symbol,
-            shares: qty,
-            avgCost: tradePrice,
-            currentPrice: tradePrice,
-          },
-        ]);
       }
     }
 
     if (mode === "sell" && existing) {
-      const remainingShares = existing.shares - qty;
+      const remaining = existing.shares - qty;
 
-      if (remainingShares <= 0) {
+      if (remaining <= 0) {
         setPositions(positions.filter((p) => p.ticker !== symbol));
       } else {
         setPositions(
           positions.map((p) =>
-            p.ticker === symbol
-              ? {
-                  ...p,
-                  shares: remainingShares,
-                }
-              : p
+            p.ticker === symbol ? { ...p, shares: remaining } : p
           )
         );
       }
@@ -242,228 +210,283 @@ export default function PortfolioPage() {
     setPrice("");
   };
 
-  const loadMyPortfolio = () => {
-    setPositions(myPortfolio);
-  };
+  const donutSlices = useMemo(() => {
+    if (marketValue <= 0) return "#27272a 0% 100%";
 
-  const addWatch = () => {
-    if (!watchTicker) return;
+    let start = 0;
 
-    const symbol = watchTicker.toUpperCase();
-
-    if (watchlist.some((w) => w.ticker === symbol)) return;
-
-    setWatchlist([...watchlist, { ticker: symbol, currentPrice: 0 }]);
-    setWatchTicker("");
-  };
+    return sortedPositions
+      .map((p, index) => {
+        const value = p.shares * p.currentPrice;
+        const percent = (value / marketValue) * 100;
+        const end = start + percent;
+        const color = colors[index % colors.length];
+        const slice = `${color} ${start}% ${end}%`;
+        start = end;
+        return slice;
+      })
+      .join(", ");
+  }, [marketValue, sortedPositions]);
 
   return (
-    <main className="min-h-screen bg-black text-white p-6 pb-24">
-      <h1 className="text-3xl font-bold mb-6">Portfolio</h1>
+    <main className="min-h-screen bg-[#111113] text-white p-4 pb-24">
+      <div className="max-w-6xl mx-auto">
+        <h1 className="text-3xl font-bold mb-4">TRUSH YOUR OWN</h1>
 
-      <div className="grid grid-cols-2 gap-3 mb-6">
-        <div className="bg-zinc-900 rounded-2xl p-4 border border-zinc-800">
-          <p className="text-zinc-400 text-sm">Portfolio Value</p>
-          <p className="text-2xl font-bold">{money(marketValue)}</p>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+          <div className="bg-[#1b1b1e] rounded-xl p-4">
+            <p className="text-zinc-400 text-sm">มูลค่าพอร์ต</p>
+            <p className="text-2xl font-bold">{money(marketValue)}</p>
+          </div>
+
+          <div className="bg-[#1b1b1e] rounded-xl p-4">
+            <p className="text-zinc-400 text-sm">ต้นทุนรวม</p>
+            <p className="text-2xl font-bold">{money(totalCost)}</p>
+          </div>
+
+          <div className="bg-[#1b1b1e] rounded-xl p-4">
+            <p className="text-zinc-400 text-sm">กำไร/ขาดทุน</p>
+            <p
+              className={`text-2xl font-bold ${
+                totalProfit >= 0 ? "text-green-400" : "text-red-400"
+              }`}
+            >
+              {money(totalProfit)}
+            </p>
+          </div>
+
+          <div className="bg-[#1b1b1e] rounded-xl p-4">
+            <p className="text-zinc-400 text-sm">ผลตอบแทน</p>
+            <p
+              className={`text-2xl font-bold ${
+                profitPercent >= 0 ? "text-green-400" : "text-red-400"
+              }`}
+            >
+              {profitPercent.toFixed(2)}%
+            </p>
+          </div>
         </div>
 
-        <div className="bg-zinc-900 rounded-2xl p-4 border border-zinc-800">
-          <p className="text-zinc-400 text-sm">Total Cost</p>
-          <p className="text-2xl font-bold">{money(totalCost)}</p>
-        </div>
+        <div className="grid lg:grid-cols-[1fr_360px] gap-5">
+          <div className="bg-[#1b1b1e] rounded-xl overflow-hidden">
+            <div className="grid grid-cols-6 bg-[#18181b] text-sm font-bold text-zinc-300 p-3">
+              <div>สัญลักษณ์</div>
+              <div>ราคาเฉลี่ย</div>
+              <div>มูลค่า ▼</div>
+              <div>กำไร/ขาดทุน</div>
+              <div>สัดส่วน</div>
+              <div>จัดการ</div>
+            </div>
 
-        <div className="col-span-2 bg-zinc-900 rounded-2xl p-4 border border-zinc-800">
-          <p className="text-zinc-400 text-sm">Profit / Loss</p>
-          <p
-            className={`text-3xl font-bold ${
-              profit >= 0 ? "text-green-400" : "text-red-400"
-            }`}
-          >
-            {money(profit)} ({profitPercent.toFixed(2)}%)
-          </p>
-        </div>
-      </div>
+            {sortedPositions.map((p, index) => {
+              const value = p.shares * p.currentPrice;
+              const costValue = p.shares * p.avgCost;
+              const pl = value - costValue;
+              const plPercent = costValue > 0 ? (pl / costValue) * 100 : 0;
+              const allocation =
+                marketValue > 0 ? (value / marketValue) * 100 : 0;
 
-      <div className="bg-zinc-900 rounded-2xl p-5 mb-6 border border-zinc-800">
-        <p className="font-bold mb-4">Allocation</p>
+              return (
+                <div
+                  key={p.ticker}
+                  className="grid grid-cols-6 items-center border-t border-zinc-800 p-3 text-sm"
+                >
+                  <div>
+                    <p className="font-bold text-lg">{p.ticker}</p>
+                    <p className="text-yellow-300">
+                      {p.shares.toFixed(3)} หุ้น
+                    </p>
+                  </div>
 
-        <div
-          className="w-48 h-48 rounded-full mx-auto mb-5"
-          style={pieStyle}
-        />
+                  <div className="font-bold">{money(p.avgCost)}</div>
 
-        <div className="space-y-2">
-          {sortedPositions.slice(0, 8).map((p, index) => {
-            const value = p.shares * p.currentPrice;
-            const allocation =
-              marketValue > 0 ? (value / marketValue) * 100 : 0;
+                  <div className="font-bold">{money(value)}</div>
 
-            return (
+                  <div>
+                    <p
+                      className={`font-bold ${
+                        pl >= 0 ? "text-green-400" : "text-red-400"
+                      }`}
+                    >
+                      {money(pl)}
+                    </p>
+                    <p
+                      className={
+                        plPercent >= 0 ? "text-green-400" : "text-red-400"
+                      }
+                    >
+                      ({plPercent.toFixed(2)}%)
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-red-400 font-bold">
+                      {allocation.toFixed(2)}%
+                    </p>
+                    <div className="h-2 bg-zinc-700 rounded mt-1">
+                      <div
+                        className="h-2 bg-red-500 rounded"
+                        style={{ width: `${Math.min(allocation, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setMode("buy");
+                        setTicker(p.ticker);
+                        setPrice(String(p.currentPrice || p.avgCost));
+                      }}
+                      className="text-yellow-300"
+                    >
+                      ซื้อ
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setMode("sell");
+                        setTicker(p.ticker);
+                        setPrice(String(p.currentPrice || p.avgCost));
+                      }}
+                      className="text-blue-400"
+                    >
+                      ขาย
+                    </button>
+
+                    <button
+                      onClick={() =>
+                        setPositions(
+                          positions.filter((item) => item.ticker !== p.ticker)
+                        )
+                      }
+                      className="text-red-400"
+                    >
+                      ลบ
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="bg-[#1b1b1e] rounded-xl p-5">
+            <div className="relative w-72 h-72 mx-auto mb-5">
               <div
-                key={p.ticker}
-                className="flex justify-between text-sm"
-              >
-                <span>
+                className="w-72 h-72 rounded-full"
+                style={{
+                  background: `conic-gradient(${donutSlices})`,
+                }}
+              />
+
+              <div className="absolute inset-10 bg-[#1b1b1e] rounded-full flex flex-col items-center justify-center">
+                <p className="text-2xl font-bold">YOK</p>
+                <p className="text-3xl font-bold">{money(marketValue)}</p>
+                <p
+                  className={`font-bold ${
+                    totalProfit >= 0 ? "text-green-400" : "text-red-400"
+                  }`}
+                >
+                  {money(totalProfit)}
+                </p>
+                <p
+                  className={
+                    profitPercent >= 0 ? "text-green-400" : "text-red-400"
+                  }
+                >
+                  ({profitPercent.toFixed(2)}%)
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {sortedPositions.slice(0, 10).map((p, index) => (
+                <div
+                  key={p.ticker}
+                  className="bg-[#111113] rounded px-2 py-1 text-sm flex items-center gap-2"
+                >
                   <span
-                    className="inline-block w-3 h-3 rounded-full mr-2"
-                    style={{
-                      background: colors[index % colors.length],
-                    }}
+                    className="w-2 h-2 rounded-full"
+                    style={{ background: colors[index % colors.length] }}
                   />
                   {p.ticker}
-                </span>
-
-                <span className="text-zinc-400">
-                  {allocation.toFixed(2)}%
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 mb-6">
-        <button
-          onClick={loadMyPortfolio}
-          className="bg-blue-600 p-3 rounded font-bold"
-        >
-          Load My Portfolio
-        </button>
-
-        <button
-          onClick={() => setPositions([])}
-          className="bg-zinc-800 p-3 rounded font-bold"
-        >
-          Clear
-        </button>
-
-        <button
-          onClick={refreshPrices}
-          disabled={isRefreshing}
-          className="col-span-2 bg-yellow-400 text-black p-4 rounded font-bold disabled:opacity-50"
-        >
-          {isRefreshing ? "Refreshing..." : "Refresh Prices"}
-        </button>
-      </div>
-
-      <div className="bg-zinc-900 rounded-2xl p-5 mb-6 border border-zinc-800">
-        <p className="font-bold mb-4">Buy / Sell</p>
-
-        <select
-          className="w-full p-3 mb-3 bg-zinc-800 rounded"
-          value={mode}
-          onChange={(e) => setMode(e.target.value as "buy" | "sell")}
-        >
-          <option value="buy">Buy</option>
-          <option value="sell">Sell</option>
-        </select>
-
-        <input
-          className="w-full p-3 mb-3 bg-zinc-800 rounded"
-          placeholder="Ticker"
-          value={ticker}
-          onChange={(e) => setTicker(e.target.value)}
-        />
-
-        <input
-          className="w-full p-3 mb-3 bg-zinc-800 rounded"
-          placeholder="Shares"
-          type="number"
-          value={shares}
-          onChange={(e) => setShares(e.target.value)}
-        />
-
-        <input
-          className="w-full p-3 mb-3 bg-zinc-800 rounded"
-          placeholder="Price"
-          type="number"
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
-        />
-
-        <button
-          onClick={handleTrade}
-          className="w-full bg-green-600 p-3 rounded font-bold"
-        >
-          Save Trade
-        </button>
-      </div>
-
-      <div className="space-y-3 mb-6">
-        {sortedPositions.map((p) => {
-          const value = p.shares * p.currentPrice;
-          const costValue = p.shares * p.avgCost;
-          const pl = value - costValue;
-          const allocation =
-            marketValue > 0 ? (value / marketValue) * 100 : 0;
-
-          return (
-            <div
-              key={p.ticker}
-              className="bg-zinc-900 rounded-2xl p-4 border border-zinc-800"
-            >
-              <div className="flex justify-between">
-                <div>
-                  <h2 className="text-xl font-bold">{p.ticker}</h2>
-                  <p className="text-zinc-400">
-                    {p.shares.toFixed(3)} shares
-                  </p>
-                  <p className="text-zinc-400">
-                    Avg Cost: {money(p.avgCost)}
-                  </p>
-                  <p className="text-zinc-400">
-                    Current: {money(p.currentPrice)}
-                  </p>
                 </div>
-
-                <div className="text-right">
-                  <p className="font-bold">{money(value)}</p>
-                  <p
-                    className={
-                      pl >= 0 ? "text-green-400" : "text-red-400"
-                    }
-                  >
-                    {money(pl)}
-                  </p>
-                  <p className="text-zinc-400">
-                    {allocation.toFixed(2)}%
-                  </p>
-                </div>
-              </div>
+              ))}
             </div>
-          );
-        })}
-      </div>
 
-      <div className="bg-zinc-900 rounded-2xl p-5 border border-zinc-800">
-        <p className="font-bold mb-4">Watchlist</p>
+            <button
+              onClick={refreshPrices}
+              disabled={isRefreshing}
+              className="w-full mt-5 bg-yellow-400 text-black p-3 rounded font-bold"
+            >
+              {isRefreshing ? "กำลังอัปเดตราคา..." : "อัปเดตราคาอัตโนมัติ"}
+            </button>
 
-        <div className="flex gap-2 mb-4">
-          <input
-            className="w-full p-3 bg-zinc-800 rounded"
-            placeholder="Ticker"
-            value={watchTicker}
-            onChange={(e) => setWatchTicker(e.target.value)}
-          />
-
-          <button
-            onClick={addWatch}
-            className="bg-blue-600 px-4 rounded font-bold"
-          >
-            Add
-          </button>
+            <p className="text-zinc-500 text-sm text-center mt-2">
+              ล่าสุด: {lastUpdated}
+            </p>
+          </div>
         </div>
 
-        <div className="space-y-2">
-          {watchlist.map((w) => (
-            <div
-              key={w.ticker}
-              className="flex justify-between border-b border-zinc-800 py-2"
+        <div className="bg-[#1b1b1e] rounded-xl p-5 mt-5">
+          <p className="font-bold mb-4">ซื้อ / ขาย</p>
+
+          <div className="grid md:grid-cols-5 gap-3">
+            <select
+              className="bg-[#111113] p-3 rounded"
+              value={mode}
+              onChange={(e) => setMode(e.target.value as TradeMode)}
             >
-              <span>{w.ticker}</span>
-              <span>{money(w.currentPrice)}</span>
-            </div>
-          ))}
+              <option value="buy">ซื้อ</option>
+              <option value="sell">ขาย</option>
+            </select>
+
+            <input
+              className="bg-[#111113] p-3 rounded"
+              placeholder="Ticker"
+              value={ticker}
+              onChange={(e) => setTicker(e.target.value)}
+            />
+
+            <input
+              className="bg-[#111113] p-3 rounded"
+              placeholder="จำนวนหุ้น"
+              type="number"
+              value={shares}
+              onChange={(e) => setShares(e.target.value)}
+            />
+
+            <input
+              className="bg-[#111113] p-3 rounded"
+              placeholder="ราคา"
+              type="number"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+            />
+
+            <button
+              onClick={saveTrade}
+              className="bg-green-600 p-3 rounded font-bold"
+            >
+              บันทึก
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 mt-4">
+            <button
+              onClick={loadMyPortfolio}
+              className="bg-blue-600 p-3 rounded font-bold"
+            >
+              โหลดพอร์ตของฉัน
+            </button>
+
+            <button
+              onClick={clearPortfolio}
+              className="bg-zinc-800 p-3 rounded font-bold"
+            >
+              ล้างทั้งหมด
+            </button>
+          </div>
         </div>
       </div>
     </main>
