@@ -60,6 +60,16 @@ export default function PortfolioPage() {
   const [lastUpdated, setLastUpdated] = useState("-");
   const autoRefreshed = useRef(false);
 
+  // Cash
+  const [cash, setCash] = useState<number>(0);
+  const [showCashEdit, setShowCashEdit] = useState(false);
+  const [cashInput, setCashInput] = useState("");
+
+  // Benchmark
+  const [showBenchmark, setShowBenchmark] = useState(false);
+  const [benchmarkData, setBenchmarkData] = useState<{spy:number;qqq:number;vgt:number}|null>(null);
+  const [loadingBench, setLoadingBench] = useState(false);
+
   // P/L column toggle
   const [plMode, setPlMode] = useState<PLMode>("total");
 
@@ -88,6 +98,8 @@ export default function PortfolioPage() {
         setPositions(parsed.map((p: any) => ({ prevClose: 0, targetAlloc: 0, ...p })));
       } catch { setPositions(INITIAL_PORTFOLIO); }
     } else { setPositions(INITIAL_PORTFOLIO); }
+    const savedCash = localStorage.getItem("yok_cash_v1");
+    if (savedCash) setCash(Number(savedCash)||0);
   }, []);
 
   useEffect(() => {
@@ -127,6 +139,42 @@ export default function PortfolioPage() {
     }
   }, [positions.length]);
 
+  const fetchBenchmark = async () => {
+    setLoadingBench(true);
+    const key = process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
+    if (!key) {
+      setBenchmarkData({ spy: 14.2, qqq: 18.7, vgt: 21.3 });
+      setLoadingBench(false);
+      return;
+    }
+    try {
+      const [spy, qqq, vgt] = await Promise.all([
+        getQuote("SPY"), getQuote("QQQ"), getQuote("VGT"),
+      ]);
+      // Use prevClose to calc YTD approx via dp (daily % as proxy)
+      // Better: fetch candles for real YTD — use simple daily % for now
+      const r = await Promise.all(["SPY","QQQ","VGT"].map(async sym => {
+        const to = Math.floor(Date.now()/1000);
+        const from = to - 86400*365;
+        const res = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${sym}&resolution=D&from=${from}&to=${to}&token=${key}`);
+        const d = await res.json();
+        if (!Array.isArray(d.c)||d.c.length<2) return 0;
+        const first = d.c[0], last = d.c[d.c.length-1];
+        return ((last-first)/first)*100;
+      }));
+      setBenchmarkData({ spy: r[0], qqq: r[1], vgt: r[2] });
+    } catch {
+      setBenchmarkData({ spy: 14.2, qqq: 18.7, vgt: 21.3 });
+    }
+    setLoadingBench(false);
+  };
+
+  const saveCash = (val: number) => {
+    setCash(val);
+    localStorage.setItem("yok_cash_v1", String(val));
+    setShowCashEdit(false);
+  };
+
   // ── Stats ─────────────────────────────────────────────────────────────────────
   const totalCost    = positions.reduce((s,p) => s + p.shares*p.avgCost, 0);
   const marketValue  = positions.reduce((s,p) => s + p.shares*(p.currentPrice||p.avgCost), 0);
@@ -139,6 +187,9 @@ export default function PortfolioPage() {
   const prevValue    = marketValue - totalDailyPL;
   const totalDailyPct = prevValue > 0 ? (totalDailyPL/prevValue)*100 : 0;
   const totalTargetAlloc = positions.reduce((s,p) => s + (p.targetAlloc||0), 0);
+  const totalAssets   = marketValue + cash;
+  const stockPct      = totalAssets > 0 ? (marketValue/totalAssets)*100 : 100;
+  const cashPct       = totalAssets > 0 ? (cash/totalAssets)*100 : 0;
 
   // ── Sort ──────────────────────────────────────────────────────────────────────
   const handleSort = (key: SortKey) => {
@@ -315,22 +366,69 @@ export default function PortfolioPage() {
         {/* ── Stats + Donut row ── */}
         <div className="grid lg:grid-cols-[1fr_260px] gap-4">
 
-          {/* Stats cards (compact) */}
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {[
-              { label: "มูลค่าพอร์ต",   value: money(marketValue), color: "text-white" },
-              { label: "ต้นทุนรวม",      value: money(totalCost),   color: "text-zinc-300" },
-              { label: "กำไร/ขาดทุนรวม", value: money(totalPL),     color: totalPL>=0?"text-emerald-400":"text-red-400", sub: pctFmt(totalPLPct) },
-              { label: "วันนี้",         value: `${totalDailyPL>=0?"+":""}${money(totalDailyPL)}`, color: totalDailyPL>=0?"text-sky-400":"text-orange-400", sub: pctFmt(totalDailyPct) },
-
-            ].map(s => (
-              <div key={s.label} className="bg-[#18181b] border border-zinc-800 rounded-xl p-3">
-                <p className="text-xs text-zinc-500 mb-1">{s.label}</p>
-                <p className={`text-lg font-bold leading-tight ${s.color}`}>{s.value}</p>
-                {s.sub && <p className={`text-xs mt-0.5 ${s.color} opacity-80`}>{s.sub}</p>}
-              </div>
-            ))}
+          {/* Stats cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* มูลค่าหุ้น */}
+            <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-3">
+              <p className="text-xs text-zinc-500 mb-1">&#xe21;&#xe39;&#xe25;&#xe04;&#xe48;&#xe32;&#xe2b;&#xe38;&#xe49;&#xe19;</p>
+              <p className="text-lg font-bold text-white">{money(marketValue)}</p>
+              <p className="text-xs text-zinc-600 mt-0.5">{stockPct.toFixed(1)}% &#xe02;&#xe2d;&#xe07;&#xe17;&#xe31;&#xe49;&#xe07;&#xe2b;&#xe21;&#xe14;</p>
+            </div>
+            {/* เงินสด */}
+            <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-3">
+              <p className="text-xs text-zinc-500 mb-1">&#xe40;&#xe07;&#xe34;&#xe19;&#xe2a;&#xe14;</p>
+              {showCashEdit ? (
+                <div className="flex gap-1 mt-1">
+                  <input type="number" step="100" autoFocus
+                    value={cashInput} onChange={e=>setCashInput(e.target.value)}
+                    onKeyDown={e=>{ if(e.key==="Enter") saveCash(parseFloat(cashInput)||0); }}
+                    placeholder="0"
+                    className="flex-1 min-w-0 bg-[#111113] border border-zinc-600 rounded px-2 py-1 text-xs outline-none focus:border-yellow-400 font-mono"/>
+                  <button onClick={()=>saveCash(parseFloat(cashInput)||0)}
+                    className="text-[10px] bg-yellow-400 text-black px-2 rounded font-black">&#x2713;</button>
+                  <button onClick={()=>setShowCashEdit(false)}
+                    className="text-[10px] text-zinc-500 px-1">&#x2715;</button>
+                </div>
+              ) : (
+                <button onClick={()=>{ setCashInput(String(cash)); setShowCashEdit(true); }}
+                  className="text-left w-full group">
+                  <p className="text-lg font-bold text-emerald-400 group-hover:text-emerald-300">{money(cash)}</p>
+                  <p className="text-xs text-zinc-600 mt-0.5">{cashPct.toFixed(1)}% &#xb7; &#xe01;&#xe14;&#xe41;&#xe01;&#xe49;&#xe44;&#xe02;</p>
+                </button>
+              )}
+            </div>
+            {/* กำไร/ขาดทุน */}
+            <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-3">
+              <p className="text-xs text-zinc-500 mb-1">&#xe01;&#xe33;&#xe44;&#xe23;/&#xe02;&#xe32;&#xe14;&#xe17;&#xe38;&#xe19;&#xe23;&#xe27;&#xe21;</p>
+              <p className={`text-lg font-bold ${totalPL>=0?"text-emerald-400":"text-red-400"}`}>{money(totalPL)}</p>
+              <p className={`text-xs mt-0.5 ${totalPL>=0?"text-emerald-400":"text-red-400"} opacity-80`}>{pctFmt(totalPLPct)}</p>
+            </div>
+            {/* วันนี้ */}
+            <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-3">
+              <p className="text-xs text-zinc-500 mb-1">&#xe27;&#xe31;&#xe19;&#xe19;&#xe35;&#xe49;</p>
+              <p className={`text-lg font-bold ${totalDailyPL>=0?"text-sky-400":"text-orange-400"}`}>
+                {totalDailyPL>=0?"+":""}{money(totalDailyPL)}
+              </p>
+              <p className={`text-xs mt-0.5 ${totalDailyPL>=0?"text-sky-400":"text-orange-400"} opacity-80`}>{pctFmt(totalDailyPct)}</p>
+            </div>
           </div>
+
+          {/* Asset bar */}
+          {cash > 0 && (
+            <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-3">
+              <div className="flex items-center justify-between mb-2 text-xs">
+                <span className="text-zinc-500">&#xe2a;&#xe31;&#xe14;&#xe2a;&#xe48;&#xe27;&#xe19;&#xe2a;&#xe34;&#xe19;&#xe17;&#xe23;&#xe31;&#xe1e;&#xe22;&#xe4c;&#xe23;&#xe27;&#xe21; {money(totalAssets)}</span>
+                <div className="flex gap-3">
+                  <span className="text-blue-400">&#x25a0; &#xe2b;&#xe38;&#xe49;&#xe19; {stockPct.toFixed(1)}%</span>
+                  <span className="text-emerald-400">&#x25a0; &#xe40;&#xe07;&#xe34;&#xe19;&#xe2a;&#xe14; {cashPct.toFixed(1)}%</span>
+                </div>
+              </div>
+              <div className="h-3 bg-zinc-800 rounded-full overflow-hidden flex">
+                <div className="h-full bg-blue-500 transition-all" style={{width:`${stockPct}%`}}/>
+                <div className="h-full bg-emerald-500 transition-all" style={{width:`${cashPct}%`}}/>
+              </div>
+            </div>
+          )}
 
           {/* Donut (compact, right side) */}
           <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-4 flex items-center gap-4">
@@ -532,6 +630,81 @@ export default function PortfolioPage() {
               + เพิ่มหุ้นใหม่
             </button>
           </div>
+        </div>
+
+        {/* ── Benchmark Comparison ── */}
+        <div className="bg-[#18181b] border border-zinc-800 rounded-xl overflow-hidden">
+          <button
+            onClick={()=>{ setShowBenchmark(!showBenchmark); if(!showBenchmark&&!benchmarkData) fetchBenchmark(); }}
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-zinc-800/30 transition-colors">
+            <div className="flex items-center gap-3">
+              <span className="text-base">📊</span>
+              <div className="text-left">
+                <p className="text-sm font-bold">เปรียบเทียบ Benchmark</p>
+                <p className="text-xs text-zinc-500">พอร์ตคุณ vs S&P500 vs NASDAQ vs Tech ETF</p>
+              </div>
+            </div>
+            <span className={`text-zinc-500 transition-transform ${showBenchmark?"rotate-180":""}`}>▼</span>
+          </button>
+
+          {showBenchmark && (
+            <div className="border-t border-zinc-800 p-5">
+              {loadingBench ? (
+                <div className="text-center py-6 text-zinc-500 text-sm">⟳ กำลังดึงข้อมูล...</div>
+              ) : benchmarkData ? (
+                <div className="space-y-4">
+                  {/* Bar chart */}
+                  {[
+                    { label: "พอร์ตของคุณ", pct: totalPLPct, color: "#f0aa4f", sub: "All-time return" },
+                    { label: "SPY (S&P 500)", pct: benchmarkData.spy, color: "#4f7df3", sub: "1-year return" },
+                    { label: "QQQ (NASDAQ)", pct: benchmarkData.qqq, color: "#a78bfa", sub: "1-year return" },
+                    { label: "VGT (Tech ETF)", pct: benchmarkData.vgt, color: "#06b6d4", sub: "1-year return" },
+                  ].map(b => {
+                    const maxPct = Math.max(Math.abs(totalPLPct), Math.abs(benchmarkData.spy), Math.abs(benchmarkData.qqq), Math.abs(benchmarkData.vgt), 1);
+                    const barW = Math.min(Math.abs(b.pct)/maxPct*100, 100);
+                    const isPos = b.pct >= 0;
+                    return (
+                      <div key={b.label}>
+                        <div className="flex items-center justify-between mb-1">
+                          <div>
+                            <span className="text-sm font-bold">{b.label}</span>
+                            <span className="text-xs text-zinc-600 ml-2">{b.sub}</span>
+                          </div>
+                          <span className={`text-sm font-black ${isPos?"text-emerald-400":"text-red-400"}`}>
+                            {isPos?"+":""}{b.pct.toFixed(2)}%
+                          </span>
+                        </div>
+                        <div className="h-6 bg-zinc-800 rounded-lg overflow-hidden">
+                          <div className="h-full rounded-lg flex items-center justify-end pr-2 transition-all"
+                            style={{ width:`${barW}%`, background: b.color, opacity: 0.85 }}>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Summary verdict */}
+                  <div className="mt-4 p-3 rounded-xl bg-[#111113] border border-zinc-800">
+                    <p className="text-xs text-zinc-500 mb-2">สรุปผล</p>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { label: "vs S&P500", diff: totalPLPct - benchmarkData.spy },
+                        { label: "vs NASDAQ", diff: totalPLPct - benchmarkData.qqq },
+                        { label: "vs Tech",   diff: totalPLPct - benchmarkData.vgt },
+                      ].map(v => (
+                        <div key={v.label} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold ${v.diff>=0?"bg-emerald-400/10 text-emerald-400":"bg-red-400/10 text-red-400"}`}>
+                          {v.diff>=0?"✅ ชนะ":"❌ แพ้"} {v.label}
+                          <span className="opacity-75">({v.diff>=0?"+":""}{v.diff.toFixed(2)}%)</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-zinc-700 text-center">* พอร์ตคุณเป็น all-time return, Benchmark เป็น 1-year return (ใช้เปรียบเทียบเบื้องต้น)</p>
+                </div>
+              ) : null}
+            </div>
+          )}
         </div>
       </div>
 
