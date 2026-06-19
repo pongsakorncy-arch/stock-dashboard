@@ -1,34 +1,21 @@
-import { createServerClient } from "@supabase/ssr";
+import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 export async function middleware(req: NextRequest) {
-  let res = NextResponse.next({ request: { headers: req.headers } });
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return req.cookies.getAll(); },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => req.cookies.set(name, value));
-          res = NextResponse.next({ request: req });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            res.cookies.set(name, value, options)
-          );
-        },
-      },
-    }
-  );
-
+  const res = NextResponse.next();
+  const supabase = createMiddlewareClient({ req, res });
   const { data: { session } } = await supabase.auth.getSession();
-  const isLoginPage = req.nextUrl.pathname === "/login";
-  const isCallback  = req.nextUrl.pathname.startsWith("/auth/");
 
+  const isLoginPage = req.nextUrl.pathname === "/login";
+  const isCallback  = req.nextUrl.pathname.startsWith("/auth/callback");
+
+  // ถ้าไม่ได้ login และไม่ได้อยู่ที่หน้า login → redirect ไป login
   if (!session && !isLoginPage && !isCallback) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
+
+  // ถ้า login แล้ว แต่อยู่ที่หน้า login → redirect ไปหน้าแรก
   if (session && isLoginPage) {
     return NextResponse.redirect(new URL("/", req.url));
   }
@@ -37,5 +24,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api).*)"],
 };
