@@ -112,6 +112,7 @@ const defaultForm = () => ({
   htfBias: "Bearish" as "Bullish"|"Bearish"|"Neutral",
   smcConcept: [] as SMCConcept[],
   tf: "M5" as TF,
+  result: "WIN" as Result,
   entryModel: "",
   notes: "",
 });
