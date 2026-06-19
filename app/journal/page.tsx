@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 type Direction  = "LONG" | "SHORT";
 type Result     = "WIN" | "LOSS" | "BE";
 type SMCConcept = "OB"|"FVG"|"BOS"|"CHoCH"|"Liquidity"|"MSB"|"W-Pattern"|"M-Pattern"|"Other";
+type TF = "M1"|"M5"|"M15";
 type Session    = "Tokyo"|"London"|"New York"|"Overlap";
 
 type Trade = {
@@ -29,6 +30,7 @@ type Trade = {
   smcConcept: SMCConcept[];
   htfBias: "Bullish"|"Bearish"|"Neutral";
   entryModel: string;
+  tf: TF;
   notes: string;
   createdAt: string;
 };
@@ -104,9 +106,11 @@ const defaultForm = () => ({
   exitPrices: [] as number[],
   lotPerOrder: 0.10,
   slPrice: 0,
+  tpPrice: 0,
   rr: 0,
   htfBias: "Bearish" as "Bullish"|"Bearish"|"Neutral",
   smcConcept: [] as SMCConcept[],
+  tf: "M5" as TF,
   entryModel: "",
   notes: "",
 });
@@ -135,6 +139,15 @@ export default function JournalPage() {
   const totalPL   = perOrderPLs.reduce((a,b)=>a+b, 0);
   const totalLot  = exits.length * form.lotPerOrder;
   const result: Result = totalPL > 0.01 ? "WIN" : totalPL < -0.01 ? "LOSS" : "BE";
+
+  // Auto-calc R:R from Entry/SL/TP
+  const autoRR = (() => {
+    const e = form.entryPrice, sl = form.slPrice, tp = form.tpPrice;
+    if (!e || !sl || !tp) return 0;
+    const risk   = Math.abs(e - sl);
+    const reward = Math.abs(tp - e);
+    return risk > 0 ? Math.round((reward / risk) * 100) / 100 : 0;
+  })();
 
   // ── Add one exit price ────────────────────────────────────────────────────
   const addExit = () => {
@@ -175,7 +188,7 @@ export default function JournalPage() {
       totalPL: Math.round(totalPL*100)/100,
       slPrice: form.slPrice, rr: form.rr, result,
       smcConcept: form.smcConcept, htfBias: form.htfBias,
-      entryModel: form.entryModel, notes: form.notes,
+      entryModel: form.entryModel, tf: (form as any).tf||"M5", notes: form.notes,
     };
     const updated = editId ? trades.map(t=>t.id===editId?trade:t) : [trade,...trades];
     setTrades(updated); save(updated);
@@ -349,6 +362,7 @@ export default function JournalPage() {
               <div className="px-4 py-2">
                 <div className="flex flex-wrap gap-1 mb-1">
                   <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${t.htfBias==="Bullish"?"bg-emerald-400/10 text-emerald-400":t.htfBias==="Bearish"?"bg-red-400/10 text-red-400":"bg-zinc-700 text-zinc-400"}`}>{t.htfBias}</span>
+                  {(t as any).tf && <span className="text-[10px] bg-zinc-700 text-zinc-300 px-2 py-0.5 rounded-full font-bold">{(t as any).tf}</span>}
                   {t.entryModel && <span className="text-[10px] bg-yellow-400/10 text-yellow-400 px-2 py-0.5 rounded-full font-bold">{t.entryModel}</span>}
                   {t.smcConcept.map(c=><span key={c} className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full">{c}</span>)}
                 </div>
@@ -402,28 +416,63 @@ export default function JournalPage() {
             </div>
           </div>
 
-          {/* ── Step 2: Entry + SL ── */}
+          {/* ── Step 2: Entry / Exit / TP / SL ── */}
           <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-4 space-y-3">
-            <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">② Entry Price</p>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2">
-                <label className="text-[10px] text-zinc-500 mb-1 block">Entry Price (ราคาตั้ง TP)</label>
-                <input type="number" step="0.001" value={form.entryPrice||""} placeholder="เช่น 4171.200"
-                  onChange={e=>f("entryPrice",parseFloat(e.target.value)||0)}
-                  className="w-full bg-[#111113] border border-zinc-700 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-yellow-400 font-mono text-lg font-bold"/>
+            <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">② ราคา & Lot</p>
+
+            {/* Entry */}
+            <div>
+              <label className="text-[10px] text-zinc-500 mb-1 block">Entry Price</label>
+              <input type="number" step="0.001" value={form.entryPrice||""} placeholder="เช่น 4171.200"
+                onChange={e=>f("entryPrice",parseFloat(e.target.value)||0)}
+                className="w-full bg-[#111113] border border-zinc-700 focus:border-yellow-400 rounded-lg px-3 py-2.5 text-base outline-none font-mono font-black text-yellow-300"/>
+            </div>
+
+            {/* TP / SL / BE row */}
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-[10px] text-zinc-500 mb-1 block">Take Profit 🟢</label>
+                <input type="number" step="0.001" value={form.tpPrice||""} placeholder="TP"
+                  onChange={e=>f("tpPrice",parseFloat(e.target.value)||0)}
+                  className="w-full bg-[#111113] border border-zinc-700 focus:border-emerald-400 rounded-lg px-2 py-2 text-sm outline-none font-mono text-emerald-400"/>
+              </div>
+              <div>
+                <label className="text-[10px] text-zinc-500 mb-1 block">Stop Loss 🔴</label>
+                <input type="number" step="0.001" value={form.slPrice||""} placeholder="SL"
+                  onChange={e=>f("slPrice",parseFloat(e.target.value)||0)}
+                  className="w-full bg-[#111113] border border-zinc-700 focus:border-red-400 rounded-lg px-2 py-2 text-sm outline-none font-mono text-red-400"/>
               </div>
               <div>
                 <label className="text-[10px] text-zinc-500 mb-1 block">Lot / Order</label>
                 <input type="number" step="0.01" value={form.lotPerOrder||""} placeholder="0.10"
                   onChange={e=>f("lotPerOrder",parseFloat(e.target.value)||0.1)}
-                  className="w-full bg-[#111113] border border-zinc-700 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-yellow-400 font-mono"/>
+                  className="w-full bg-[#111113] border border-zinc-700 focus:border-yellow-400 rounded-lg px-2 py-2 text-sm outline-none font-mono"/>
               </div>
             </div>
+
+            {/* Auto R:R preview */}
+            {autoRR > 0 && (
+              <div className="flex items-center gap-2 bg-purple-500/10 border border-purple-500/20 rounded-lg px-3 py-2">
+                <span className="text-xs text-zinc-400">R:R อัตโนมัติ</span>
+                <span className="text-lg font-black text-purple-400 ml-auto">1 : {autoRR}</span>
+              </div>
+            )}
+
+            {/* Result quick select */}
             <div>
-              <label className="text-[10px] text-zinc-500 mb-1 block">Stop Loss</label>
-              <input type="number" step="0.001" value={form.slPrice||""} placeholder="ราคา SL (ไม่บังคับ)"
-                onChange={e=>f("slPrice",parseFloat(e.target.value)||0)}
-                className="w-full bg-[#111113] border border-zinc-700 rounded-lg px-3 py-2 text-sm outline-none focus:border-red-400 font-mono text-red-400"/>
+              <label className="text-[10px] text-zinc-500 mb-1 block">ผลลัพธ์</label>
+              <div className="flex gap-2">
+                {(["WIN","LOSS","BE"] as Result[]).map(r=>(
+                  <button key={r} onClick={()=>f("result",r)}
+                    className={`flex-1 py-2 rounded-lg text-sm font-black transition-colors ${
+                      (form as any).result===r
+                        ? r==="WIN"?"bg-emerald-500 text-black":r==="LOSS"?"bg-red-500 text-white":"bg-zinc-500 text-white"
+                        : "bg-zinc-800 text-zinc-400"
+                    }`}>
+                    {r==="WIN"?"✅ WIN":r==="LOSS"?"❌ LOSS":"🟡 BE"}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -504,39 +553,65 @@ export default function JournalPage() {
           <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-4 space-y-3">
             <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">④ SMC Analysis</p>
 
+            {/* TF */}
+            <div>
+              <label className="text-[10px] text-zinc-500 mb-1.5 block">Timeframe (Entry)</label>
+              <div className="flex gap-2">
+                {(["M1","M5","M15"] as TF[]).map(t=>(
+                  <button key={t} onClick={()=>f("tf",t)}
+                    className={`flex-1 py-2 rounded-lg text-sm font-black border transition-colors ${
+                      form.tf===t
+                        ? "bg-yellow-400/20 border-yellow-400 text-yellow-400"
+                        : "bg-zinc-800 border-zinc-700 text-zinc-500 hover:border-zinc-500"
+                    }`}>{t}</button>
+                ))}
+              </div>
+            </div>
+
             {/* HTF Bias */}
-            <div className="flex gap-2">
-              {(["Bullish","Bearish","Neutral"] as const).map(b=>(
-                <button key={b} onClick={()=>f("htfBias",b)}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-colors ${form.htfBias===b?b==="Bullish"?"bg-emerald-500/20 border-emerald-500 text-emerald-400":b==="Bearish"?"bg-red-500/20 border-red-500 text-red-400":"bg-zinc-500/20 border-zinc-500 text-zinc-300":"bg-zinc-800 border-zinc-700 text-zinc-500"}`}>
-                  {b}
-                </button>
-              ))}
+            <div>
+              <label className="text-[10px] text-zinc-500 mb-1.5 block">HTF Bias</label>
+              <div className="flex gap-2">
+                {(["Bullish","Bearish","Neutral"] as const).map(b=>(
+                  <button key={b} onClick={()=>f("htfBias",b)}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-colors ${form.htfBias===b?b==="Bullish"?"bg-emerald-500/20 border-emerald-500 text-emerald-400":b==="Bearish"?"bg-red-500/20 border-red-500 text-red-400":"bg-zinc-500/20 border-zinc-500 text-zinc-300":"bg-zinc-800 border-zinc-700 text-zinc-500"}`}>
+                    {b}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* SMC Concepts */}
-            <div className="flex flex-wrap gap-1.5">
-              {SMC_LIST.map(c=>{
-                const active=(form.smcConcept||[]).includes(c);
-                return <button key={c} onClick={()=>f("smcConcept",active?form.smcConcept.filter(x=>x!==c):[...form.smcConcept,c])}
-                  className={`px-2.5 py-1 rounded-full text-xs font-bold transition-colors ${active?"bg-purple-500/30 border border-purple-500 text-purple-300":"bg-zinc-800 border border-zinc-700 text-zinc-500"}`}>{c}</button>;
-              })}
+            <div>
+              <label className="text-[10px] text-zinc-500 mb-1.5 block">SMC Concept</label>
+              <div className="flex flex-wrap gap-1.5">
+                {SMC_LIST.map(c=>{
+                  const active=(form.smcConcept||[]).includes(c);
+                  return <button key={c} onClick={()=>f("smcConcept",active?form.smcConcept.filter(x=>x!==c):[...form.smcConcept,c])}
+                    className={`px-2.5 py-1 rounded-full text-xs font-bold transition-colors ${active?"bg-purple-500/30 border border-purple-500 text-purple-300":"bg-zinc-800 border border-zinc-700 text-zinc-500"}`}>{c}</button>;
+                })}
+              </div>
             </div>
 
-            {/* Entry Model + R:R */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2">
-                <label className="text-[10px] text-zinc-500 mb-1 block">Entry Model</label>
-                <input value={form.entryModel} onChange={e=>f("entryModel",e.target.value)}
-                  placeholder="W2, M2, BOS+OB, CHoCH+FVG"
-                  className="w-full bg-[#111113] border border-zinc-700 rounded-lg px-3 py-2 text-xs outline-none focus:border-yellow-400"/>
-              </div>
-              <div>
-                <label className="text-[10px] text-zinc-500 mb-1 block">R:R</label>
-                <input type="number" step="0.1" value={form.rr||""} placeholder="2.5"
-                  onChange={e=>f("rr",parseFloat(e.target.value)||0)}
-                  className="w-full bg-[#111113] border border-zinc-700 rounded-lg px-3 py-2 text-xs outline-none focus:border-purple-400 font-mono text-purple-400"/>
-              </div>
+            {/* Entry Model */}
+            <div>
+              <label className="text-[10px] text-zinc-500 mb-1 block">Entry Model</label>
+              <input value={form.entryModel} onChange={e=>f("entryModel",e.target.value)}
+                placeholder="W2, M2, BOS+OB, CHoCH+FVG"
+                className="w-full bg-[#111113] border border-zinc-700 rounded-lg px-3 py-2 text-xs outline-none focus:border-yellow-400"/>
+            </div>
+
+            {/* R:R — แสดง auto หรือกรอกเอง */}
+            <div>
+              <label className="text-[10px] text-zinc-500 mb-1 block">
+                R:R {autoRR > 0 ? <span className="text-purple-400 ml-1">← คำนวณจาก TP/SL อัตโนมัติ: 1:{autoRR}</span> : "(กรอกเองถ้าไม่มี TP/SL)"}
+              </label>
+              <input type="number" step="0.1"
+                value={autoRR > 0 ? autoRR : (form.rr||"")}
+                readOnly={autoRR > 0}
+                placeholder="เช่น 2.5"
+                onChange={e=>f("rr",parseFloat(e.target.value)||0)}
+                className={`w-full bg-[#111113] border rounded-lg px-3 py-2 text-sm outline-none font-mono font-black ${autoRR>0?"border-purple-500/40 text-purple-400 opacity-80 cursor-default":"border-zinc-700 focus:border-purple-400 text-purple-400"}`}/>
             </div>
 
             {/* Notes */}
