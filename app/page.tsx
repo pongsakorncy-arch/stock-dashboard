@@ -301,7 +301,7 @@ export default function Home() {
         fetchNews(apiKey),
         fetchTopMovers(apiKey),
       ]);
-      setIndices(indexResults);
+      setIndices(indexResults as IndexData[]);
       setNews(newsData);
       setMovers(moversData);
     } catch (e) {
