@@ -139,6 +139,15 @@ export default function PortfolioPage() {
     }
   }, [positions.length]);
 
+  // Auto-refresh ทุก 1 นาที (ปลอดภัยกับ Finnhub free tier)
+  useEffect(() => {
+    if (positions.length === 0) return;
+    const id = setInterval(() => {
+      refreshPrices();
+    }, 60 * 1000);
+    return () => clearInterval(id);
+  }, [positions.length]);
+
   const fetchBenchmark = async () => {
     setLoadingBench(true);
     const key = process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
