@@ -138,7 +138,6 @@ export default function PortfolioPage() {
   }, 0);
   const prevValue    = marketValue - totalDailyPL;
   const totalDailyPct = prevValue > 0 ? (totalDailyPL/prevValue)*100 : 0;
-  const totalTargetAlloc = positions.reduce((s,p) => s + (p.targetAlloc||0), 0);
 
   // ── Sort ──────────────────────────────────────────────────────────────────────
   const handleSort = (key: SortKey) => {
@@ -322,7 +321,6 @@ export default function PortfolioPage() {
               { label: "ต้นทุนรวม",      value: money(totalCost),   color: "text-zinc-300" },
               { label: "กำไร/ขาดทุนรวม", value: money(totalPL),     color: totalPL>=0?"text-emerald-400":"text-red-400", sub: pctFmt(totalPLPct) },
               { label: "วันนี้",         value: `${totalDailyPL>=0?"+":""}${money(totalDailyPL)}`, color: totalDailyPL>=0?"text-sky-400":"text-orange-400", sub: pctFmt(totalDailyPct) },
-
             ].map(s => (
               <div key={s.label} className="bg-[#18181b] border border-zinc-800 rounded-xl p-3">
                 <p className="text-xs text-zinc-500 mb-1">{s.label}</p>
@@ -409,13 +407,10 @@ export default function PortfolioPage() {
                   const dailyPct = p.prevClose&&p.currentPrice ? ((p.currentPrice-p.prevClose)/p.prevClose)*100 : null;
                   const isPos    = pl >= 0;
                   const isDailyPos = dailyPL !== null ? dailyPL >= 0 : null;
-                  // Alloc diff: positive = ถือเกินเป้า, negative = ถือน้อยกว่าเป้า
                   const allocDiff = targetPct > 0 ? allocNow - targetPct : null;
 
                   return (
                     <tr key={p.ticker} className="border-t border-zinc-800 hover:bg-[#1f1f23] transition-colors">
-
-                      {/* หุ้น */}
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2">
                           <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: COLORS[idx%COLORS.length] }}/>
@@ -425,20 +420,10 @@ export default function PortfolioPage() {
                           </div>
                         </div>
                       </td>
-
-                      {/* จำนวน */}
                       <td className="px-3 py-3 text-sm text-yellow-300 font-mono">{p.shares.toFixed(4)}</td>
-
-                      {/* ต้นทุนเฉลี่ย */}
                       <td className="px-3 py-3 text-sm font-medium">{money(p.avgCost)}</td>
-
-                      {/* ราคาปัจจุบัน */}
                       <td className="px-3 py-3 text-sm text-zinc-300">{money(price)}</td>
-
-                      {/* มูลค่า */}
                       <td className="px-3 py-3 text-sm font-bold">{money(val)}</td>
-
-                      {/* กำไร/ขาดทุน — toggle total / daily */}
                       <td className="px-3 py-3 min-w-[140px]">
                         {plMode === "total" ? (
                           <>
@@ -466,20 +451,15 @@ export default function PortfolioPage() {
                           </>
                         )}
                       </td>
-
-                      {/* สัดส่วน: เป้าหมาย vs ปัจจุบัน */}
                       <td className="px-3 py-3 min-w-[130px]">
-                        {/* ปัจจุบัน */}
                         <div className="flex items-center justify-between mb-0.5">
                           <span className="text-[10px] text-zinc-600">ปัจจุบัน</span>
                           <span className="text-xs font-bold text-zinc-300">{allocNow.toFixed(1)}%</span>
                         </div>
-                        {/* bar ปัจจุบัน */}
                         <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden mb-1">
                           <div className="h-full rounded-full transition-all"
                             style={{ width:`${Math.min(allocNow,100)}%`, background: COLORS[idx%COLORS.length] }}/>
                         </div>
-                        {/* เป้าหมาย */}
                         {targetPct > 0 ? (
                           <>
                             <div className="flex items-center justify-between mb-0.5">
@@ -490,7 +470,6 @@ export default function PortfolioPage() {
                               <div className="h-full rounded-full bg-purple-500/50"
                                 style={{ width:`${Math.min(targetPct,100)}%` }}/>
                             </div>
-                            {/* diff badge */}
                             {allocDiff !== null && (
                               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
                                 Math.abs(allocDiff) < 0.5 ? "bg-zinc-700 text-zinc-400" :
@@ -504,8 +483,6 @@ export default function PortfolioPage() {
                           <p className="text-[10px] text-zinc-700">ยังไม่ตั้งเป้า</p>
                         )}
                       </td>
-
-                      {/* จัดการ */}
                       <td className="px-3 py-3">
                         <div className="flex items-center justify-center gap-1">
                           <button onClick={()=>openBuy(p.ticker)}
@@ -525,7 +502,6 @@ export default function PortfolioPage() {
             </table>
           </div>
 
-          {/* Add new row */}
           <div className="border-t border-zinc-800 p-4">
             <button onClick={()=>{ setMode("buy"); setFormTicker(""); setFormShares(""); setFormPrice(""); setFormName(""); setFormAlloc(""); setFormTarget(""); setEditingTicker(null); setFormError(""); setModal({type:"buy",ticker:""}); }}
               className="w-full py-2.5 border border-dashed border-zinc-700 hover:border-zinc-500 text-zinc-500 hover:text-zinc-300 rounded-lg text-sm transition-colors">
@@ -569,7 +545,6 @@ export default function PortfolioPage() {
                   placeholder="เช่น เอ็นวิเดีย" value={formName} onChange={e=>setFormName(e.target.value)}/>
               </div>
 
-              {/* สัดส่วนเป้าหมาย — ทุก mode */}
               <div>
                 <label className="text-xs text-zinc-400 mb-1 block">สัดส่วนเป้าหมาย (%)</label>
                 <div className="flex gap-2 items-center">
@@ -585,7 +560,6 @@ export default function PortfolioPage() {
                 )}
               </div>
 
-              {/* คำนวณจาก % alloc → shares (edit only) */}
               {editingTicker && (
                 <div>
                   <label className="text-xs text-zinc-400 mb-1 block">ปรับจำนวนหุ้นตาม % ปัจจุบัน (ไม่บังคับ)</label>
@@ -599,9 +573,7 @@ export default function PortfolioPage() {
               )}
 
               <div>
-                <label className="text-xs text-zinc-400 mb-1 block">
-                  {editingTicker ? "จำนวนหุ้น" : "จำนวนหุ้น"}
-                </label>
+                <label className="text-xs text-zinc-400 mb-1 block">จำนวนหุ้น</label>
                 <input className="w-full bg-[#111113] border border-zinc-700 focus:border-yellow-400 rounded-lg px-3 py-2.5 text-sm outline-none"
                   placeholder="เช่น 5.5" type="number" step="any"
                   value={formShares} onChange={e=>handleSharesChange(e.target.value)}/>
