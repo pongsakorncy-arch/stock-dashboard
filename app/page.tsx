@@ -13,6 +13,10 @@ type IndexData = {
   prevClose: number;
   sparkline: number[];
   color: string;
+  extPrice: number;   // pre/after market price
+  extChange: number;
+  extPct: number;
+  extType: "pre" | "after" | "none";
 };
 
 type NewsItem = {
@@ -110,6 +114,18 @@ async function fetchQuote(sym: string, key: string) {
   return r.json();
 }
 
+// Determine session: pre-market (<9:30 ET) or after-hours (>16:00 ET)
+function getMarketSession(): "pre" | "after" | "open" | "closed" {
+  const now = new Date();
+  const etMin = now.getUTCHours() * 60 + now.getUTCMinutes() - 240; // EDT offset
+  const day = now.getUTCDay();
+  if (day === 0 || day === 6) return "closed";
+  if (etMin >= 240 && etMin < 570) return "pre";    // 04:00–09:30
+  if (etMin >= 570 && etMin < 960) return "open";   // 09:30–16:00
+  if (etMin >= 960 && etMin < 1200) return "after"; // 16:00–20:00
+  return "closed";
+}
+
 async function fetchCandles(sym: string, key: string): Promise<number[]> {
   const to = Math.floor(Date.now() / 1000);
   const from = to - 86400 * 30;
@@ -120,35 +136,13 @@ async function fetchCandles(sym: string, key: string): Promise<number[]> {
   return Array.isArray(d.c) ? d.c.slice(-20) : [];
 }
 
-// Translate via Claude API (server-side style call from client — works in Next.js client w/ CORS proxy or Route Handler)
-// We call our own /api/translate route which wraps Claude
-async function translateHeadlines(headlines: string[]): Promise<string[]> {
-  try {
-    const res = await fetch("/api/translate-news", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ headlines }),
-    });
-    if (!res.ok) return headlines;
-    const data = await res.json();
-    return data.translations ?? headlines;
-  } catch {
-    return headlines;
-  }
-}
-
 async function fetchNews(key: string): Promise<NewsItem[]> {
   const r = await fetch(`https://finnhub.io/api/v1/news?category=general&token=${key}`);
   const data = await r.json();
   const raw = (Array.isArray(data) ? data : []).slice(0, 8);
-  const headlines = raw.map((n: any) => n.headline as string);
-
-  // Try to get Thai translations
-  const thaiHeadlines = await translateHeadlines(headlines);
-
-  return raw.map((n: any, i: number) => ({
+  return raw.map((n: any) => ({
     headline: n.headline,
-    headlineTh: thaiHeadlines[i] ?? n.headline,
+    headlineTh: n.headline, // ภาษาอังกฤษก่อน
     source: n.source,
     time: new Date(n.datetime * 1000).toLocaleString("th-TH", {
       hour: "2-digit", minute: "2-digit", month: "short", day: "numeric",
@@ -273,14 +267,20 @@ export default function Home() {
 
     if (!apiKey) {
       // Demo mode
-      setIndices(INDEX_CONFIG.map((cfg, i) => ({
-        symbol: cfg.symbol, label: cfg.label, color: cfg.color,
-        value:     [5240.5, 18320.1, 183.2, 28.4, 91.3, 18.2][i],
-        change:    [12.3, -45.2, 1.1, -0.2, -0.8, 0.5][i],
-        changePct: [0.24, -0.25, 0.61, -0.71, -0.87, 2.83][i],
-        prevClose: 0,
-        sparkline: Array.from({ length: 20 }, (_, j) => 100 + Math.sin(j * 0.4 + i) * 5 + Math.random() * 2),
-      })));
+      const sess = getMarketSession();
+      setIndices(INDEX_CONFIG.map((cfg, i) => {
+        const price = [5240.5, 18320.1, 183.2, 28.4, 91.3, 18.2][i];
+        const extP  = price * (1 + [0.0031, -0.0018, 0.0055, 0.0008, -0.0012, 0.014][i]);
+        const extCh = extP - price;
+        return {
+          symbol: cfg.symbol, label: cfg.label, color: cfg.color,
+          value: price, change: [12.3,-45.2,1.1,-0.2,-0.8,0.5][i],
+          changePct: [0.24,-0.25,0.61,-0.71,-0.87,2.83][i], prevClose: 0,
+          sparkline: Array.from({length:20},(_,j)=>100+Math.sin(j*0.4+i)*5+Math.random()*2),
+          extPrice: extP, extChange: extCh, extPct: (extCh/price)*100,
+          extType: sess==="open"||sess==="closed" ? "none" : sess,
+        };
+      }));
       setNews(DEMO_NEWS);
       setMovers({ gainers: DEMO_GAINERS, losers: DEMO_LOSERS });
       setLastRefresh(new Date().toLocaleTimeString("th-TH"));
@@ -292,11 +292,19 @@ export default function Home() {
       const [indexResults, newsData, moversData] = await Promise.all([
         Promise.all(INDEX_CONFIG.map(async (cfg) => {
           const [q, candles] = await Promise.all([fetchQuote(cfg.symbol, apiKey), fetchCandles(cfg.symbol, apiKey)]);
+          const sess = getMarketSession();
+          // Finnhub quote: `o` = extended hours open price when available
+          const extP  = Number(q.o || 0);  // best approximation available in free tier
+          const price = Number(q.c || 0);
+          const extCh = extP > 0 ? extP - price : 0;
           return {
             symbol: cfg.symbol, label: cfg.label, color: cfg.color,
-            value: Number(q.c || 0), change: Number(q.d || 0), changePct: Number(q.dp || 0),
+            value: price, change: Number(q.d || 0), changePct: Number(q.dp || 0),
             prevClose: Number(q.pc || 0),
             sparkline: candles.length ? candles : [0],
+            extPrice: extP, extChange: extCh,
+            extPct: price > 0 && extP > 0 ? (extCh/price)*100 : 0,
+            extType: sess==="open"||sess==="closed" ? "none" : sess,
           };
         })),
         fetchNews(apiKey),
@@ -396,7 +404,9 @@ export default function Home() {
                   <div className="h-3 w-12 bg-zinc-800 rounded" />
                 </div>
               );
-              const pos = idx.changePct >= 0;
+              const pos    = idx.changePct >= 0;
+              const extPos = idx.extPct >= 0;
+              const hasExt = idx.extType !== "none" && idx.extPrice > 0;
               return (
                 <div key={idx.symbol} className="bg-[#111113] border border-zinc-800 rounded-xl p-4 hover:border-zinc-600 transition-colors">
                   <div className="flex items-start justify-between mb-1">
@@ -406,7 +416,8 @@ export default function Home() {
                     </div>
                     <Sparkline data={idx.sparkline} color={idx.color} />
                   </div>
-                  <div className="flex items-center gap-2 mt-2">
+                  {/* Regular day change */}
+                  <div className="flex items-center gap-2 mt-1">
                     <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${pos ? "bg-emerald-400/10 text-emerald-400" : "bg-red-400/10 text-red-400"}`}>
                       {pos ? "▲" : "▼"} {Math.abs(idx.changePct).toFixed(2)}%
                     </span>
@@ -414,6 +425,18 @@ export default function Home() {
                       {pos ? "+" : ""}{money(idx.change)}
                     </span>
                   </div>
+                  {/* Pre/After market */}
+                  {hasExt && (
+                    <div className="mt-1.5 flex items-center gap-1.5 bg-zinc-900/60 rounded-lg px-2 py-1">
+                      <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${idx.extType==="pre" ? "bg-yellow-400/20 text-yellow-400" : "bg-purple-400/20 text-purple-400"}`}>
+                        {idx.extType==="pre" ? "PRE" : "AH"}
+                      </span>
+                      <span className="text-xs font-mono text-zinc-300">{money(idx.extPrice)}</span>
+                      <span className={`text-[10px] font-bold ml-auto ${extPos ? "text-emerald-400" : "text-red-400"}`}>
+                        {extPos ? "+" : ""}{idx.extPct.toFixed(2)}%
+                      </span>
+                    </div>
+                  )}
                   <div className="mt-2 h-0.5 rounded-full" style={{ background: idx.color, opacity: 0.3 }} />
                 </div>
               );
