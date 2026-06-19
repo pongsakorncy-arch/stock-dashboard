@@ -346,98 +346,89 @@ export default function Home() {
             className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 rounded-lg font-medium transition-colors disabled:opacity-40">
             {loading ? "⟳ Loading..." : "⟳ Refresh"}
           </button>
-          <Link href="/portfolio"
-            className="px-4 py-2 bg-yellow-400 hover:bg-yellow-300 text-black text-sm font-bold rounded-lg transition-colors">
-            พอร์ตโฟลิโอ →
-          </Link>
+
         </div>
       </header>
 
-      <div className="px-6 py-6 max-w-screen-2xl mx-auto space-y-5">
+      <div className="px-6 py-5 max-w-screen-2xl mx-auto space-y-4">
 
-        {/* ── Row 1: Portfolio Card + Indices ── */}
-        <div className="grid lg:grid-cols-[360px_1fr] gap-5">
+        {/* ── Quick Nav ── */}
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { href:"/portfolio", label:"พอร์ตโฟลิโอ", sub:"หุ้นของฉัน",   icon:"📊", grad:"from-yellow-400/20 to-yellow-400/5", border:"border-yellow-400/20 hover:border-yellow-400/50" },
+            { href:"/chart",     label:"กราฟ",         sub:"TradingView",  icon:"📈", grad:"from-purple-400/20 to-purple-400/5", border:"border-purple-400/20 hover:border-purple-400/50" },
+            { href:"/journal",   label:"Journal",       sub:"XAUUSD Trade", icon:"📓", grad:"from-sky-400/20 to-sky-400/5",     border:"border-sky-400/20 hover:border-sky-400/50" },
+          ].map(l=>(
+            <Link key={l.label} href={l.href}
+              className={`relative flex items-center gap-3 bg-gradient-to-br ${l.grad} border ${l.border} rounded-2xl px-5 py-4 transition-all group overflow-hidden`}>
+              <div className="absolute -right-2 -top-2 text-5xl opacity-10 group-hover:opacity-20 transition-opacity select-none">{l.icon}</div>
+              <span className="text-3xl">{l.icon}</span>
+              <div>
+                <p className="font-black text-base text-white">{l.label}</p>
+                <p className="text-xs text-zinc-500 mt-0.5">{l.sub}</p>
+              </div>
+              <span className="ml-auto text-zinc-600 group-hover:text-zinc-300 transition-colors">→</span>
+            </Link>
+          ))}
+        </div>
+
+        {/* ── Portfolio + Indices compact ── */}
+        <div className="grid lg:grid-cols-[320px_1fr] gap-4">
 
           {/* Portfolio Card */}
-          <div className="relative bg-[#111113] border border-zinc-800 rounded-2xl p-6 overflow-hidden">
-            <div className="absolute -top-12 -right-12 w-48 h-48 rounded-full opacity-10"
-              style={{ background: "radial-gradient(circle, #f0aa4f, transparent)" }} />
+          <div className="relative bg-[#111113] border border-zinc-800 rounded-2xl p-5 overflow-hidden">
+            <div className="absolute -top-8 -right-8 w-36 h-36 rounded-full opacity-10"
+              style={{ background:"radial-gradient(circle,#f0aa4f,transparent)" }}/>
             <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">พอร์ตของฉัน</p>
-            <p className="text-4xl font-black tracking-tight">${money(portfolio.value)}</p>
-
-            {/* กำไรรวม + วันนี้ side by side */}
-            <div className="grid grid-cols-2 gap-3 mt-3">
+            <p className="text-3xl font-black tracking-tight">${money(portfolio.value)}</p>
+            <div className="grid grid-cols-2 gap-2 mt-3">
               <div className="bg-[#0d0d0f] rounded-xl p-3">
-                <p className="text-xs text-zinc-600 mb-1">กำไร/ขาดทุนรวม</p>
-                <p className={`text-base font-black ${portfolio.pl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                  {portfolio.pl >= 0 ? "+" : ""}{money(portfolio.pl)}
+                <p className="text-[10px] text-zinc-600 mb-0.5">กำไร/ขาดทุนรวม</p>
+                <p className={`text-sm font-black ${portfolio.pl>=0?"text-emerald-400":"text-red-400"}`}>
+                  {portfolio.pl>=0?"+":""}{money(portfolio.pl)}
                 </p>
-                <p className={`text-xs font-bold mt-0.5 ${portfolio.pl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                  {portfolio.pl >= 0 ? "▲" : "▼"} {Math.abs(portfolio.plPct).toFixed(2)}%
+                <p className={`text-[10px] font-bold ${portfolio.pl>=0?"text-emerald-400":"text-red-400"}`}>
+                  {portfolio.pl>=0?"▲":"▼"} {Math.abs(portfolio.plPct).toFixed(2)}%
                 </p>
               </div>
               <div className="bg-[#0d0d0f] rounded-xl p-3">
-                <p className="text-xs text-zinc-600 mb-1">วันนี้</p>
-                <p className={`text-base font-black ${portfolio.dailyPL >= 0 ? "text-sky-400" : "text-orange-400"}`}>
-                  {portfolio.dailyPL >= 0 ? "+" : ""}{money(portfolio.dailyPL)}
+                <p className="text-[10px] text-zinc-600 mb-0.5">วันนี้</p>
+                <p className={`text-sm font-black ${portfolio.dailyPL>=0?"text-sky-400":"text-orange-400"}`}>
+                  {portfolio.dailyPL>=0?"+":""}{money(portfolio.dailyPL)}
                 </p>
-                <p className={`text-xs font-bold mt-0.5 ${portfolio.dailyPL >= 0 ? "text-sky-400" : "text-orange-400"}`}>
-                  {portfolio.dailyPL >= 0 ? "▲" : "▼"} {Math.abs(portfolio.dailyPct).toFixed(2)}%
+                <p className={`text-[10px] font-bold ${portfolio.dailyPL>=0?"text-sky-400":"text-orange-400"}`}>
+                  {portfolio.dailyPL>=0?"▲":"▼"} {Math.abs(portfolio.dailyPct).toFixed(2)}%
                 </p>
               </div>
             </div>
-
-            <p className="text-xs text-zinc-600 mt-3">{portfolio.count} หลักทรัพย์ · {lastRefresh}</p>
-            <Link href="/portfolio"
-              className="mt-4 flex items-center justify-center gap-2 w-full py-3 bg-yellow-400 hover:bg-yellow-300 text-black font-bold rounded-xl text-sm transition-colors">
-              เข้าดูพอร์ตโฟลิโอ ↗
-            </Link>
+            <p className="text-[10px] text-zinc-700 mt-2">{portfolio.count} หลักทรัพย์ · {lastRefresh}</p>
           </div>
 
-          {/* Indices 2×3 grid */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {(loading ? Array(6).fill(null) : indices).map((idx, i) => {
-              if (!idx) return (
-                <div key={i} className="bg-[#111113] border border-zinc-800 rounded-xl p-4 animate-pulse">
-                  <div className="h-3 w-16 bg-zinc-800 rounded mb-2" />
-                  <div className="h-6 w-24 bg-zinc-800 rounded mb-1" />
-                  <div className="h-3 w-12 bg-zinc-800 rounded" />
-                </div>
-              );
-              const pos    = idx.changePct >= 0;
-              const extPos = idx.extPct >= 0;
-              const hasExt = idx.extType !== "none" && idx.extPrice > 0;
+          {/* Indices compact 6 chips */}
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-2 content-start">
+            {(loading ? Array(6).fill(null) : indices).map((idx,i)=>{
+              if(!idx) return <div key={i} className="bg-[#111113] border border-zinc-800 rounded-xl p-3 animate-pulse h-20"/>;
+              const pos=idx.changePct>=0;
+              const extPos=idx.extPct>=0;
+              const hasExt=idx.extType!=="none"&&idx.extPrice>0;
               return (
-                <div key={idx.symbol} className="bg-[#111113] border border-zinc-800 rounded-xl p-4 hover:border-zinc-600 transition-colors">
-                  <div className="flex items-start justify-between mb-1">
-                    <div>
-                      <p className="text-xs text-zinc-500 uppercase tracking-wider">{idx.label}</p>
-                      <p className="text-sm font-mono font-bold mt-0.5">{money(idx.value)}</p>
-                    </div>
-                    <Sparkline data={idx.sparkline} color={idx.color} />
-                  </div>
-                  {/* Regular day change */}
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${pos ? "bg-emerald-400/10 text-emerald-400" : "bg-red-400/10 text-red-400"}`}>
-                      {pos ? "▲" : "▼"} {Math.abs(idx.changePct).toFixed(2)}%
-                    </span>
-                    <span className={`text-xs ${pos ? "text-emerald-400" : "text-red-400"}`}>
-                      {pos ? "+" : ""}{money(idx.change)}
-                    </span>
-                  </div>
-                  {/* Pre/After market */}
+                <div key={idx.symbol} className="bg-[#111113] border border-zinc-800 rounded-xl p-3 hover:border-zinc-600 transition-colors">
+                  <p className="text-[10px] text-zinc-500 uppercase tracking-wider">{idx.label}</p>
+                  <p className="text-xs font-mono font-black mt-0.5">{money(idx.value)}</p>
+                  <p className={`text-[10px] font-bold mt-0.5 ${pos?"text-emerald-400":"text-red-400"}`}>
+                    {pos?"▲":"▼"} {Math.abs(idx.changePct).toFixed(2)}%
+                  </p>
                   {hasExt && (
-                    <div className="mt-1.5 flex items-center gap-1.5 bg-zinc-900/60 rounded-lg px-2 py-1">
-                      <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${idx.extType==="pre" ? "bg-yellow-400/20 text-yellow-400" : "bg-purple-400/20 text-purple-400"}`}>
-                        {idx.extType==="pre" ? "PRE" : "AH"}
+                    <div className="flex items-center gap-1 mt-1">
+                      <span className={`text-[9px] font-black px-1 rounded ${idx.extType==="pre"?"bg-yellow-400/20 text-yellow-400":"bg-purple-400/20 text-purple-400"}`}>
+                        {idx.extType==="pre"?"PRE":"AH"}
                       </span>
-                      <span className="text-xs font-mono text-zinc-300">{money(idx.extPrice)}</span>
-                      <span className={`text-[10px] font-bold ml-auto ${extPos ? "text-emerald-400" : "text-red-400"}`}>
-                        {extPos ? "+" : ""}{idx.extPct.toFixed(2)}%
+                      <span className={`text-[9px] font-bold ${extPos?"text-emerald-400":"text-red-400"}`}>
+                        {extPos?"+":""}{idx.extPct.toFixed(2)}%
                       </span>
                     </div>
                   )}
-                  <div className="mt-2 h-0.5 rounded-full" style={{ background: idx.color, opacity: 0.3 }} />
+                  <div className="mt-1.5 h-0.5 rounded-full" style={{background:idx.color,opacity:0.4}}/>
                 </div>
               );
             })}
@@ -621,24 +612,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Quick Links */}
-            <div className="bg-[#111113] border border-zinc-800 rounded-xl p-4">
-              <p className="text-xs text-zinc-500 uppercase tracking-wider mb-3">Quick Links</p>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { href: "/portfolio", label: "พอร์ตโฟลิโอ", icon: "📊" },
-                  { href: "/chart",     label: "กราฟ",         icon: "📈" },
-                  { href: "/screener",  label: "Screener",      icon: "🔍" },
-                  { href: "/journal",   label: "Journal",       icon: "📓" },
-                ].map(l => (
-                  <Link key={l.label} href={l.href}
-                    className="flex items-center gap-2 bg-zinc-800/50 hover:bg-zinc-700/60 rounded-lg px-3 py-2.5 transition-colors">
-                    <span>{l.icon}</span>
-                    <span className="text-zinc-300 text-xs font-medium">{l.label}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
+
           </div>
         </div>
 
