@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 export default function AuthCallback() {
-  const router = useRouter();
-
   useEffect(() => {
+    // Exchange code for session then redirect
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) router.replace("/");
-      else router.replace("/login");
+      if (data.session) {
+        window.location.href = "https://stock-dashboard-dun-xi.vercel.app/";
+      } else {
+        window.location.href = "https://stock-dashboard-dun-xi.vercel.app/login";
+      }
     });
   }, []);
 
