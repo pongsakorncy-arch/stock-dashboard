@@ -1,28 +1,32 @@
 "use client";
 
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 
 export default function AuthCallback() {
+  const router = useRouter();
+
   useEffect(() => {
     const supabase = createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_IN" && session) {
-        window.location.replace("/");
+    // ตรวจสอบเซสชันปัจจุบัน หากพบว่าลงทะเบียน/ล็อกอินสำเร็จแล้วให้ย้ายหน้า
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        // แนะนำให้ใช้ router.replace ของ Next.js แทน window.location เพื่อประสิทธิภาพที่ดีกว่า
+        router.replace("/");
+      } else {
+        // หากไม่มี session หลังผ่านไปแป๊บหนึ่ง ให้ส่งกลับไปหน้า login
+        const timeout = setTimeout(() => {
+          router.replace("/login");
+        }, 2000);
+        return () => clearTimeout(timeout);
       }
     });
-
-    // Also check immediately
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) window.location.replace("/");
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+  }, [router]);
 
   return (
     <div className="min-h-screen bg-[#0a0a0c] flex items-center justify-center">
