@@ -5,14 +5,14 @@ import { useEffect, useState } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type IndexData = {
-  symbol: string;
-  label: string;
+  symbol: string;     // ปรับจากเข้มงวดให้รับ string ทั่วไป
+  label: string;      // ปรับจากเข้มงวดให้รับ string ทั่วไป
   value: number;
   change: number;
   changePct: number;
   prevClose: number;
   sparkline: number[];
-  color: string;
+  color: string;      // ปรับจากเข้มงวดให้รับ string ทั่วไป
   extPrice: number;   // pre/after market price
   extChange: number;
   extPct: number;
@@ -201,7 +201,7 @@ function usePortfolioSnapshot() {
         (s: number, p: any) => s + p.shares * (p.currentPrice || p.avgCost), 0
       );
       const totalCost = positions.reduce(
-        (s: number, p: any) => s + p.shares * p.avgCost, 0
+        (s: number, p: p.any) => s + p.shares * p.avgCost, 0
       );
       const pl = marketValue - totalCost;
       const plPct = totalCost > 0 ? (pl / totalCost) * 100 : 0;
