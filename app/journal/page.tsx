@@ -203,10 +203,19 @@ export default function JournalPage() {
     const u=trades.filter(t=>t.id!==id); setTrades(u); save(u);
   };
   const editTrade = (t: Trade) => {
-    setForm({ date:t.date,time:t.time,symbol:t.symbol,direction:t.direction,
-      session:t.session,entryPrice:t.entryPrice,exitPrices:t.exitPrices,
-      lotPerOrder:t.lotPerOrder,slPrice:t.slPrice,rr:t.rr,
-      htfBias:t.htfBias,smcConcept:t.smcConcept,entryModel:t.entryModel,notes:t.notes });
+    (setForm as any)({
+      ...defaultForm(),
+      date: t.date, time: t.time, symbol: t.symbol,
+      direction: t.direction, session: t.session,
+      entryPrice: t.entryPrice, exitPrices: t.exitPrices,
+      lotPerOrder: t.lotPerOrder, slPrice: t.slPrice,
+      tpPrice: (t as any).tpPrice ?? 0,
+      rr: t.rr, result: t.result,
+      htfBias: t.htfBias, smcConcept: t.smcConcept,
+      entryModel: t.entryModel,
+      tf: (t as any).tf ?? "M5",
+      notes: t.notes,
+    });
     setEditId(t.id); setView("add");
   };
 
