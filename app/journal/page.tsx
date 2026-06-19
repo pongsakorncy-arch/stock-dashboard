@@ -456,8 +456,8 @@ export default function JournalPage() {
               </div>
               <div>
                 <label className="text-[10px] text-zinc-500 mb-1 block">Lot / Order</label>
-                <input type="number" step="0.001" value={form.lotPerOrder||""} placeholder="0.000"
-                  onChange={e=>f("lotPerOrder",parseFloat(e.target.value)||0.1)}
+                <input type="number" step="0.001" value={form.lotPerOrder||""} placeholder="0.001"
+                  onChange={e=>f("lotPerOrder",parseFloat(e.target.value)||0.0001)}
                   className="w-full bg-[#111113] border border-zinc-700 focus:border-yellow-400 rounded-lg px-2 py-2 text-sm outline-none font-mono"/>
               </div>
             </div>
