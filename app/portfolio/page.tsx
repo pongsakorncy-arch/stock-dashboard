@@ -370,67 +370,73 @@ export default function PortfolioPage() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {/* มูลค่าหุ้น */}
             <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-3">
-              <p className="text-xs text-zinc-500 mb-1">&#xe21;&#xe39;&#xe25;&#xe04;&#xe48;&#xe32;&#xe2b;&#xe38;&#xe49;&#xe19;</p>
+              <p className="text-xs text-zinc-500 mb-1">มูลค่าหุ้น</p>
               <p className="text-lg font-bold text-white">{money(marketValue)}</p>
-              <p className="text-xs text-zinc-600 mt-0.5">{stockPct.toFixed(1)}% &#xe02;&#xe2d;&#xe07;&#xe17;&#xe31;&#xe49;&#xe07;&#xe2b;&#xe21;&#xe14;</p>
+              <p className="text-xs text-zinc-600 mt-0.5">{stockPct.toFixed(1)}% ของทั้งหมด</p>
             </div>
-            {/* เงินสด */}
+
+            {/* เงินสด — กดเพื่อแก้ไข */}
             <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-3">
-              <p className="text-xs text-zinc-500 mb-1">&#xe40;&#xe07;&#xe34;&#xe19;&#xe2a;&#xe14;</p>
+              <p className="text-xs text-zinc-500 mb-1">เงินสด 💵</p>
               {showCashEdit ? (
-                <div className="flex gap-1 mt-1">
-                  <input type="number" step="100" autoFocus
-                    value={cashInput} onChange={e=>setCashInput(e.target.value)}
-                    onKeyDown={e=>{ if(e.key==="Enter") saveCash(parseFloat(cashInput)||0); }}
+                <div className="flex gap-1">
+                  <input
+                    type="number" step="100" autoFocus
+                    value={cashInput}
+                    onChange={e => setCashInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") saveCash(parseFloat(cashInput) || 0); }}
                     placeholder="0"
-                    className="flex-1 min-w-0 bg-[#111113] border border-zinc-600 rounded px-2 py-1 text-xs outline-none focus:border-yellow-400 font-mono"/>
-                  <button onClick={()=>saveCash(parseFloat(cashInput)||0)}
-                    className="text-[10px] bg-yellow-400 text-black px-2 rounded font-black">&#x2713;</button>
-                  <button onClick={()=>setShowCashEdit(false)}
-                    className="text-[10px] text-zinc-500 px-1">&#x2715;</button>
+                    className="flex-1 min-w-0 bg-[#111113] border border-zinc-600 rounded px-2 py-1 text-xs outline-none focus:border-yellow-400 font-mono"
+                  />
+                  <button onClick={() => saveCash(parseFloat(cashInput) || 0)}
+                    className="text-[10px] bg-yellow-400 text-black px-2 rounded font-black">✓</button>
+                  <button onClick={() => setShowCashEdit(false)}
+                    className="text-[10px] text-zinc-500 px-1">✕</button>
                 </div>
               ) : (
-                <button onClick={()=>{ setCashInput(String(cash)); setShowCashEdit(true); }}
+                <button onClick={() => { setCashInput(String(cash)); setShowCashEdit(true); }}
                   className="text-left w-full group">
                   <p className="text-lg font-bold text-emerald-400 group-hover:text-emerald-300">{money(cash)}</p>
-                  <p className="text-xs text-zinc-600 mt-0.5">{cashPct.toFixed(1)}% &#xb7; &#xe01;&#xe14;&#xe41;&#xe01;&#xe49;&#xe44;&#xe02;</p>
+                  <p className="text-xs text-zinc-600 mt-0.5">{cashPct.toFixed(1)}% · กดแก้ไข</p>
                 </button>
               )}
             </div>
-            {/* กำไร/ขาดทุน */}
+
+            {/* กำไร/ขาดทุนรวม */}
             <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-3">
-              <p className="text-xs text-zinc-500 mb-1">&#xe01;&#xe33;&#xe44;&#xe23;/&#xe02;&#xe32;&#xe14;&#xe17;&#xe38;&#xe19;&#xe23;&#xe27;&#xe21;</p>
-              <p className={`text-lg font-bold ${totalPL>=0?"text-emerald-400":"text-red-400"}`}>{money(totalPL)}</p>
-              <p className={`text-xs mt-0.5 ${totalPL>=0?"text-emerald-400":"text-red-400"} opacity-80`}>{pctFmt(totalPLPct)}</p>
+              <p className="text-xs text-zinc-500 mb-1">กำไร/ขาดทุนรวม</p>
+              <p className={`text-lg font-bold ${totalPL >= 0 ? "text-emerald-400" : "text-red-400"}`}>{money(totalPL)}</p>
+              <p className={`text-xs mt-0.5 opacity-80 ${totalPL >= 0 ? "text-emerald-400" : "text-red-400"}`}>{pctFmt(totalPLPct)}</p>
             </div>
+
             {/* วันนี้ */}
             <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-3">
-              <p className="text-xs text-zinc-500 mb-1">&#xe27;&#xe31;&#xe19;&#xe19;&#xe35;&#xe49;</p>
-              <p className={`text-lg font-bold ${totalDailyPL>=0?"text-sky-400":"text-orange-400"}`}>
-                {totalDailyPL>=0?"+":""}{money(totalDailyPL)}
+              <p className="text-xs text-zinc-500 mb-1">วันนี้</p>
+              <p className={`text-lg font-bold ${totalDailyPL >= 0 ? "text-sky-400" : "text-orange-400"}`}>
+                {totalDailyPL >= 0 ? "+" : ""}{money(totalDailyPL)}
               </p>
-              <p className={`text-xs mt-0.5 ${totalDailyPL>=0?"text-sky-400":"text-orange-400"} opacity-80`}>{pctFmt(totalDailyPct)}</p>
+              <p className={`text-xs mt-0.5 opacity-80 ${totalDailyPL >= 0 ? "text-sky-400" : "text-orange-400"}`}>{pctFmt(totalDailyPct)}</p>
             </div>
           </div>
 
-          {/* Asset bar */}
+          {/* Asset allocation bar — แสดงเมื่อมีเงินสด */}
           {cash > 0 && (
             <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-3">
-              <div className="flex items-center justify-between mb-2 text-xs">
-                <span className="text-zinc-500">&#xe2a;&#xe31;&#xe14;&#xe2a;&#xe48;&#xe27;&#xe19;&#xe2a;&#xe34;&#xe19;&#xe17;&#xe23;&#xe31;&#xe1e;&#xe22;&#xe4c;&#xe23;&#xe27;&#xe21; {money(totalAssets)}</span>
-                <div className="flex gap-3">
-                  <span className="text-blue-400">&#x25a0; &#xe2b;&#xe38;&#xe49;&#xe19; {stockPct.toFixed(1)}%</span>
-                  <span className="text-emerald-400">&#x25a0; &#xe40;&#xe07;&#xe34;&#xe19;&#xe2a;&#xe14; {cashPct.toFixed(1)}%</span>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-zinc-500">สินทรัพย์รวม {money(totalAssets)}</span>
+                <div className="flex gap-3 text-xs">
+                  <span className="text-blue-400">■ หุ้น {stockPct.toFixed(1)}%</span>
+                  <span className="text-emerald-400">■ เงินสด {cashPct.toFixed(1)}%</span>
                 </div>
               </div>
               <div className="h-3 bg-zinc-800 rounded-full overflow-hidden flex">
-                <div className="h-full bg-blue-500 transition-all" style={{width:`${stockPct}%`}}/>
-                <div className="h-full bg-emerald-500 transition-all" style={{width:`${cashPct}%`}}/>
+                <div className="h-full bg-blue-500 rounded-l-full transition-all" style={{ width: `${stockPct}%` }} />
+                <div className="h-full bg-emerald-500 rounded-r-full transition-all" style={{ width: `${cashPct}%` }} />
               </div>
             </div>
           )}
 
-          {/* Donut (compact, right side) */}
+                    {/* Donut (compact, right side) */}
           <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-4 flex items-center gap-4">
             <div className="relative w-24 h-24 flex-shrink-0">
               <div className="w-24 h-24 rounded-full"
