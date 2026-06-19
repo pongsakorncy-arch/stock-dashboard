@@ -5,14 +5,14 @@ import { useEffect, useState } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type IndexData = {
-  symbol: string;     // ปรับจากเข้มงวดให้รับ string ทั่วไป
-  label: string;      // ปรับจากเข้มงวดให้รับ string ทั่วไป
+  symbol: string;
+  label: string;
   value: number;
   change: number;
   changePct: number;
   prevClose: number;
   sparkline: number[];
-  color: string;      // ปรับจากเข้มงวดให้รับ string ทั่วไป
+  color: string;
   extPrice: number;   // pre/after market price
   extChange: number;
   extPct: number;
@@ -114,6 +114,7 @@ async function fetchQuote(sym: string, key: string) {
   return r.json();
 }
 
+// Determine session: pre-market (<9:30 ET) or after-hours (>16:00 ET)
 function getMarketSession(): "pre" | "after" | "open" | "closed" {
   const now = new Date();
   const etMin = now.getUTCHours() * 60 + now.getUTCMinutes() - 240; // EDT offset
@@ -141,7 +142,7 @@ async function fetchNews(key: string): Promise<NewsItem[]> {
   const raw = (Array.isArray(data) ? data : []).slice(0, 8);
   return raw.map((n: any) => ({
     headline: n.headline,
-    headlineTh: n.headline,
+    headlineTh: n.headline, // ภาษาอังกฤษก่อน
     source: n.source,
     time: new Date(n.datetime * 1000).toLocaleString("th-TH", {
       hour: "2-digit", minute: "2-digit", month: "short", day: "numeric",
@@ -150,6 +151,10 @@ async function fetchNews(key: string): Promise<NewsItem[]> {
   }));
 }
 
+// Top movers: fetch quotes for S&P500 + NASDAQ big caps in batches
+// We use Finnhub's market movers endpoint (free: /stock/market-status, gainers/losers via quote batches)
+// Finnhub free has: /stock/symbol for exchange listings → then batch quotes
+// Simpler approach: use a curated watchlist of ~50 major tickers
 const WATCHLIST = [
   "AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","AVGO","LLY","JPM",
   "V","UNH","XOM","MA","JNJ","PG","HD","MRK","ABBV","COST",
@@ -159,7 +164,8 @@ const WATCHLIST = [
 ];
 
 async function fetchTopMovers(key: string): Promise<{ gainers: Mover[]; losers: Mover[] }> {
-  const batch = WATCHLIST.slice(0, 20);
+  // Fetch in smaller batches to avoid rate limit
+  const batch = WATCHLIST.slice(0, 20); // free tier ~30 req/s
   const quotes = await Promise.allSettled(
     batch.map(async (sym) => {
       const q = await fetchQuote(sym, key);
@@ -194,18 +200,19 @@ function usePortfolioSnapshot() {
   });
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("yok_portfolio_v3");
+      const saved = localStorage.getItem("yok_portfolio_v4");
       if (!saved) return;
       const positions = JSON.parse(saved);
       const marketValue = positions.reduce(
         (s: number, p: any) => s + p.shares * (p.currentPrice || p.avgCost), 0
       );
       const totalCost = positions.reduce(
-        (s: number, p: p.any) => s + p.shares * p.avgCost, 0
+        (s: number, p: any) => s + p.shares * p.avgCost, 0
       );
       const pl = marketValue - totalCost;
       const plPct = totalCost > 0 ? (pl / totalCost) * 100 : 0;
 
+      // Daily P/L: sum of shares × (currentPrice - prevClose)
       const dailyPL = positions.reduce((s: number, p: any) => {
         if (!p.prevClose || !p.currentPrice) return s;
         return s + p.shares * (p.currentPrice - p.prevClose);
@@ -259,6 +266,7 @@ export default function Home() {
     const apiKey = process.env.NEXT_PUBLIC_FINNHUB_API_KEY ?? "";
 
     if (!apiKey) {
+      // Demo mode
       const sess = getMarketSession();
       setIndices(INDEX_CONFIG.map((cfg, i) => {
         const price = [5240.5, 18320.1, 183.2, 28.4, 91.3, 18.2][i];
@@ -285,7 +293,8 @@ export default function Home() {
         Promise.all(INDEX_CONFIG.map(async (cfg) => {
           const [q, candles] = await Promise.all([fetchQuote(cfg.symbol, apiKey), fetchCandles(cfg.symbol, apiKey)]);
           const sess = getMarketSession();
-          const extP  = Number(q.o || 0);
+          // Finnhub quote: `o` = extended hours open price when available
+          const extP  = Number(q.o || 0);  // best approximation available in free tier
           const price = Number(q.c || 0);
           const extCh = extP > 0 ? extP - price : 0;
           return {
@@ -301,7 +310,7 @@ export default function Home() {
         fetchNews(apiKey),
         fetchTopMovers(apiKey),
       ]);
-      setIndices(indexResults as IndexData[]);
+      setIndices(indexResults);
       setNews(newsData);
       setMovers(moversData);
     } catch (e) {
@@ -356,6 +365,7 @@ export default function Home() {
             <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">พอร์ตของฉัน</p>
             <p className="text-4xl font-black tracking-tight">${money(portfolio.value)}</p>
 
+            {/* กำไรรวม + วันนี้ side by side */}
             <div className="grid grid-cols-2 gap-3 mt-3">
               <div className="bg-[#0d0d0f] rounded-xl p-3">
                 <p className="text-xs text-zinc-600 mb-1">กำไร/ขาดทุนรวม</p>
@@ -406,6 +416,7 @@ export default function Home() {
                     </div>
                     <Sparkline data={idx.sparkline} color={idx.color} />
                   </div>
+                  {/* Regular day change */}
                   <div className="flex items-center gap-2 mt-1">
                     <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${pos ? "bg-emerald-400/10 text-emerald-400" : "bg-red-400/10 text-red-400"}`}>
                       {pos ? "▲" : "▼"} {Math.abs(idx.changePct).toFixed(2)}%
@@ -414,6 +425,7 @@ export default function Home() {
                       {pos ? "+" : ""}{money(idx.change)}
                     </span>
                   </div>
+                  {/* Pre/After market */}
                   {hasExt && (
                     <div className="mt-1.5 flex items-center gap-1.5 bg-zinc-900/60 rounded-lg px-2 py-1">
                       <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${idx.extType==="pre" ? "bg-yellow-400/20 text-yellow-400" : "bg-purple-400/20 text-purple-400"}`}>
@@ -473,6 +485,7 @@ export default function Home() {
 
           {/* TOP GAINERS / LOSERS */}
           <div className="bg-[#111113] border border-zinc-800 rounded-xl overflow-hidden col-span-2">
+            {/* Tab bar */}
             <div className="flex border-b border-zinc-800">
               <button
                 onClick={() => setMoversTab("gainers")}
@@ -528,48 +541,28 @@ export default function Home() {
         {/* ── Row 3: News (TH) + Calendar + Sectors + Key Levels ── */}
         <div className="grid lg:grid-cols-[1fr_320px] gap-5">
 
-          {/* Left Column (News) */}
-          <div className="space-y-4">
-            {/* Quick Links ย้ายมาอยู่บน ข่าววันนี้ แล้ว */}
-            <div className="bg-[#111113] border border-zinc-800 rounded-xl p-4">
-              <p className="text-xs text-zinc-500 uppercase tracking-wider mb-3">Quick Links</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {[
-                  { href: "/portfolio", label: "พอร์ตโฟลิโอ", icon: "📊" },
-                  { href: "/chart",     label: "กราฟ",         icon: "📈" },
-                  { href: "/screener",  label: "Screener",      icon: "🔍" },
-                  { href: "/journal",   label: "Journal",       icon: "📓" },
-                ].map(l => (
-                  <Link key={l.label} href={l.href}
-                    className="flex items-center gap-2 bg-zinc-800/50 hover:bg-zinc-700/60 rounded-lg px-3 py-2.5 transition-colors">
-                    <span>{l.icon}</span>
-                    <span className="text-zinc-300 text-xs font-medium">{l.label}</span>
-                  </Link>
-                ))}
+          {/* News ภาษาไทย */}
+          <div className="bg-[#111113] border border-zinc-800 rounded-xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-bold">ข่าวตลาดวันนี้</p>
+                <span className="text-[10px] bg-yellow-400/10 text-yellow-400 px-2 py-0.5 rounded-full font-bold">ภาษาไทย</span>
               </div>
+              <span className="text-xs text-zinc-600">{lastRefresh}</span>
             </div>
-
-            {/* ข่าวตลาดวันนี้ */}
-            <div className="bg-[#111113] border border-zinc-800 rounded-xl overflow-hidden">
-              <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-bold">ข่าวตลาดวันนี้</p>
-                  <span className="text-[10px] bg-yellow-400/10 text-yellow-400 px-2 py-0.5 rounded-full font-bold">ภาษาไทย</span>
-                </div>
-                <span className="text-xs text-zinc-600">{lastRefresh}</span>
-              </div>
-              <div className="divide-y divide-zinc-800/60">
-                {(news.length === 0 ? DEMO_NEWS : news).map((n, i) => (
-                  <a key={i} href={n.url} target="_blank" rel="noopener noreferrer"
-                    className="block px-5 py-3.5 hover:bg-zinc-800/30 transition-colors group">
-                    <p className="text-sm text-zinc-100 font-medium leading-snug line-clamp-2 group-hover:text-white">
-                      {n.headlineTh}
-                    </p>
-                    <p className="text-xs text-zinc-600 mt-0.5 line-clamp-1">{n.headline}</p>
-                    <p className="text-xs text-zinc-700 mt-1">{n.source} · {n.time}</p>
-                  </a>
-                ))}
-              </div>
+            <div className="divide-y divide-zinc-800/60">
+              {(news.length === 0 ? DEMO_NEWS : news).map((n, i) => (
+                <a key={i} href={n.url} target="_blank" rel="noopener noreferrer"
+                  className="block px-5 py-3.5 hover:bg-zinc-800/30 transition-colors group">
+                  {/* Thai headline prominent */}
+                  <p className="text-sm text-zinc-100 font-medium leading-snug line-clamp-2 group-hover:text-white">
+                    {n.headlineTh}
+                  </p>
+                  {/* English sub */}
+                  <p className="text-xs text-zinc-600 mt-0.5 line-clamp-1">{n.headline}</p>
+                  <p className="text-xs text-zinc-700 mt-1">{n.source} · {n.time}</p>
+                </a>
+              ))}
             </div>
           </div>
 
@@ -624,6 +617,25 @@ export default function Home() {
                       e.impact === "high" ? "bg-red-400" : e.impact === "med" ? "bg-yellow-400" : "bg-zinc-600"
                     }`} />
                   </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Quick Links */}
+            <div className="bg-[#111113] border border-zinc-800 rounded-xl p-4">
+              <p className="text-xs text-zinc-500 uppercase tracking-wider mb-3">Quick Links</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { href: "/portfolio", label: "พอร์ตโฟลิโอ", icon: "📊" },
+                  { href: "/chart",     label: "กราฟ",         icon: "📈" },
+                  { href: "/screener",  label: "Screener",      icon: "🔍" },
+                  { href: "/journal",   label: "Journal",       icon: "📓" },
+                ].map(l => (
+                  <Link key={l.label} href={l.href}
+                    className="flex items-center gap-2 bg-zinc-800/50 hover:bg-zinc-700/60 rounded-lg px-3 py-2.5 transition-colors">
+                    <span>{l.icon}</span>
+                    <span className="text-zinc-300 text-xs font-medium">{l.label}</span>
+                  </Link>
                 ))}
               </div>
             </div>
