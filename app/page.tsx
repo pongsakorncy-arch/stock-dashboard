@@ -278,7 +278,7 @@ export default function Home() {
           changePct: [0.24,-0.25,0.61,-0.71,-0.87,2.83][i], prevClose: 0,
           sparkline: Array.from({length:20},(_,j)=>100+Math.sin(j*0.4+i)*5+Math.random()*2),
           extPrice: extP, extChange: extCh, extPct: (extCh/price)*100,
-          extType: sess==="open"||sess==="closed" ? "none" : sess,
+          extType: (sess==="open"||sess==="closed" ? "none" : sess) as "pre"|"after"|"none",
         };
       }));
       setNews(DEMO_NEWS);
@@ -304,7 +304,7 @@ export default function Home() {
             sparkline: candles.length ? candles : [0],
             extPrice: extP, extChange: extCh,
             extPct: price > 0 && extP > 0 ? (extCh/price)*100 : 0,
-            extType: sess==="open"||sess==="closed" ? "none" : sess,
+            extType: (sess==="open"||sess==="closed" ? "none" : sess) as "pre"|"after"|"none",
           };
         })),
         fetchNews(apiKey),
