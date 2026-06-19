@@ -25,6 +25,7 @@ type Trade = {
   totalLot: number;
   totalPL: number;
   slPrice: number;
+  tpPrice: number;
   rr: number;
   result: Result;
   smcConcept: SMCConcept[];
@@ -130,7 +131,7 @@ export default function JournalPage() {
   useEffect(()=>{ setTrades(load()); },[]);
   const stats = calcStats(trades);
 
-  const f = (k: string, v: any) => setForm(p=>({...p,[k]:v}));
+  const f = (k: keyof ReturnType<typeof defaultForm> | string, v: any) => setForm((p:any)=>({...p,[k]:v}));
 
   // ── Computed from form ────────────────────────────────────────────────────
   const exits     = form.exitPrices;
@@ -188,7 +189,8 @@ export default function JournalPage() {
       totalPL: Math.round(totalPL*100)/100,
       slPrice: form.slPrice, rr: form.rr, result,
       smcConcept: form.smcConcept, htfBias: form.htfBias,
-      entryModel: form.entryModel, tf: (form as any).tf||"M5", notes: form.notes,
+      entryModel: form.entryModel, tf: (form as any).tf ?? "M5",
+      notes: form.notes, tpPrice: (form as any).tpPrice ?? 0,
     };
     const updated = editId ? trades.map(t=>t.id===editId?trade:t) : [trade,...trades];
     setTrades(updated); save(updated);
@@ -362,7 +364,7 @@ export default function JournalPage() {
               <div className="px-4 py-2">
                 <div className="flex flex-wrap gap-1 mb-1">
                   <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${t.htfBias==="Bullish"?"bg-emerald-400/10 text-emerald-400":t.htfBias==="Bearish"?"bg-red-400/10 text-red-400":"bg-zinc-700 text-zinc-400"}`}>{t.htfBias}</span>
-                  {(t as any).tf && <span className="text-[10px] bg-zinc-700 text-zinc-300 px-2 py-0.5 rounded-full font-bold">{(t as any).tf}</span>}
+                  {t.tf && <span className="text-[10px] bg-zinc-700 text-zinc-300 px-2 py-0.5 rounded-full font-bold">{t.tf}</span>}
                   {t.entryModel && <span className="text-[10px] bg-yellow-400/10 text-yellow-400 px-2 py-0.5 rounded-full font-bold">{t.entryModel}</span>}
                   {t.smcConcept.map(c=><span key={c} className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full">{c}</span>)}
                 </div>
@@ -465,7 +467,7 @@ export default function JournalPage() {
                 {(["WIN","LOSS","BE"] as Result[]).map(r=>(
                   <button key={r} onClick={()=>f("result",r)}
                     className={`flex-1 py-2 rounded-lg text-sm font-black transition-colors ${
-                      (form as any).result===r
+                      form.result===r
                         ? r==="WIN"?"bg-emerald-500 text-black":r==="LOSS"?"bg-red-500 text-white":"bg-zinc-500 text-white"
                         : "bg-zinc-800 text-zinc-400"
                     }`}>
