@@ -1,28 +1,13 @@
-import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-export async function middleware(req: NextRequest) {
-  const res = NextResponse.next();
-  const supabase = createMiddlewareClient({ req, res });
-  const { data: { session } } = await supabase.auth.getSession();
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-  const isLoginPage = req.nextUrl.pathname === "/login";
-  const isCallback  = req.nextUrl.pathname.startsWith("/auth/callback");
-
-  // ถ้าไม่ได้ login และไม่ได้อยู่ที่หน้า login → redirect ไป login
-  if (!session && !isLoginPage && !isCallback) {
-    return NextResponse.redirect(new URL("/login", req.url));
-  }
-
-  // ถ้า login แล้ว แต่อยู่ที่หน้า login → redirect ไปหน้าแรก
-  if (session && isLoginPage) {
-    return NextResponse.redirect(new URL("/", req.url));
-  }
-
-  return res;
-}
-
-export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api).*)"],
-};
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    flowType: "pkce",
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: true,
+  },
+});
