@@ -21,7 +21,7 @@ export default function LoginPage() {
     await supabase.auth.signInWithOAuth({
       provider: "github",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `https://stock-dashboard-dun-xi.vercel.app/auth/callback`,
       },
     });
   };
