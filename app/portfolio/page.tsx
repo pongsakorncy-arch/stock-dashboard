@@ -366,7 +366,35 @@ export default function PortfolioPage() {
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
-    <main className="min-h-screen bg-[#0d0d0f] text-white font-sans">
+    <style>{`
+  @keyframes fadeInUp {
+    from { opacity:0; transform:translateY(16px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+  @keyframes countUp {
+    from { opacity:0; transform:translateY(8px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+  @keyframes shimmer {
+    0%   { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  .fade-up   { animation: fadeInUp 0.45s ease both; }
+  .fade-up-1 { animation: fadeInUp 0.45s 0.08s ease both; }
+  .fade-up-2 { animation: fadeInUp 0.45s 0.16s ease both; }
+  .fade-up-3 { animation: fadeInUp 0.45s 0.24s ease both; }
+  .count-up  { animation: countUp 0.4s ease both; }
+  .glow-card { transition: all 0.2s; }
+  .glow-card:hover { box-shadow: 0 0 20px #ffffff08, 0 0 1px #ffffff18; transform: translateY(-1px); }
+  .glow-green:hover { box-shadow: 0 0 20px #10b98122; }
+  .glow-red:hover   { box-shadow: 0 0 20px #ef444422; }
+  .ripple { position:relative; overflow:hidden; }
+  .ripple:after { content:''; position:absolute; inset:0; background:radial-gradient(circle,#ffffff18 0%,transparent 70%); opacity:0; transition:opacity 0.25s; }
+  .ripple:active:after { opacity:1; }
+  .row-hover { transition: background 0.15s; }
+  .row-hover:hover { background: rgba(255,255,255,0.03); }
+`}</style>
+<main className="min-h-screen bg-[#0d0d0f] text-white font-sans">
 
       {/* ── Top bar ── */}
       <div className="border-b border-zinc-800 px-3 py-2.5 flex items-center justify-between bg-[#0d0d0f]/90 backdrop-blur sticky top-0 z-30">
@@ -396,7 +424,7 @@ export default function PortfolioPage() {
         <div className="grid lg:grid-cols-[1fr_260px] gap-4">
 
           {/* Stats cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 fade-up">
             {/* มูลค่าหุ้น */}
             <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-3">
               <p className="text-xs text-zinc-500 mb-1">มูลค่าหุ้น</p>
@@ -465,7 +493,7 @@ export default function PortfolioPage() {
             </div>
           )}
 
-                    {/* Donut (compact, right side) */}
+                    {/* Donut (compact, right side) */}  {/* fade-up-1 */}
           <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-4 flex items-center gap-4">
             <div className="relative w-24 h-24 flex-shrink-0">
               <div className="w-24 h-24 rounded-full"
@@ -486,7 +514,7 @@ export default function PortfolioPage() {
         </div>
 
         {/* ── Table ── */}
-        <div className="bg-[#18181b] border border-zinc-800 rounded-xl overflow-hidden">
+        <div className="bg-[#18181b] border border-zinc-800 rounded-xl overflow-hidden fade-up-2">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-[#111113]">
@@ -546,7 +574,7 @@ export default function PortfolioPage() {
                   const allocDiff = targetPct > 0 ? allocNow - targetPct : null;
 
                   return (
-                    <tr key={p.ticker} className="border-t border-zinc-800 hover:bg-[#1f1f23] transition-colors">
+                    <tr key={p.ticker} className="row-hover border-t border-zinc-800 transition-colors">
 
                       {/* หุ้น */}
                       <td className="px-3 py-3">
@@ -575,7 +603,7 @@ export default function PortfolioPage() {
                       <td className="px-3 py-3 min-w-[140px]">
                         {plMode === "total" ? (
                           <>
-                            <p className={`text-sm font-bold ${isPos?"text-emerald-400":"text-red-400"}`}>
+                            <p className={`text-sm font-bold count-up ${isPos?"text-emerald-400 glow-green":"text-red-400 glow-red"}`}>
                               {isPos?"+":""}{money(pl)}
                             </p>
                             <p className={`text-xs ${isPos?"text-emerald-400":"text-red-400"}`}>
@@ -642,11 +670,11 @@ export default function PortfolioPage() {
                       <td className="px-3 py-3">
                         <div className="flex items-center justify-center gap-1">
                           <button onClick={()=>openBuy(p.ticker)}
-                            className="px-2 py-1 text-xs bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded font-medium transition-colors">ซื้อ</button>
+                            className="ripple px-2 py-1 text-xs bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded font-medium transition-colors">ซื้อ</button>
                           <button onClick={()=>openSell(p.ticker)}
-                            className="px-2 py-1 text-xs bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 rounded font-medium transition-colors">ขาย</button>
+                            className="ripple px-2 py-1 text-xs bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 rounded font-medium transition-colors">ขาย</button>
                           <button onClick={()=>openEdit(p.ticker)}
-                            className="px-2 py-1 text-xs bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 rounded font-medium transition-colors">แก้</button>
+                            className="ripple px-2 py-1 text-xs bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 rounded font-medium transition-colors">แก้</button>
                           <button onClick={()=>deletePosition(p.ticker)}
                             className="px-2 py-1 text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded font-medium transition-colors">ลบ</button>
                         </div>
