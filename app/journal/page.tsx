@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Direction  = "LONG" | "SHORT";
@@ -129,7 +130,34 @@ export default function JournalPage() {
   const [exitInput, setExitInput]   = useState(""); // single input
   const [pasteInput, setPasteInput] = useState(""); // bulk paste
 
-  useEffect(()=>{ setTrades(load()); },[]);
+  useEffect(()=>{
+    const loadData = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setTrades(load()); return; }
+      const { data } = await supabase
+        .from("journal_trades")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false });
+      if (data && data.length > 0) {
+        setTrades(data.map((r:any) => ({
+          id: r.id, date: r.date, time: r.time,
+          symbol: r.symbol, direction: r.direction, session: r.session,
+          entryPrice: Number(r.entry_price), exitPrices: r.exit_prices||[],
+          avgExit: Number(r.avg_exit), lotPerOrder: Number(r.lot_per_order),
+          orderCount: Number(r.order_count), totalLot: Number(r.total_lot),
+          totalPL: Number(r.total_pl), slPrice: Number(r.sl_price),
+          tpPrice: Number(r.tp_price)||0, rr: Number(r.rr),
+          result: r.result, smcConcept: r.smc_concept||[],
+          htfBias: r.htf_bias, entryModel: r.entry_model||"",
+          tf: r.tf||"M5", notes: r.notes||"", createdAt: r.created_at,
+        })));
+      } else {
+        setTrades(load());
+      }
+    };
+    loadData();
+  },[]);
   const stats = calcStats(trades);
 
   const f = (k: keyof ReturnType<typeof defaultForm> | string, v: any) => setForm((p:any)=>({...p,[k]:v}));
@@ -176,7 +204,7 @@ export default function JournalPage() {
     f("exitPrices", exits.filter((_,j)=>j!==i));
 
   // ── Save ──────────────────────────────────────────────────────────────────
-  const saveTrade = () => {
+  const saveTrade = async () => {
     if (!exits.length || !form.entryPrice) return;
     const trade: Trade = {
       id: editId||uid(),
@@ -195,13 +223,34 @@ export default function JournalPage() {
     };
     const updated = editId ? trades.map(t=>t.id===editId?trade:t) : [trade,...trades];
     setTrades(updated); save(updated);
+    // Sync to Supabase
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const row = {
+        id: trade.id, user_id: user.id,
+        date: trade.date, time: trade.time,
+        symbol: trade.symbol, direction: trade.direction, session: trade.session,
+        entry_price: trade.entryPrice, exit_prices: trade.exitPrices,
+        avg_exit: trade.avgExit, lot_per_order: trade.lotPerOrder,
+        order_count: trade.orderCount, total_lot: trade.totalLot,
+        total_pl: trade.totalPL, sl_price: trade.slPrice,
+        tp_price: trade.tpPrice||0, rr: trade.rr,
+        result: trade.result, smc_concept: trade.smcConcept,
+        htf_bias: trade.htfBias, entry_model: trade.entryModel,
+        tf: trade.tf||"M5", notes: trade.notes,
+        created_at: trade.createdAt,
+      };
+      await supabase.from("journal_trades").upsert(row, { onConflict: "id" });
+    }
     setForm(defaultForm()); setExitInput(""); setPasteInput(""); setEditId(null);
     setView("list");
   };
 
-  const deleteTrade = (id: string) => {
+  const deleteTrade = async (id: string) => {
     if(!confirm("ลบ session นี้?")) return;
     const u=trades.filter(t=>t.id!==id); setTrades(u); save(u);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) await supabase.from("journal_trades").delete().eq("id", id).eq("user_id", user.id);
   };
   const editTrade = (t: Trade) => {
     (setForm as any)({
@@ -456,8 +505,8 @@ export default function JournalPage() {
               </div>
               <div>
                 <label className="text-[10px] text-zinc-500 mb-1 block">Lot / Order</label>
-                <input type="number" step="0.01" value={form.lotPerOrder||""} placeholder="0.01"
-                  onChange={e=>f("lotPerOrder",parseFloat(e.target.value)||0.01)}
+                <input type="number" step="0.01" value={form.lotPerOrder||""} placeholder="0.10"
+                  onChange={e=>f("lotPerOrder",parseFloat(e.target.value)||0.1)}
                   className="w-full bg-[#111113] border border-zinc-700 focus:border-yellow-400 rounded-lg px-2 py-2 text-sm outline-none font-mono"/>
               </div>
             </div>
