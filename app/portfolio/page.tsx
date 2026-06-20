@@ -369,21 +369,23 @@ export default function PortfolioPage() {
     <main className="min-h-screen bg-[#0d0d0f] text-white font-sans">
 
       {/* ── Top bar ── */}
-      <div className="border-b border-zinc-800 px-6 py-3 flex items-center justify-between bg-[#0d0d0f]/90 backdrop-blur sticky top-0 z-30">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="text-zinc-500 hover:text-white text-sm transition-colors">← หน้าแรก</Link>
-          <span className="text-zinc-700">|</span>
-          <h1 className="text-sm font-bold tracking-tight">TRUSH YOUR OWN · พอร์ตโฟลิโอ</h1>
+      <div className="border-b border-zinc-800 px-3 py-2.5 flex items-center justify-between bg-[#0d0d0f]/90 backdrop-blur sticky top-0 z-30">
+        <div className="flex items-center gap-2">
+          <Link href="/" className="text-zinc-500 hover:text-white text-xs transition-colors">← หน้าแรก</Link>
+          <span className="text-zinc-700 hidden sm:block">|</span>
+          <h1 className="text-xs font-bold tracking-tight hidden sm:block">TRUSH YOUR OWN · พอร์ต</h1>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-zinc-600">อัปเดต: {lastUpdated}</span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-zinc-600 hidden sm:block">อัปเดต: {lastUpdated}</span>
           <button onClick={refreshPrices} disabled={isRefreshing}
-            className="px-4 py-2 bg-yellow-400 hover:bg-yellow-300 text-black text-sm font-bold rounded-lg transition-colors disabled:opacity-50">
-            {isRefreshing ? "⟳ กำลังโหลด..." : "⟳ อัปเดตราคา"}
+            className="px-3 py-2 bg-yellow-400 hover:bg-yellow-300 text-black text-xs font-bold rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1">
+            <span className={isRefreshing?"animate-spin":""}>{isRefreshing?"⟳":"⟳"}</span>
+            <span className="hidden sm:block">{isRefreshing?"กำลังโหลด...":"อัปเดตราคา"}</span>
           </button>
           <button onClick={async () => { await supabase.auth.signOut(); window.location.href = "/login"; }}
-            className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-xs rounded-lg transition-colors">
-            ออกจากระบบ
+            className="px-2.5 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-xs rounded-lg transition-colors">
+            <span className="hidden sm:block">ออกจากระบบ</span>
+            <span className="sm:hidden">ออก</span>
           </button>
         </div>
       </div>
@@ -558,13 +560,13 @@ export default function PortfolioPage() {
                       </td>
 
                       {/* จำนวน */}
-                      <td className="px-3 py-3 text-sm text-yellow-300 font-mono">{p.shares.toFixed(4)}</td>
+                      <td className="px-3 py-3 text-sm text-yellow-300 font-mono hidden md:table-cell">{p.shares.toFixed(4)}</td>
 
                       {/* ต้นทุนเฉลี่ย */}
-                      <td className="px-3 py-3 text-sm font-medium">{money(p.avgCost)}</td>
+                      <td className="px-3 py-3 text-sm font-medium hidden sm:table-cell">{money(p.avgCost)}</td>
 
                       {/* ราคาปัจจุบัน */}
-                      <td className="px-3 py-3 text-sm text-zinc-300">{money(price)}</td>
+                      <td className="px-3 py-3 text-sm text-zinc-300 hidden sm:table-cell">{money(price)}</td>
 
                       {/* มูลค่า */}
                       <td className="px-3 py-3 text-sm font-bold">{money(val)}</td>
