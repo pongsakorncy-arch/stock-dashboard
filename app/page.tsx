@@ -329,7 +329,39 @@ export default function Home() {
   const displayMovers = moversTab === "gainers" ? movers.gainers : movers.losers;
 
   return (
-    <main className="min-h-screen bg-[#0a0a0c] text-white" style={{ fontFamily: "'Inter','Noto Sans Thai',sans-serif" }}>
+    <style>{`
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes countUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes glowGreen {
+    0%,100% { box-shadow: 0 0 0px #10b98100; }
+    50%      { box-shadow: 0 0 18px #10b98144; }
+  }
+  @keyframes glowRed {
+    0%,100% { box-shadow: 0 0 0px #ef444400; }
+    50%      { box-shadow: 0 0 18px #ef444444; }
+  }
+  @keyframes pulse-green {
+    0%,100% { opacity:1; }
+    50%      { opacity:0.6; }
+  }
+  .fade-up { animation: fadeInUp 0.5s ease both; }
+  .fade-up-1 { animation: fadeInUp 0.5s 0.05s ease both; }
+  .fade-up-2 { animation: fadeInUp 0.5s 0.10s ease both; }
+  .fade-up-3 { animation: fadeInUp 0.5s 0.15s ease both; }
+  .fade-up-4 { animation: fadeInUp 0.5s 0.20s ease both; }
+  .fade-up-5 { animation: fadeInUp 0.5s 0.25s ease both; }
+  .glow-card:hover { box-shadow: 0 0 24px #ffffff0a, 0 0 1px #ffffff22; transform: translateY(-1px); transition: all 0.2s; }
+  .ripple { position:relative; overflow:hidden; }
+  .ripple:after { content:''; position:absolute; inset:0; background:radial-gradient(circle,#ffffff22 0%,transparent 70%); opacity:0; transition:opacity 0.3s; }
+  .ripple:active:after { opacity:1; }
+`}</style>
+<main className="min-h-screen bg-[#0a0a0c] text-white" style={{ fontFamily: "'Inter','Noto Sans Thai',sans-serif" }}>
 
       {/* ── Header ── */}
       <header className="border-b border-zinc-800/60 px-6 py-3 flex items-center justify-between bg-[#0d0d0f]/90 backdrop-blur sticky top-0 z-30">
@@ -353,14 +385,14 @@ export default function Home() {
       <div className="px-6 py-5 max-w-screen-2xl mx-auto space-y-4">
 
         {/* ── Quick Nav ── */}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-2 fade-up">
           {[
             { href:"/portfolio", label:"พอร์ต", sub:"หุ้นของฉัน",   icon:"📊", grad:"from-yellow-400/20 to-yellow-400/5", border:"border-yellow-400/20 hover:border-yellow-400/50" },
             { href:"/chart",     label:"กราฟ",  sub:"TradingView",  icon:"📈", grad:"from-purple-400/20 to-purple-400/5", border:"border-purple-400/20 hover:border-purple-400/50" },
             { href:"/journal",   label:"Journal",sub:"XAUUSD",      icon:"📓", grad:"from-sky-400/20 to-sky-400/5",     border:"border-sky-400/20 hover:border-sky-400/50" },
           ].map(l=>(
             <Link key={l.label} href={l.href}
-              className={`relative flex flex-col items-center justify-center bg-gradient-to-br ${l.grad} border ${l.border} rounded-2xl p-3 transition-all group overflow-hidden min-h-[80px]`}>
+              className={`ripple glow-card relative flex flex-col items-center justify-center bg-gradient-to-br ${l.grad} border ${l.border} rounded-2xl p-3 transition-all group overflow-hidden min-h-[80px]`}>
               <div className="absolute -right-2 -top-2 text-5xl opacity-10 group-hover:opacity-20 transition-opacity select-none">{l.icon}</div>
               <span className="text-2xl mb-1">{l.icon}</span>
               <p className="font-black text-xs text-white text-center leading-tight">{l.label}</p>
@@ -409,7 +441,7 @@ export default function Home() {
               const extPos=idx.extPct>=0;
               const hasExt=idx.extType!=="none"&&idx.extPrice>0;
               return (
-                <div key={idx.symbol} className="bg-[#111113] border border-zinc-800 rounded-xl p-3 hover:border-zinc-600 transition-colors">
+                <div key={idx.symbol} className="glow-card bg-[#111113] border border-zinc-800 rounded-xl p-3 hover:border-zinc-600 transition-all cursor-default">
                   <p className="text-[10px] text-zinc-500 uppercase tracking-wider">{idx.label}</p>
                   <p className="text-xs font-mono font-black mt-0.5">{money(idx.value)}</p>
                   <p className={`text-[10px] font-bold mt-0.5 ${pos?"text-emerald-400":"text-red-400"}`}>
