@@ -329,6 +329,7 @@ export default function Home() {
   const displayMovers = moversTab === "gainers" ? movers.gainers : movers.losers;
 
   return (
+    <>
     <style>{`
   @keyframes fadeInUp {
     from { opacity: 0; transform: translateY(20px); }
@@ -650,5 +651,6 @@ export default function Home() {
         </footer>
       </div>
     </main>
+    </>
   );
 }
