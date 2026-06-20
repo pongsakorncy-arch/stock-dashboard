@@ -70,6 +70,7 @@ export default function PortfolioPage() {
   const [showBenchmark, setShowBenchmark] = useState(false);
   const [benchmarkData, setBenchmarkData] = useState<{spy:number;qqq:number;vgt:number}|null>(null);
   const [loadingBench, setLoadingBench] = useState(false);
+  const [benchPeriod, setBenchPeriod] = useState<"1D"|"1M"|"3M"|"6M"|"YTD"|"1Y">("1Y");
 
   // P/L column toggle
   const [plMode, setPlMode] = useState<PLMode>("total");
@@ -188,28 +189,44 @@ export default function PortfolioPage() {
     return () => clearInterval(id);
   }, [positions.length]);
 
-  const fetchBenchmark = async () => {
+  const fetchBenchmark = async (period: "1D"|"1M"|"3M"|"6M"|"YTD"|"1Y" = benchPeriod) => {
     setLoadingBench(true);
+    setBenchmarkData(null);
     const key = process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
     if (!key) {
-      setBenchmarkData({ spy: 14.2, qqq: 18.7, vgt: 21.3 });
+      // Demo data per period
+      const demo: Record<string, {spy:number;qqq:number;vgt:number}> = {
+        "1D":  { spy: 0.24,  qqq: 0.31,  vgt: 0.41  },
+        "1M":  { spy: 3.2,   qqq: 4.1,   vgt: 4.8   },
+        "3M":  { spy: 7.4,   qqq: 9.2,   vgt: 10.1  },
+        "6M":  { spy: 11.2,  qqq: 14.3,  vgt: 15.8  },
+        "YTD": { spy: 13.1,  qqq: 16.2,  vgt: 18.4  },
+        "1Y":  { spy: 14.2,  qqq: 18.7,  vgt: 21.3  },
+      };
+      setBenchmarkData(demo[period]);
       setLoadingBench(false);
       return;
     }
     try {
-      const [spy, qqq, vgt] = await Promise.all([
-        getQuote("SPY"), getQuote("QQQ"), getQuote("VGT"),
-      ]);
-      // Use prevClose to calc YTD approx via dp (daily % as proxy)
-      // Better: fetch candles for real YTD — use simple daily % for now
+      const now = Math.floor(Date.now()/1000);
+      const daysMap: Record<string, number> = {
+        "1D": 2, "1M": 31, "3M": 92, "6M": 183, "YTD": 180, "1Y": 365,
+      };
+      // YTD = from Jan 1 this year
+      const fromDate = period === "YTD"
+        ? Math.floor(new Date(new Date().getFullYear(), 0, 1).getTime()/1000)
+        : now - 86400 * daysMap[period];
+
+      const resolution = period === "1D" ? "60" : "D";
+
       const r = await Promise.all(["SPY","QQQ","VGT"].map(async sym => {
-        const to = Math.floor(Date.now()/1000);
-        const from = to - 86400*365;
-        const res = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${sym}&resolution=D&from=${from}&to=${to}&token=${key}`);
+        const res = await fetch(
+          `https://finnhub.io/api/v1/stock/candle?symbol=${sym}&resolution=${resolution}&from=${fromDate}&to=${now}&token=${key}`
+        );
         const d = await res.json();
-        if (!Array.isArray(d.c)||d.c.length<2) return 0;
+        if (!Array.isArray(d.c) || d.c.length < 2) return 0;
         const first = d.c[0], last = d.c[d.c.length-1];
-        return ((last-first)/first)*100;
+        return Math.round(((last-first)/first)*10000)/100;
       }));
       setBenchmarkData({ spy: r[0], qqq: r[1], vgt: r[2] });
     } catch {
@@ -699,7 +716,7 @@ export default function PortfolioPage() {
         {/* ── Benchmark Comparison ── */}
         <div className="bg-[#18181b] border border-zinc-800 rounded-xl overflow-hidden">
           <button
-            onClick={()=>{ setShowBenchmark(!showBenchmark); if(!showBenchmark&&!benchmarkData) fetchBenchmark(); }}
+            onClick={()=>{ setShowBenchmark(v=>{ if(!v&&!benchmarkData) fetchBenchmark(benchPeriod); return !v; }); }}
             className="w-full flex items-center justify-between px-5 py-4 hover:bg-zinc-800/30 transition-colors">
             <div className="flex items-center gap-3">
               <span className="text-base">📊</span>
@@ -712,59 +729,65 @@ export default function PortfolioPage() {
           </button>
 
           {showBenchmark && (
-            <div className="border-t border-zinc-800 p-5">
+            <div className="border-t border-zinc-800 p-4">
+              {/* Period selector */}
+              <div className="flex gap-1.5 mb-4">
+                {(["1D","1M","3M","6M","YTD","1Y"] as const).map(p => (
+                  <button key={p} onClick={() => { setBenchPeriod(p); fetchBenchmark(p); }}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
+                      benchPeriod===p ? "bg-yellow-400 text-black" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+                    }`}>{p}</button>
+                ))}
+              </div>
+
               {loadingBench ? (
-                <div className="text-center py-6 text-zinc-500 text-sm">⟳ กำลังดึงข้อมูล...</div>
+                <div className="text-center py-6 text-zinc-500 text-sm animate-pulse">⟳ กำลังดึงข้อมูล...</div>
               ) : benchmarkData ? (
-                <div className="space-y-4">
-                  {/* Bar chart */}
+                <div className="space-y-3">
                   {[
-                    { label: "พอร์ตของคุณ", pct: totalPLPct, color: "#f0aa4f", sub: "All-time return" },
-                    { label: "SPY (S&P 500)", pct: benchmarkData.spy, color: "#4f7df3", sub: "1-year return" },
-                    { label: "QQQ (NASDAQ)", pct: benchmarkData.qqq, color: "#a78bfa", sub: "1-year return" },
-                    { label: "VGT (Tech ETF)", pct: benchmarkData.vgt, color: "#06b6d4", sub: "1-year return" },
+                    { label: "พอร์ตของคุณ", pct: totalPLPct,        color: "#f0aa4f" },
+                    { label: "SPY (S&P 500)", pct: benchmarkData.spy, color: "#4f7df3" },
+                    { label: "QQQ (NASDAQ)",  pct: benchmarkData.qqq, color: "#a78bfa" },
+                    { label: "VGT (Tech)",    pct: benchmarkData.vgt, color: "#06b6d4" },
                   ].map(b => {
-                    const maxPct = Math.max(Math.abs(totalPLPct), Math.abs(benchmarkData.spy), Math.abs(benchmarkData.qqq), Math.abs(benchmarkData.vgt), 1);
+                    const maxPct = Math.max(
+                      Math.abs(totalPLPct),
+                      Math.abs(benchmarkData.spy),
+                      Math.abs(benchmarkData.qqq),
+                      Math.abs(benchmarkData.vgt), 1
+                    );
                     const barW = Math.min(Math.abs(b.pct)/maxPct*100, 100);
                     const isPos = b.pct >= 0;
                     return (
-                      <div key={b.label}>
-                        <div className="flex items-center justify-between mb-1">
-                          <div>
-                            <span className="text-sm font-bold">{b.label}</span>
-                            <span className="text-xs text-zinc-600 ml-2">{b.sub}</span>
-                          </div>
-                          <span className={`text-sm font-black ${isPos?"text-emerald-400":"text-red-400"}`}>
-                            {isPos?"+":""}{b.pct.toFixed(2)}%
-                          </span>
-                        </div>
-                        <div className="h-6 bg-zinc-800 rounded-lg overflow-hidden">
-                          <div className="h-full rounded-lg flex items-center justify-end pr-2 transition-all"
-                            style={{ width:`${barW}%`, background: b.color, opacity: 0.85 }}>
+                      <div key={b.label} className="flex items-center gap-3">
+                        <span className="text-xs text-zinc-400 w-28 flex-shrink-0">{b.label}</span>
+                        <div className="flex-1 h-5 bg-zinc-800 rounded-lg overflow-hidden">
+                          <div className="h-full rounded-lg transition-all flex items-center justify-end pr-2"
+                            style={{ width:`${barW}%`, background: b.color, opacity: 0.8 }}>
                           </div>
                         </div>
+                        <span className={`text-xs font-black w-16 text-right ${isPos?"text-emerald-400":"text-red-400"}`}>
+                          {isPos?"+":""}{b.pct.toFixed(2)}%
+                        </span>
                       </div>
                     );
                   })}
 
-                  {/* Summary verdict */}
-                  <div className="mt-4 p-3 rounded-xl bg-[#111113] border border-zinc-800">
-                    <p className="text-xs text-zinc-500 mb-2">สรุปผล</p>
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        { label: "vs S&P500", diff: totalPLPct - benchmarkData.spy },
-                        { label: "vs NASDAQ", diff: totalPLPct - benchmarkData.qqq },
-                        { label: "vs Tech",   diff: totalPLPct - benchmarkData.vgt },
-                      ].map(v => (
-                        <div key={v.label} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold ${v.diff>=0?"bg-emerald-400/10 text-emerald-400":"bg-red-400/10 text-red-400"}`}>
-                          {v.diff>=0?"✅ ชนะ":"❌ แพ้"} {v.label}
-                          <span className="opacity-75">({v.diff>=0?"+":""}{v.diff.toFixed(2)}%)</span>
-                        </div>
-                      ))}
-                    </div>
+                  {/* Verdict */}
+                  <div className="flex flex-wrap gap-2 pt-2 border-t border-zinc-800">
+                    {[
+                      { label:"vs S&P500", diff: totalPLPct-benchmarkData.spy },
+                      { label:"vs NASDAQ", diff: totalPLPct-benchmarkData.qqq },
+                      { label:"vs Tech",   diff: totalPLPct-benchmarkData.vgt },
+                    ].map(v=>(
+                      <span key={v.label} className={`text-[11px] font-bold px-2.5 py-1 rounded-lg ${v.diff>=0?"bg-emerald-400/10 text-emerald-400":"bg-red-400/10 text-red-400"}`}>
+                        {v.diff>=0?"✅":"❌"} {v.label} ({v.diff>=0?"+":""}{v.diff.toFixed(2)}%)
+                      </span>
+                    ))}
                   </div>
-
-                  <p className="text-[10px] text-zinc-700 text-center">* พอร์ตคุณเป็น all-time return, Benchmark เป็น 1-year return (ใช้เปรียบเทียบเบื้องต้น)</p>
+                  <p className="text-[10px] text-zinc-700">
+                    * พอร์ตคุณ = all-time return · Benchmark = {benchPeriod} return
+                  </p>
                 </div>
               ) : null}
             </div>
