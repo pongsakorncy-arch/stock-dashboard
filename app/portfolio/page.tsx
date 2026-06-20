@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Position = {
@@ -89,23 +90,62 @@ export default function PortfolioPage() {
   const [editingTicker, setEditingTicker] = useState<string|null>(null);
   const [formError, setFormError]     = useState("");
 
-  // ── Load / Save ──────────────────────────────────────────────────────────────
+  // ── Load from Supabase ───────────────────────────────────────────────────────
   useEffect(() => {
-    const saved = localStorage.getItem("yok_portfolio_v4");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setPositions(parsed.map((p: any) => ({ prevClose: 0, targetAlloc: 0, ...p })));
-      } catch { setPositions(INITIAL_PORTFOLIO); }
-    } else { setPositions(INITIAL_PORTFOLIO); }
-    const savedCash = localStorage.getItem("yok_cash_v1");
-    if (savedCash) setCash(Number(savedCash)||0);
+    const loadData = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Load positions
+      const { data: rows } = await supabase
+        .from("portfolios")
+        .select("*")
+        .eq("user_id", user.id);
+
+      if (rows && rows.length > 0) {
+        setPositions(rows.map((r: any) => ({
+          ticker: r.ticker, name: r.name || r.ticker,
+          shares: Number(r.shares), avgCost: Number(r.avg_cost),
+          currentPrice: Number(r.current_price)||0,
+          prevClose: Number(r.prev_close)||0,
+          targetAlloc: Number(r.target_alloc)||0,
+        })));
+      } else {
+        // First time — load initial data and save to Supabase
+        setPositions(INITIAL_PORTFOLIO);
+        await savePositionsToSupabase(user.id, INITIAL_PORTFOLIO);
+      }
+
+      // Load cash
+      const { data: settings } = await supabase
+        .from("user_settings")
+        .select("cash")
+        .eq("user_id", user.id)
+        .single();
+      if (settings) setCash(Number(settings.cash)||0);
+    };
+    loadData();
   }, []);
 
-  useEffect(() => {
-    if (positions.length > 0)
-      localStorage.setItem("yok_portfolio_v4", JSON.stringify(positions));
-  }, [positions]);
+  const savePositionsToSupabase = async (userId: string, pos: Position[]) => {
+    // Upsert all positions
+    const rows = pos.map(p => ({
+      user_id: userId, ticker: p.ticker, name: p.name,
+      shares: p.shares, avg_cost: p.avgCost,
+      current_price: p.currentPrice, prev_close: p.prevClose,
+      target_alloc: p.targetAlloc, updated_at: new Date().toISOString(),
+    }));
+    await supabase.from("portfolios").upsert(rows, { onConflict: "user_id,ticker" });
+    // Also save to localStorage as backup
+    localStorage.setItem("yok_portfolio_v4", JSON.stringify(pos));
+  };
+
+  const syncPositions = async (newPositions: Position[]) => {
+    setPositions(newPositions);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) await savePositionsToSupabase(user.id, newPositions);
+    else localStorage.setItem("yok_portfolio_v4", JSON.stringify(newPositions));
+  };
 
   // ── Fetch ─────────────────────────────────────────────────────────────────────
   const getQuote = async (sym: string): Promise<{ c: number; pc: number }> => {
@@ -127,7 +167,7 @@ export default function PortfolioPage() {
         return { ...p, currentPrice: c||p.currentPrice, prevClose: pc||p.prevClose };
       })
     );
-    setPositions(updated);
+    await syncPositions(updated);
     setLastUpdated(new Date().toLocaleTimeString("th-TH"));
     setIsRefreshing(false);
   };
@@ -178,10 +218,15 @@ export default function PortfolioPage() {
     setLoadingBench(false);
   };
 
-  const saveCash = (val: number) => {
+  const saveCash = async (val: number) => {
     setCash(val);
     localStorage.setItem("yok_cash_v1", String(val));
     setShowCashEdit(false);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase.from("user_settings").upsert({
+      user_id: user.id, cash: val, updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id" });
   };
 
   // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -304,7 +349,7 @@ export default function PortfolioPage() {
     if (isNaN(tradePrice)||tradePrice<=0) { setFormError("ราคาต้องมากกว่า 0"); return; }
 
     if (editingTicker) {
-      setPositions(prev => prev.map(p =>
+      syncPositions(positions.map(p =>
         p.ticker===editingTicker ? { ...p, ticker:sym, name:formName||p.name, shares:qty, avgCost:tradePrice, targetAlloc:target } : p
       ));
       closeModal(); return;
@@ -312,9 +357,9 @@ export default function PortfolioPage() {
     if (mode==="buy") {
       const ex = positions.find(p=>p.ticker===sym);
       if (!ex) {
-        setPositions(prev => [...prev, { ticker:sym, name:formName||sym, shares:qty, avgCost:tradePrice, currentPrice:tradePrice, prevClose:0, targetAlloc:target }]);
+        syncPositions([...positions, { ticker:sym, name:formName||sym, shares:qty, avgCost:tradePrice, currentPrice:tradePrice, prevClose:0, targetAlloc:target }]);
       } else {
-        setPositions(prev => prev.map(p => {
+        syncPositions(positions.map(p => {
           if (p.ticker!==sym) return p;
           const ns = p.shares+qty;
           return { ...p, shares:ns, avgCost:(p.shares*p.avgCost+qty*tradePrice)/ns };
@@ -326,15 +371,15 @@ export default function PortfolioPage() {
       if (!ex) { setFormError("ไม่พบหุ้นนี้"); return; }
       if (qty>ex.shares) { setFormError(`มีหุ้นแค่ ${ex.shares.toFixed(4)}`); return; }
       const rem = ex.shares-qty;
-      if (rem<=0.00001) setPositions(prev=>prev.filter(p=>p.ticker!==sym));
-      else setPositions(prev=>prev.map(p=>p.ticker===sym?{...p,shares:rem}:p));
+      if (rem<=0.00001) { syncPositions(positions.filter(p=>p.ticker!==sym)); return; }
+      else syncPositions(positions.map(p=>p.ticker===sym?{...p,shares:rem}:p));
     }
     closeModal();
   };
 
   const deletePosition = (ticker: string) => {
     if (confirm(`ลบ ${ticker} ออกจากพอร์ต?`))
-      setPositions(prev=>prev.filter(p=>p.ticker!==ticker));
+      syncPositions(positions.filter(p=>p.ticker!==ticker));
   };
 
   // ── Sort header component ──────────────────────────────────────────────────────
@@ -366,6 +411,10 @@ export default function PortfolioPage() {
           <button onClick={refreshPrices} disabled={isRefreshing}
             className="px-4 py-2 bg-yellow-400 hover:bg-yellow-300 text-black text-sm font-bold rounded-lg transition-colors disabled:opacity-50">
             {isRefreshing ? "⟳ กำลังโหลด..." : "⟳ อัปเดตราคา"}
+          </button>
+          <button onClick={async () => { await supabase.auth.signOut(); window.location.href = "/login"; }}
+            className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-xs rounded-lg transition-colors">
+            ออกจากระบบ
           </button>
         </div>
       </div>
