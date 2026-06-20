@@ -68,7 +68,7 @@ export default function PortfolioPage() {
 
   // Benchmark
   const [showBenchmark, setShowBenchmark] = useState(false);
-  const [benchmarkData, setBenchmarkData] = useState<{spy:number;qqq:number;vgt:number}|null>(null);
+  const [benchmarkData, setBenchmarkData] = useState<{sp500:number;nasdaq:number;dji:number}|null>(null);
   const [loadingBench, setLoadingBench] = useState(false);
   const [benchPeriod, setBenchPeriod] = useState<"1D"|"1M"|"3M"|"6M"|"YTD"|"1Y">("1Y");
 
@@ -192,9 +192,13 @@ export default function PortfolioPage() {
   const fetchBenchmark = async (period: "1D"|"1M"|"3M"|"6M"|"YTD"|"1Y" = benchPeriod) => {
     setLoadingBench(true);
     setBenchmarkData(null);
-    const key = process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
-    if (!key) {
-      // Demo data per period
+    try {
+      const res = await fetch(`/api/benchmark?period=${period}`);
+      if (!res.ok) throw new Error("fetch failed");
+      const data = await res.json();
+      setBenchmarkData({ spy: data.spy, qqq: data.qqq, vgt: data.vgt });
+    } catch {
+      // Fallback demo data
       const demo: Record<string, {spy:number;qqq:number;vgt:number}> = {
         "1D":  { spy: 0.24,  qqq: 0.31,  vgt: 0.41  },
         "1M":  { spy: 3.2,   qqq: 4.1,   vgt: 4.8   },
@@ -204,33 +208,6 @@ export default function PortfolioPage() {
         "1Y":  { spy: 14.2,  qqq: 18.7,  vgt: 21.3  },
       };
       setBenchmarkData(demo[period]);
-      setLoadingBench(false);
-      return;
-    }
-    try {
-      const now = Math.floor(Date.now()/1000);
-      const daysMap: Record<string, number> = {
-        "1D": 2, "1M": 31, "3M": 92, "6M": 183, "YTD": 180, "1Y": 365,
-      };
-      // YTD = from Jan 1 this year
-      const fromDate = period === "YTD"
-        ? Math.floor(new Date(new Date().getFullYear(), 0, 1).getTime()/1000)
-        : now - 86400 * daysMap[period];
-
-      const resolution = period === "1D" ? "60" : "D";
-
-      const r = await Promise.all(["SPY","QQQ","VGT"].map(async sym => {
-        const res = await fetch(
-          `https://finnhub.io/api/v1/stock/candle?symbol=${sym}&resolution=${resolution}&from=${fromDate}&to=${now}&token=${key}`
-        );
-        const d = await res.json();
-        if (!Array.isArray(d.c) || d.c.length < 2) return 0;
-        const first = d.c[0], last = d.c[d.c.length-1];
-        return Math.round(((last-first)/first)*10000)/100;
-      }));
-      setBenchmarkData({ spy: r[0], qqq: r[1], vgt: r[2] });
-    } catch {
-      setBenchmarkData({ spy: 14.2, qqq: 18.7, vgt: 21.3 });
     }
     setLoadingBench(false);
   };
@@ -746,9 +723,9 @@ export default function PortfolioPage() {
                 <div className="space-y-3">
                   {[
                     { label: "พอร์ตของคุณ", pct: totalPLPct,        color: "#f0aa4f" },
-                    { label: "SPY (S&P 500)", pct: benchmarkData.spy, color: "#4f7df3" },
-                    { label: "QQQ (NASDAQ)",  pct: benchmarkData.qqq, color: "#a78bfa" },
-                    { label: "VGT (Tech)",    pct: benchmarkData.vgt, color: "#06b6d4" },
+                    { label: "S&P 500",  pct: benchmarkData.sp500,  color: "#4f7df3" },
+                    { label: "NASDAQ",    pct: benchmarkData.nasdaq, color: "#a78bfa" },
+                    { label: "Dow Jones", pct: benchmarkData.dji,    color: "#69c36b" },
                   ].map(b => {
                     const maxPct = Math.max(
                       Math.abs(totalPLPct),
@@ -776,9 +753,9 @@ export default function PortfolioPage() {
                   {/* Verdict */}
                   <div className="flex flex-wrap gap-2 pt-2 border-t border-zinc-800">
                     {[
-                      { label:"vs S&P500", diff: totalPLPct-benchmarkData.spy },
-                      { label:"vs NASDAQ", diff: totalPLPct-benchmarkData.qqq },
-                      { label:"vs Tech",   diff: totalPLPct-benchmarkData.vgt },
+                      { label:"vs S&P500",    diff: totalPLPct-benchmarkData.sp500  },
+                      { label:"vs NASDAQ",   diff: totalPLPct-benchmarkData.nasdaq },
+                      { label:"vs Dow Jones",diff: totalPLPct-benchmarkData.dji    },
                     ].map(v=>(
                       <span key={v.label} className={`text-[11px] font-bold px-2.5 py-1 rounded-lg ${v.diff>=0?"bg-emerald-400/10 text-emerald-400":"bg-red-400/10 text-red-400"}`}>
                         {v.diff>=0?"✅":"❌"} {v.label} ({v.diff>=0?"+":""}{v.diff.toFixed(2)}%)
