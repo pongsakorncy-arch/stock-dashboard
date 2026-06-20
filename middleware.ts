@@ -24,4 +24,16 @@ export async function middleware(req: NextRequest) {
   const isLoginPage = req.nextUrl.pathname === "/login";
   const isCallback = req.nextUrl.pathname.startsWith("/auth/");
 
-  if (!session && !isLoginPage &&
+  if (!session && !isLoginPage && !isCallback) {
+    return NextResponse.redirect(new URL("/login", req.url));
+  }
+  if (session && isLoginPage) {
+    return NextResponse.redirect(new URL("/", req.url));
+  }
+
+  return res;
+}
+
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+};
