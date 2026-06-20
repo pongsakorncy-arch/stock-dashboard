@@ -353,21 +353,18 @@ export default function Home() {
       <div className="px-6 py-5 max-w-screen-2xl mx-auto space-y-4">
 
         {/* ── Quick Nav ── */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-2">
           {[
-            { href:"/portfolio", label:"พอร์ตโฟลิโอ", sub:"หุ้นของฉัน",   icon:"📊", grad:"from-yellow-400/20 to-yellow-400/5", border:"border-yellow-400/20 hover:border-yellow-400/50" },
-            { href:"/chart",     label:"กราฟ",         sub:"TradingView",  icon:"📈", grad:"from-purple-400/20 to-purple-400/5", border:"border-purple-400/20 hover:border-purple-400/50" },
-            { href:"/journal",   label:"Journal",       sub:"XAUUSD Trade", icon:"📓", grad:"from-sky-400/20 to-sky-400/5",     border:"border-sky-400/20 hover:border-sky-400/50" },
+            { href:"/portfolio", label:"พอร์ต", sub:"หุ้นของฉัน",   icon:"📊", grad:"from-yellow-400/20 to-yellow-400/5", border:"border-yellow-400/20 hover:border-yellow-400/50" },
+            { href:"/chart",     label:"กราฟ",  sub:"TradingView",  icon:"📈", grad:"from-purple-400/20 to-purple-400/5", border:"border-purple-400/20 hover:border-purple-400/50" },
+            { href:"/journal",   label:"Journal",sub:"XAUUSD",      icon:"📓", grad:"from-sky-400/20 to-sky-400/5",     border:"border-sky-400/20 hover:border-sky-400/50" },
           ].map(l=>(
             <Link key={l.label} href={l.href}
-              className={`relative flex items-center gap-3 bg-gradient-to-br ${l.grad} border ${l.border} rounded-2xl px-5 py-4 transition-all group overflow-hidden`}>
+              className={`relative flex flex-col items-center justify-center bg-gradient-to-br ${l.grad} border ${l.border} rounded-2xl p-3 transition-all group overflow-hidden min-h-[80px]`}>
               <div className="absolute -right-2 -top-2 text-5xl opacity-10 group-hover:opacity-20 transition-opacity select-none">{l.icon}</div>
-              <span className="text-3xl">{l.icon}</span>
-              <div>
-                <p className="font-black text-base text-white">{l.label}</p>
-                <p className="text-xs text-zinc-500 mt-0.5">{l.sub}</p>
-              </div>
-              <span className="ml-auto text-zinc-600 group-hover:text-zinc-300 transition-colors">→</span>
+              <span className="text-2xl mb-1">{l.icon}</span>
+              <p className="font-black text-xs text-white text-center leading-tight">{l.label}</p>
+              <p className="text-[10px] text-zinc-500 mt-0.5 text-center">{l.sub}</p>
             </Link>
           ))}
         </div>
