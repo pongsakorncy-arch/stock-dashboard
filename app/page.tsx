@@ -102,9 +102,9 @@ function LiveClock() {
     return () => clearInterval(id);
   }, []);
   return (
-    <div className="text-right">
-      <p className="text-2xl font-mono font-bold tracking-widest">{time}</p>
-      <p className="text-xs text-zinc-400 mt-0.5">{session}</p>
+    <div className="text-center sm:text-right">
+      <p className="text-lg sm:text-2xl font-mono font-bold tracking-widest leading-tight">{time}</p>
+      <p className="text-[10px] sm:text-xs text-zinc-400">{session}</p>
     </div>
   );
 }
@@ -366,19 +366,24 @@ export default function Home() {
 <main className="min-h-screen bg-[#0a0a0c] text-white" style={{ fontFamily: "'Inter','Noto Sans Thai',sans-serif" }}>
 
       {/* ── Header ── */}
-      <header className="border-b border-zinc-800/60 px-6 py-3 flex items-center justify-between bg-[#0d0d0f]/90 backdrop-blur sticky top-0 z-30">
-        <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-black font-black text-xs">T</div>
-          <div>
-            <span className="font-bold text-sm tracking-tight">TRUSH YOUR OWN</span>
-            <span className="ml-2 text-xs text-zinc-600">Dashboard</span>
-          </div>
+      <header className="border-b border-zinc-800/60 px-3 py-2 flex items-center justify-between bg-[#0d0d0f]/90 backdrop-blur sticky top-0 z-30">
+        {/* Logo */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-black font-black text-xs flex-shrink-0">T</div>
+          <span className="font-bold text-sm tracking-tight hidden sm:block">TRUSH YOUR OWN</span>
         </div>
-        <div className="flex items-center gap-4">
+
+        {/* Clock — center on mobile */}
+        <div className="flex-1 flex justify-center sm:justify-end sm:mr-4">
           <LiveClock />
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           <button onClick={fetchAll} disabled={loading}
-            className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 rounded-lg font-medium transition-colors disabled:opacity-40">
-            {loading ? "⟳ Loading..." : "⟳ Refresh"}
+            className="w-8 h-8 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm transition-colors disabled:opacity-40"
+            title="Refresh">
+            <span className={loading ? "animate-spin inline-block" : ""}>{loading ? "⟳" : "⟳"}</span>
           </button>
           <ThemeSwitcher />
         </div>
