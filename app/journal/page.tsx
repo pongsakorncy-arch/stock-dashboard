@@ -55,9 +55,9 @@ const SESSIONS: Session[]    = ["Tokyo","London","New York","Overlap"];
 // point = 0.001 for gold
 function calcPL(direction: Direction, entry: number, exit: number, lot: number, isCent = true): number {
   const diff = direction === "LONG" ? exit - entry : entry - exit;
-  // Standard: $100/point per lot | Cent: $10/point per lot
-  const multiplier = isCent ? 10 : 100;
-  return Math.round(diff * lot * multiplier * 10) / 100;
+  // XAUUSDc (Cent): $1/point/lot | XAUUSDm (Standard): $100/point/lot
+  const multiplier = isCent ? 1 : 100;
+  return Math.round(diff * lot * multiplier * 100) / 100;
 }
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
