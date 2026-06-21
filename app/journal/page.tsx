@@ -136,14 +136,26 @@ export default function JournalPage() {
   useEffect(()=>{
     const loadData = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setTrades(load()); return; }
-      const { data } = await supabase
+      if (!user) {
+        // ไม่ได้ login — ใช้ localStorage
+        setTrades(load());
+        return;
+      }
+      // Login แล้ว — ดึงจาก Supabase เสมอ ไม่ง้อ localStorage
+      const { data, error } = await supabase
         .from("journal_trades")
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Supabase error:", error);
+        setTrades(load()); // fallback
+        return;
+      }
+
       if (data && data.length > 0) {
-        setTrades(data.map((r:any) => ({
+        const mapped = data.map((r:any) => ({
           id: r.id, date: r.date, time: r.time,
           symbol: r.symbol, direction: r.direction, session: r.session,
           entryPrice: Number(r.entry_price), exitPrices: r.exit_prices||[],
@@ -154,9 +166,13 @@ export default function JournalPage() {
           result: r.result, smcConcept: r.smc_concept||[],
           htfBias: r.htf_bias, entryModel: r.entry_model||"",
           tf: r.tf||"M5", notes: r.notes||"", createdAt: r.created_at,
-        })));
+        }));
+        setTrades(mapped);
+        // sync localStorage ให้ตรงกับ Supabase
+        save(mapped);
       } else {
-        setTrades(load());
+        // ยังไม่มีข้อมูลใน Supabase เลย
+        setTrades([]);
       }
     };
     loadData();
