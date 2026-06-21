@@ -449,56 +449,72 @@ export default function PortfolioPage() {
         {/* ── Stats + Donut row ── */}
         <div className="grid lg:grid-cols-[1fr_260px] gap-4">
 
-          {/* Stats cards */}
+                    {/* Stats cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 fade-up">
-            {/* มูลค่าหุ้น */}
-            <div className="hover-lift bg-[#18181b] border border-zinc-800 rounded-xl p-3">
-              <p className="text-xs text-zinc-500 mb-1">มูลค่าหุ้น</p>
-              <p className="text-lg font-bold text-white count-up">{fmtMoney(marketValue)}</p>
-              <p className="text-xs text-zinc-600 mt-0.5">{stockPct.toFixed(1)}% ของทั้งหมด</p>
+
+            {/* มูลค่าหุ้น — Blue */}
+            <div className="relative bg-gradient-to-br from-[#111827] to-[#0f172a] border border-blue-900/40 rounded-xl p-3 overflow-hidden hover-lift">
+              <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full opacity-20" style={{background:"radial-gradient(circle,#3b82f6,transparent)"}}/>
+              <p className="text-[10px] text-blue-400/80 uppercase tracking-wider mb-1 font-bold">มูลค่าหุ้น</p>
+              <p className="text-lg font-black text-white count-up">{fmtMoney(marketValue)}</p>
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <div className="flex-1 h-1 bg-blue-900/40 rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-blue-500 to-blue-400 rounded-full transition-all duration-1000" style={{width:`${stockPct}%`}}/>
+                </div>
+                <span className="text-[10px] text-blue-400 font-bold">{stockPct.toFixed(0)}%</span>
+              </div>
             </div>
 
-            {/* เงินสด — กดเพื่อแก้ไข */}
-            <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-3">
-              <p className="text-xs text-zinc-500 mb-1">เงินสด 💵</p>
+            {/* เงินสด — Green */}
+            <div className="relative bg-gradient-to-br from-[#052e16] to-[#0a1f0a] border border-emerald-900/40 rounded-xl p-3 overflow-hidden hover-lift">
+              <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full opacity-20" style={{background:"radial-gradient(circle,#10b981,transparent)"}}/>
+              <p className="text-[10px] text-emerald-400/80 uppercase tracking-wider mb-1 font-bold">เงินสด 💵</p>
               {showCashEdit ? (
                 <div className="flex gap-1">
-                  <input
-                    type="number" step="100" autoFocus
-                    value={cashInput}
-                    onChange={e => setCashInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter") saveCash(parseFloat(cashInput) || 0); }}
+                  <input type="number" step="100" autoFocus value={cashInput}
+                    onChange={e=>setCashInput(e.target.value)}
+                    onKeyDown={e=>{if(e.key==="Enter")saveCash(parseFloat(cashInput)||0);}}
                     placeholder="0"
-                    className="flex-1 min-w-0 bg-[#111113] border border-zinc-600 rounded px-2 py-1 text-xs outline-none focus:border-yellow-400 font-mono"
-                  />
-                  <button onClick={() => saveCash(parseFloat(cashInput) || 0)}
-                    className="text-[10px] bg-yellow-400 text-black px-2 rounded font-black">✓</button>
-                  <button onClick={() => setShowCashEdit(false)}
-                    className="text-[10px] text-zinc-500 px-1">✕</button>
+                    className="flex-1 min-w-0 bg-black/40 border border-emerald-700 rounded px-2 py-1 text-xs outline-none font-mono text-emerald-400"/>
+                  <button onClick={()=>saveCash(parseFloat(cashInput)||0)}
+                    className="text-[10px] bg-emerald-500 text-black px-2 rounded font-black">✓</button>
+                  <button onClick={()=>setShowCashEdit(false)} className="text-[10px] text-zinc-500 px-1">✕</button>
                 </div>
               ) : (
-                <button onClick={() => { setCashInput(String(cash)); setShowCashEdit(true); }}
-                  className="text-left w-full group">
-                  <p className="text-lg font-bold text-emerald-400 group-hover:text-emerald-300">{fmtMoney(cash)}</p>
-                  <p className="text-xs text-zinc-600 mt-0.5">{cashPct.toFixed(1)}% · กดแก้ไข</p>
+                <button onClick={()=>{setCashInput(String(cash));setShowCashEdit(true);}} className="text-left w-full group">
+                  <p className="text-lg font-black text-emerald-400 group-hover:text-emerald-300 count-up">{fmtMoney(cash)}</p>
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    <div className="flex-1 h-1 bg-emerald-900/40 rounded-full overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-emerald-500 to-green-400 rounded-full transition-all duration-1000" style={{width:`${cashPct}%`}}/>
+                    </div>
+                    <span className="text-[10px] text-emerald-600 font-bold">{cashPct.toFixed(0)}%</span>
+                  </div>
                 </button>
               )}
             </div>
 
-            {/* กำไร/ขาดทุนรวม */}
-            <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-3">
-              <p className="text-xs text-zinc-500 mb-1">กำไร/ขาดทุนรวม</p>
-              <p className={`text-lg font-bold count-up-1 ${totalPL >= 0 ? "text-emerald-400 glow-green" : "text-red-400 glow-red"}`}>{fmtMoney(totalPL)}</p>
-              <p className={`text-xs mt-0.5 opacity-80 ${totalPL >= 0 ? "text-emerald-400" : "text-red-400"}`}>{pctFmt(totalPLPct)}</p>
+            {/* กำไร/ขาดทุน */}
+            <div className={`relative bg-gradient-to-br border rounded-xl p-3 overflow-hidden hover-lift ${totalPL>=0?"from-[#052e16] to-[#0a1f0a] border-emerald-900/40":"from-[#2d0a0a] to-[#1a0505] border-red-900/40"}`}>
+              <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full opacity-20" style={{background:`radial-gradient(circle,${totalPL>=0?"#10b981":"#ef4444"},transparent)`}}/>
+              <p className={`text-[10px] uppercase tracking-wider mb-1 font-bold ${totalPL>=0?"text-emerald-400/80":"text-red-400/80"}`}>กำไร/ขาดทุน</p>
+              <p className={`text-lg font-black count-up-1 ${totalPL>=0?"text-emerald-400 glow-green":"text-red-400 glow-red"}`}>
+                {totalPL>=0?"+":""}{fmtMoney(totalPL)}
+              </p>
+              <span className={`inline-flex items-center gap-0.5 mt-1 px-2 py-0.5 rounded-full text-[10px] font-black ${totalPL>=0?"bg-emerald-400/10 text-emerald-400":"bg-red-400/10 text-red-400"}`}>
+                {totalPL>=0?"▲":"▼"} {Math.abs(totalPLPct).toFixed(2)}%
+              </span>
             </div>
 
             {/* วันนี้ */}
-            <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-3">
-              <p className="text-xs text-zinc-500 mb-1">วันนี้</p>
-              <p className={`text-lg font-bold count-up-2 ${totalDailyPL >= 0 ? "text-sky-400" : "text-orange-400"}`}>
-                {totalDailyPL >= 0 ? "+" : ""}{fmtMoney(totalDailyPL)}
+            <div className={`relative bg-gradient-to-br border rounded-xl p-3 overflow-hidden hover-lift ${totalDailyPL>=0?"from-[#0c1a2e] to-[#071220] border-sky-900/40":"from-[#2d1500] to-[#1a0d00] border-orange-900/40"}`}>
+              <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full opacity-20" style={{background:`radial-gradient(circle,${totalDailyPL>=0?"#38bdf8":"#f97316"},transparent)`}}/>
+              <p className={`text-[10px] uppercase tracking-wider mb-1 font-bold ${totalDailyPL>=0?"text-sky-400/80":"text-orange-400/80"}`}>วันนี้</p>
+              <p className={`text-lg font-black count-up-2 ${totalDailyPL>=0?"text-sky-400":"text-orange-400"}`}>
+                {totalDailyPL>=0?"+":""}{fmtMoney(totalDailyPL)}
               </p>
-              <p className={`text-xs mt-0.5 opacity-80 ${totalDailyPL >= 0 ? "text-sky-400" : "text-orange-400"}`}>{pctFmt(totalDailyPct)}</p>
+              <span className={`inline-flex items-center gap-0.5 mt-1 px-2 py-0.5 rounded-full text-[10px] font-black ${totalDailyPL>=0?"bg-sky-400/10 text-sky-400":"bg-orange-400/10 text-orange-400"}`}>
+                {totalDailyPL>=0?"▲":"▼"} {Math.abs(totalDailyPct).toFixed(2)}%
+              </span>
             </div>
           </div>
 
