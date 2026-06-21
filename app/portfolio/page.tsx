@@ -68,6 +68,13 @@ export default function PortfolioPage() {
 
 
 
+  // Toast
+  const [toast, setToast] = useState<{msg:string;type:"success"|"error"}|null>(null);
+  const showToast = (msg: string, type: "success"|"error" = "success") => {
+    setToast({msg,type});
+    setTimeout(() => setToast(null), 2500);
+  };
+
   // P/L column toggle
   const [plMode, setPlMode] = useState<PLMode>("total");
 
@@ -320,7 +327,7 @@ export default function PortfolioPage() {
       syncPositions(positions.map(p =>
         p.ticker===editingTicker ? { ...p, ticker:sym, name:formName||p.name, shares:qty, avgCost:tradePrice, targetAlloc:target } : p
       ));
-      closeModal(); return;
+      closeModal(); showToast(`✓ แก้ไข ${sym} แล้ว`); return;
     }
     if (mode==="buy") {
       const ex = positions.find(p=>p.ticker===sym);
@@ -342,7 +349,7 @@ export default function PortfolioPage() {
       if (rem<=0.00001) { syncPositions(positions.filter(p=>p.ticker!==sym)); return; }
       else syncPositions(positions.map(p=>p.ticker===sym?{...p,shares:rem}:p));
     }
-    closeModal();
+    closeModal(); showToast(`✓ บันทึก ${sym} แล้ว`);
   };
 
   const deletePosition = async (ticker: string) => {
@@ -358,7 +365,8 @@ export default function PortfolioPage() {
         .eq("user_id", user.id)
         .eq("ticker", ticker);
       console.log("delete error:", error);
-      console.log("deleted ticker:", ticker);
+      if (!error) showToast(`✓ ลบ ${ticker} แล้ว`);
+      else showToast("❌ ลบไม่สำเร็จ", "error");
     }
   };
 
@@ -440,9 +448,9 @@ export default function PortfolioPage() {
           {/* Stats cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 fade-up">
             {/* มูลค่าหุ้น */}
-            <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-3">
+            <div className="hover-lift bg-[#18181b] border border-zinc-800 rounded-xl p-3">
               <p className="text-xs text-zinc-500 mb-1">มูลค่าหุ้น</p>
-              <p className="text-lg font-bold text-white">{money(marketValue)}</p>
+              <p className="text-lg font-bold text-white count-up">{money(marketValue)}</p>
               <p className="text-xs text-zinc-600 mt-0.5">{stockPct.toFixed(1)}% ของทั้งหมด</p>
             </div>
 
@@ -476,14 +484,14 @@ export default function PortfolioPage() {
             {/* กำไร/ขาดทุนรวม */}
             <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-3">
               <p className="text-xs text-zinc-500 mb-1">กำไร/ขาดทุนรวม</p>
-              <p className={`text-lg font-bold ${totalPL >= 0 ? "text-emerald-400" : "text-red-400"}`}>{money(totalPL)}</p>
+              <p className={`text-lg font-bold count-up-1 ${totalPL >= 0 ? "text-emerald-400 glow-green" : "text-red-400 glow-red"}`}>{money(totalPL)}</p>
               <p className={`text-xs mt-0.5 opacity-80 ${totalPL >= 0 ? "text-emerald-400" : "text-red-400"}`}>{pctFmt(totalPLPct)}</p>
             </div>
 
             {/* วันนี้ */}
             <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-3">
               <p className="text-xs text-zinc-500 mb-1">วันนี้</p>
-              <p className={`text-lg font-bold ${totalDailyPL >= 0 ? "text-sky-400" : "text-orange-400"}`}>
+              <p className={`text-lg font-bold count-up-2 ${totalDailyPL >= 0 ? "text-sky-400" : "text-orange-400"}`}>
                 {totalDailyPL >= 0 ? "+" : ""}{money(totalDailyPL)}
               </p>
               <p className={`text-xs mt-0.5 opacity-80 ${totalDailyPL >= 0 ? "text-sky-400" : "text-orange-400"}`}>{pctFmt(totalDailyPct)}</p>
@@ -684,17 +692,17 @@ export default function PortfolioPage() {
                       <td className="px-2 py-3">
                         <div className="flex items-center justify-center gap-1">
                           <button onClick={()=>openBuy(p.ticker)}
-                            className="ripple px-1.5 py-1 text-xs bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded font-bold transition-colors">
+                            className="ripple btn-press px-1.5 py-1 text-xs bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded font-bold transition-colors">
                             <span className="hidden sm:inline">ซื้อ</span>
                             <span className="sm:hidden">+</span>
                           </button>
                           <button onClick={()=>openSell(p.ticker)}
-                            className="ripple px-1.5 py-1 text-xs bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 rounded font-bold transition-colors">
+                            className="ripple btn-press px-1.5 py-1 text-xs bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 rounded font-bold transition-colors">
                             <span className="hidden sm:inline">ขาย</span>
                             <span className="sm:hidden">-</span>
                           </button>
                           <button onClick={()=>openEdit(p.ticker)}
-                            className="ripple px-1.5 py-1 text-xs bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 rounded font-bold transition-colors">
+                            className="ripple btn-press px-1.5 py-1 text-xs bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 rounded font-bold transition-colors">
                             <span className="hidden sm:inline">แก้</span>
                             <span className="sm:hidden">✎</span>
                           </button>
@@ -816,6 +824,16 @@ export default function PortfolioPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {/* ── Toast ── */}
+      {toast && (
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] px-5 py-3 rounded-2xl text-sm font-bold shadow-2xl ${
+          toast.type==="success"
+            ? "bg-emerald-500 text-black"
+            : "bg-red-500 text-white"
+        } ${toast ? "toast-in" : "toast-out"}`}>
+          {toast.msg}
         </div>
       )}
     </main>
