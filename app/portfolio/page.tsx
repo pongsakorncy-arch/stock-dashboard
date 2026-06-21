@@ -411,21 +411,23 @@ export default function PortfolioPage() {
       {/* ── Top bar ── */}
       <div className="border-b border-zinc-800 px-3 py-2.5 flex items-center justify-between bg-[#0d0d0f]/90 backdrop-blur sticky top-0 z-30">
         <div className="flex items-center gap-2">
-          <Link href="/" className="text-zinc-500 hover:text-white text-xs transition-colors">← หน้าแรก</Link>
+          <Link href="/" className="flex items-center gap-1 text-zinc-400 hover:text-white text-xs transition-colors font-medium">
+            <span>←</span>
+            <span>หน้าแรก</span>
+          </Link>
           <span className="text-zinc-700 hidden sm:block">|</span>
-          <h1 className="text-xs font-bold tracking-tight hidden sm:block">TRUSH YOUR OWN · พอร์ต</h1>
+          <h1 className="text-xs font-bold tracking-tight hidden sm:block">พอร์ตโฟลิโอ</h1>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-zinc-600 hidden sm:block">อัปเดต: {lastUpdated}</span>
+          <span className="text-[10px] text-zinc-600 hidden sm:block">{lastUpdated}</span>
           <button onClick={refreshPrices} disabled={isRefreshing}
-            className="px-3 py-2 bg-yellow-400 hover:bg-yellow-300 text-black text-xs font-bold rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1">
-            <span className={isRefreshing?"animate-spin":""}>{isRefreshing?"⟳":"⟳"}</span>
-            <span className="hidden sm:block">{isRefreshing?"กำลังโหลด...":"อัปเดตราคา"}</span>
+            className="h-8 px-3 bg-yellow-400 hover:bg-yellow-300 text-black text-xs font-bold rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1">
+            <span className={isRefreshing ? "animate-spin inline-block" : ""}>{isRefreshing ? "⟳" : "⟳"}</span>
+            <span className="hidden sm:block">{isRefreshing ? "โหลด..." : "อัปเดต"}</span>
           </button>
           <button onClick={async () => { await supabase.auth.signOut(); window.location.href = "/login"; }}
-            className="px-2.5 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-xs rounded-lg transition-colors">
-            <span className="hidden sm:block">ออกจากระบบ</span>
-            <span className="sm:hidden">ออก</span>
+            className="h-8 px-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium rounded-lg transition-colors">
+            ออก
           </button>
         </div>
       </div>
@@ -532,9 +534,9 @@ export default function PortfolioPage() {
               <thead className="bg-[#111113]">
                 <tr>
                   <Th k="ticker"    label="หุ้น" />
-                  <Th k="shares"    label="จำนวน" />
-                  <Th k="avgCost"   label="ต้นทุนเฉลี่ย" />
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-zinc-400 uppercase tracking-wider whitespace-nowrap">ราคา</th>
+                  <Th k="shares"    label="จำนวน" className="hidden lg:table-cell" />
+                  <Th k="avgCost"   label="ต้นทุน" className="hidden lg:table-cell" />
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-zinc-400 uppercase tracking-wider whitespace-nowrap hidden lg:table-cell">ราคา</th>
                   <Th k="value"     label="มูลค่า" />
 
                   {/* P/L column header — toggle total / daily */}
@@ -565,7 +567,7 @@ export default function PortfolioPage() {
                   </th>
 
                   {/* Allocation column */}
-                  <Th k="allocation" label="สัดส่วน" />
+                  <Th k="allocation" label="สัดส่วน" className="hidden md:table-cell" />
                   <th className="px-3 py-3 text-center text-xs font-semibold text-zinc-400 uppercase tracking-wider">จัดการ</th>
                 </tr>
               </thead>
@@ -600,13 +602,13 @@ export default function PortfolioPage() {
                       </td>
 
                       {/* จำนวน */}
-                      <td className="px-3 py-3 text-sm text-yellow-300 font-mono hidden md:table-cell">{p.shares.toFixed(4)}</td>
+                      <td className="px-3 py-3 text-sm text-yellow-300 font-mono hidden lg:table-cell">{p.shares.toFixed(4)}</td>
 
                       {/* ต้นทุนเฉลี่ย */}
-                      <td className="px-3 py-3 text-sm font-medium hidden sm:table-cell">{money(p.avgCost)}</td>
+                      <td className="px-3 py-3 text-sm font-medium hidden lg:table-cell">{money(p.avgCost)}</td>
 
                       {/* ราคาปัจจุบัน */}
-                      <td className="px-3 py-3 text-sm text-zinc-300 hidden sm:table-cell">{money(price)}</td>
+                      <td className="px-3 py-3 text-sm text-zinc-300 hidden lg:table-cell">{money(price)}</td>
 
                       {/* มูลค่า */}
                       <td className="px-3 py-3 text-sm font-bold">{money(val)}</td>
@@ -641,7 +643,7 @@ export default function PortfolioPage() {
                       </td>
 
                       {/* สัดส่วน: เป้าหมาย vs ปัจจุบัน */}
-                      <td className="px-3 py-3 min-w-[130px]">
+                      <td className="px-3 py-3 min-w-[130px] hidden md:table-cell">
                         {/* ปัจจุบัน */}
                         <div className="flex items-center justify-between mb-0.5">
                           <span className="text-[10px] text-zinc-600">ปัจจุบัน</span>
@@ -679,16 +681,28 @@ export default function PortfolioPage() {
                       </td>
 
                       {/* จัดการ */}
-                      <td className="px-3 py-3">
+                      <td className="px-2 py-3">
                         <div className="flex items-center justify-center gap-1">
                           <button onClick={()=>openBuy(p.ticker)}
-                            className="ripple px-2 py-1 text-xs bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded font-medium transition-colors">ซื้อ</button>
+                            className="ripple px-1.5 py-1 text-xs bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded font-bold transition-colors">
+                            <span className="hidden sm:inline">ซื้อ</span>
+                            <span className="sm:hidden">+</span>
+                          </button>
                           <button onClick={()=>openSell(p.ticker)}
-                            className="ripple px-2 py-1 text-xs bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 rounded font-medium transition-colors">ขาย</button>
+                            className="ripple px-1.5 py-1 text-xs bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 rounded font-bold transition-colors">
+                            <span className="hidden sm:inline">ขาย</span>
+                            <span className="sm:hidden">-</span>
+                          </button>
                           <button onClick={()=>openEdit(p.ticker)}
-                            className="ripple px-2 py-1 text-xs bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 rounded font-medium transition-colors">แก้</button>
+                            className="ripple px-1.5 py-1 text-xs bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 rounded font-bold transition-colors">
+                            <span className="hidden sm:inline">แก้</span>
+                            <span className="sm:hidden">✎</span>
+                          </button>
                           <button onClick={()=>deletePosition(p.ticker)}
-                            className="px-2 py-1 text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded font-medium transition-colors">ลบ</button>
+                            className="px-1.5 py-1 text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded font-bold transition-colors">
+                            <span className="hidden sm:inline">ลบ</span>
+                            <span className="sm:hidden">✕</span>
+                          </button>
                         </div>
                       </td>
                     </tr>
