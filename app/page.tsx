@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import ThemeSwitcher from "@/components/ThemeSwitcher";
+import CurrencyToggle from "@/components/CurrencyToggle";
+import { useCurrency } from "@/hooks/useCurrency";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type IndexData = {
@@ -261,6 +263,7 @@ export default function Home() {
   const [lastRefresh, setLastRefresh] = useState("-");
   const [moversTab, setMoversTab] = useState<"gainers" | "losers">("gainers");
   const portfolio = usePortfolioSnapshot();
+  const { currency, rate, lastUpdate: rateUpdate, toggleCurrency, format: fmtMoney } = useCurrency();
 
   const fetchAll = async () => {
     setLoading(true);
@@ -385,6 +388,7 @@ export default function Home() {
             title="Refresh">
             <span className={loading ? "animate-spin inline-block" : ""}>{loading ? "⟳" : "⟳"}</span>
           </button>
+          <CurrencyToggle currency={currency} rate={rate} lastUpdate={rateUpdate} onToggle={toggleCurrency} />
           <ThemeSwitcher />
         </div>
       </header>
@@ -416,12 +420,12 @@ export default function Home() {
             <div className="absolute -top-8 -right-8 w-36 h-36 rounded-full opacity-10"
               style={{ background:"radial-gradient(circle,#f0aa4f,transparent)" }}/>
             <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">พอร์ตของฉัน</p>
-            <p className="text-3xl font-black tracking-tight">${money(portfolio.value)}</p>
+            <p className="text-3xl font-black tracking-tight">{fmtMoney(portfolio.value)}</p>
             <div className="grid grid-cols-2 gap-2 mt-3">
               <div className="bg-[#0d0d0f] rounded-xl p-3">
                 <p className="text-[10px] text-zinc-600 mb-0.5">กำไร/ขาดทุนรวม</p>
                 <p className={`text-sm font-black ${portfolio.pl>=0?"text-emerald-400":"text-red-400"}`}>
-                  {portfolio.pl>=0?"+":""}{money(portfolio.pl)}
+                  {portfolio.pl>=0?"+":""}{fmtMoney(portfolio.pl)}
                 </p>
                 <p className={`text-[10px] font-bold ${portfolio.pl>=0?"text-emerald-400":"text-red-400"}`}>
                   {portfolio.pl>=0?"▲":"▼"} {Math.abs(portfolio.plPct).toFixed(2)}%
@@ -430,7 +434,7 @@ export default function Home() {
               <div className="bg-[#0d0d0f] rounded-xl p-3">
                 <p className="text-[10px] text-zinc-600 mb-0.5">วันนี้</p>
                 <p className={`text-sm font-black ${portfolio.dailyPL>=0?"text-sky-400":"text-orange-400"}`}>
-                  {portfolio.dailyPL>=0?"+":""}{money(portfolio.dailyPL)}
+                  {portfolio.dailyPL>=0?"+":""}{fmtMoney(portfolio.dailyPL)}
                 </p>
                 <p className={`text-[10px] font-bold ${portfolio.dailyPL>=0?"text-sky-400":"text-orange-400"}`}>
                   {portfolio.dailyPL>=0?"▲":"▼"} {Math.abs(portfolio.dailyPct).toFixed(2)}%
