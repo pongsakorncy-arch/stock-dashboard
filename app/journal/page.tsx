@@ -9,6 +9,7 @@ type Direction  = "LONG" | "SHORT";
 type Result     = "WIN" | "LOSS" | "BE";
 type SMCConcept = "OB"|"FVG"|"BOS"|"CHoCH"|"Liquidity"|"MSB"|"W-Pattern"|"M-Pattern"|"Other";
 type TF = "M1"|"M5"|"M15";
+type AccountType = "cent" | "standard";
 type Session    = "Tokyo"|"London"|"New York"|"Overlap";
 
 type Trade = {
@@ -52,10 +53,11 @@ const SESSIONS: Session[]    = ["Tokyo","London","New York","Overlap"];
 
 // ─── P/L per order (XAUUSD: 1 lot = $100/point, 0.1 lot = $10/point) ────────
 // point = 0.001 for gold
-function calcPL(direction: Direction, entry: number, exit: number, lot: number): number {
+function calcPL(direction: Direction, entry: number, exit: number, lot: number, isCent = true): number {
   const diff = direction === "LONG" ? exit - entry : entry - exit;
-  // XAUUSD: $1 per 0.01 lot per 1 point (1 point = $1 per 0.1 lot)
-  return Math.round(diff * lot * 100 * 100) / 100;
+  // Standard: $100/point per lot | Cent: $10/point per lot
+  const multiplier = isCent ? 10 : 100;
+  return Math.round(diff * lot * multiplier * 10) / 100;
 }
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
@@ -101,7 +103,7 @@ function PLChart({ trades }: { trades: Trade[] }) {
 const defaultForm = () => ({
   date: new Date().toISOString().split("T")[0],
   time: new Date().toTimeString().slice(0,5),
-  symbol: "XAUUSD",
+  symbol: "XAUUSDc",
   direction: "SHORT" as Direction,
   session: "Tokyo" as Session,
   entryPrice: 0,
@@ -125,6 +127,7 @@ export default function JournalPage() {
   const [form,    setForm]    = useState(defaultForm());
   const [editId,  setEditId]  = useState<string|null>(null);
   const [filter,  setFilter]  = useState<"ALL"|Result>("ALL");
+  const [accountType, setAccountType] = useState<AccountType>("cent");
 
   // Exit price inputs
   const [exitInput, setExitInput]   = useState(""); // single input
@@ -165,7 +168,8 @@ export default function JournalPage() {
   // ── Computed from form ────────────────────────────────────────────────────
   const exits     = form.exitPrices;
   const avgExit   = exits.length ? exits.reduce((a,b)=>a+b,0)/exits.length : 0;
-  const perOrderPLs = exits.map(ex => calcPL(form.direction, form.entryPrice, ex, form.lotPerOrder));
+  const isCent = accountType === "cent";
+  const perOrderPLs = exits.map(ex => calcPL(form.direction, form.entryPrice, ex, form.lotPerOrder, isCent));
   const totalPL   = perOrderPLs.reduce((a,b)=>a+b, 0);
   const totalLot  = exits.length * form.lotPerOrder;
   const result: Result = totalPL > 0.01 ? "WIN" : totalPL < -0.01 ? "LOSS" : "BE";
@@ -290,13 +294,27 @@ export default function JournalPage() {
       </header>
 
       {/* Tabs */}
-      <div className="flex border-b border-zinc-800 bg-[#0a0a0c] px-4">
-        {(["dashboard","list"] as const).map(v=>(
-          <button key={v} onClick={()=>setView(v)}
-            className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${view===v?"text-yellow-400 border-yellow-400":"text-zinc-500 border-transparent"}`}>
-            {v==="dashboard"?"📊 Dashboard":"📋 Sessions"}
+      <div className="flex items-center border-b border-zinc-800 bg-[#0a0a0c] px-4">
+        <div className="flex flex-1">
+          {(["dashboard","list"] as const).map(v=>(
+            <button key={v} onClick={()=>setView(v)}
+              className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${view===v?"text-yellow-400 border-yellow-400":"text-zinc-500 border-transparent"}`}>
+              {v==="dashboard"?"📊 Dashboard":"📋 Sessions"}
+            </button>
+          ))}
+        </div>
+        {/* Account type toggle */}
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <span className="text-[10px] text-zinc-600">บัญชี:</span>
+          <button onClick={()=>setAccountType(accountType==="cent"?"standard":"cent")}
+            className={`px-2.5 py-1 rounded-lg text-[10px] font-black border transition-colors ${
+              accountType==="cent"
+                ? "bg-yellow-400/10 border-yellow-400/40 text-yellow-400"
+                : "bg-purple-400/10 border-purple-400/40 text-purple-400"
+            }`}>
+            {accountType==="cent" ? "Cent $" : "Standard $"}
           </button>
-        ))}
+        </div>
       </div>
 
       {/* ── DASHBOARD ── */}
@@ -505,7 +523,7 @@ export default function JournalPage() {
               </div>
               <div>
                 <label className="text-[10px] text-zinc-500 mb-1 block">Lot / Order</label>
-                <input type="number" step="0.01" value={form.lotPerOrder||""} placeholder="0.10"
+                <input type="number" step="0.01" min="0.01" value={form.lotPerOrder||""} placeholder="0.01"
                   onChange={e=>f("lotPerOrder",parseFloat(e.target.value)||0.1)}
                   className="w-full bg-[#111113] border border-zinc-700 focus:border-yellow-400 rounded-lg px-2 py-2 text-sm outline-none font-mono"/>
               </div>
@@ -575,7 +593,7 @@ export default function JournalPage() {
                   <button onClick={()=>f("exitPrices",[])} className="text-[10px] text-red-400 hover:underline">ล้างทั้งหมด</button>
                 </div>
                 {exits.map((ex,i)=>{
-                  const pl = calcPL(form.direction, form.entryPrice, ex, form.lotPerOrder);
+                  const pl = calcPL(form.direction, form.entryPrice, ex, form.lotPerOrder, accountType === "cent");
                   const isPos = pl >= 0;
                   return (
                     <div key={i} className="flex items-center gap-2">
