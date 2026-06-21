@@ -415,32 +415,122 @@ export default function Home() {
         {/* ── Portfolio + Indices compact ── */}
         <div className="grid lg:grid-cols-[320px_1fr] gap-4">
 
-          {/* Portfolio Card */}
-          <div className="relative bg-[#111113] border border-zinc-800 rounded-2xl p-5 overflow-hidden">
-            <div className="absolute -top-8 -right-8 w-36 h-36 rounded-full opacity-10"
-              style={{ background:"radial-gradient(circle,#f0aa4f,transparent)" }}/>
-            <p className="text-xs text-zinc-500 uppercase tracking-widest mb-1">พอร์ตของฉัน</p>
-            <p className="text-3xl font-black tracking-tight">{fmtMoney(portfolio.value)}</p>
-            <div className="grid grid-cols-2 gap-2 mt-3">
-              <div className="bg-[#0d0d0f] rounded-xl p-3">
-                <p className="text-[10px] text-zinc-600 mb-0.5">กำไร/ขาดทุนรวม</p>
+          {/* Portfolio Card — Hero */}
+          <div className="relative bg-gradient-to-br from-[#141416] to-[#0d0d0f] border border-zinc-700/50 rounded-2xl p-5 overflow-hidden"
+            style={{ boxShadow: portfolio.pl>=0 ? "0 0 40px #10b98118, 0 0 80px #10b98108" : "0 0 40px #ef444418, 0 0 80px #ef444408" }}>
+
+            {/* Background glow orb */}
+            <div className="absolute -top-10 -right-10 w-48 h-48 rounded-full pointer-events-none"
+              style={{ background: portfolio.pl>=0 ? "radial-gradient(circle,#10b98122,transparent 70%)" : "radial-gradient(circle,#ef444422,transparent 70%)" }}/>
+            <div className="absolute -bottom-8 -left-8 w-32 h-32 rounded-full pointer-events-none"
+              style={{ background: "radial-gradient(circle,#f0aa4f18,transparent 70%)" }}/>
+
+            {/* Badge row */}
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-[10px] text-zinc-500 uppercase tracking-widest">พอร์ตของฉัน</span>
+              <div className="flex gap-1.5 ml-auto">
+                {portfolio.plPct >= 20 && (
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-yellow-400/20 text-yellow-400 border border-yellow-400/30">
+                    🏆 +20%
+                  </span>
+                )}
+                {portfolio.dailyPL >= 0 && portfolio.dailyPct >= 2 && (
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-400/20 text-emerald-400 border border-emerald-400/30">
+                    🔥 Best Day
+                  </span>
+                )}
+                {portfolio.pl > 0 && (
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-sky-400/20 text-sky-400 border border-sky-400/30">
+                    📈 ATH
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Main value */}
+            <p className="text-3xl font-black tracking-tight leading-none">
+              {fmtMoney(portfolio.value)}
+            </p>
+
+            {/* Progress ring + Daily bar */}
+            <div className="flex items-center gap-3 mt-3 mb-3">
+              {/* Progress arc — % กำไรเทียบเป้า 30% */}
+              <div className="relative flex-shrink-0">
+                <svg width="52" height="52" viewBox="0 0 52 52">
+                  <circle cx="26" cy="26" r="22" fill="none" stroke="#27272a" strokeWidth="4"/>
+                  <circle cx="26" cy="26" r="22" fill="none"
+                    stroke={portfolio.pl>=0?"#10b981":"#ef4444"}
+                    strokeWidth="4" strokeLinecap="round"
+                    strokeDasharray={`${Math.min(portfolio.plPct/30*138, 138)} 138`}
+                    strokeDashoffset="34.5"
+                    style={{ transition: "stroke-dasharray 1s ease" }}/>
+                  <text x="26" y="30" textAnchor="middle" fontSize="9" fontWeight="bold"
+                    fill={portfolio.pl>=0?"#10b981":"#ef4444"}>
+                    {Math.abs(portfolio.plPct).toFixed(0)}%
+                  </text>
+                </svg>
+              </div>
+
+              {/* Mini sparkline */}
+              <div className="flex-1">
+                <svg viewBox="0 0 120 32" className="w-full h-8" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={portfolio.pl>=0?"#10b981":"#ef4444"} stopOpacity="0.4"/>
+                      <stop offset="100%" stopColor={portfolio.pl>=0?"#10b981":"#ef4444"} stopOpacity="0"/>
+                    </linearGradient>
+                  </defs>
+                  {/* Simulated equity curve from pl% */}
+                  {(() => {
+                    const pts = [0,2,1,4,3,6,5,8,7,10,9,12,11,14,13,portfolio.plPct].map((v,i,a) =>
+                      `${(i/(a.length-1))*120},${32-Math.max(0,Math.min(v/Math.max(portfolio.plPct,1)*28,28))}`
+                    );
+                    const fill = `0,32 ${pts.join(" ")} 120,32`;
+                    const color = portfolio.pl>=0?"#10b981":"#ef4444";
+                    return <>
+                      <polygon points={fill} fill="url(#sparkGrad)"/>
+                      <polyline points={pts.join(" ")} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round"/>
+                    </>;
+                  })()}
+                </svg>
+              </div>
+            </div>
+
+            {/* Daily bar */}
+            <div className="mb-3">
+              <div className="flex justify-between text-[10px] text-zinc-600 mb-1">
+                <span>วันนี้</span>
+                <span className={portfolio.dailyPL>=0?"text-sky-400":"text-orange-400"}>
+                  {portfolio.dailyPL>=0?"+":""}{portfolio.dailyPct.toFixed(2)}%
+                </span>
+              </div>
+              <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-1000"
+                  style={{
+                    width: `${Math.min(Math.abs(portfolio.dailyPct)*10, 100)}%`,
+                    background: portfolio.dailyPL>=0
+                      ? "linear-gradient(90deg,#38bdf8,#10b981)"
+                      : "linear-gradient(90deg,#f97316,#ef4444)"
+                  }}/>
+              </div>
+            </div>
+
+            {/* P/L stats */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-black/20 rounded-xl p-3 border border-zinc-800/50">
+                <p className="text-[10px] text-zinc-500 mb-0.5">กำไร/ขาดทุนรวม</p>
                 <p className={`text-sm font-black ${portfolio.pl>=0?"text-emerald-400":"text-red-400"}`}>
                   {portfolio.pl>=0?"+":""}{fmtMoney(portfolio.pl)}
                 </p>
-                <p className={`text-[10px] font-bold ${portfolio.pl>=0?"text-emerald-400":"text-red-400"}`}>
-                  {portfolio.pl>=0?"▲":"▼"} {Math.abs(portfolio.plPct).toFixed(2)}%
-                </p>
               </div>
-              <div className="bg-[#0d0d0f] rounded-xl p-3">
-                <p className="text-[10px] text-zinc-600 mb-0.5">วันนี้</p>
+              <div className="bg-black/20 rounded-xl p-3 border border-zinc-800/50">
+                <p className="text-[10px] text-zinc-500 mb-0.5">วันนี้</p>
                 <p className={`text-sm font-black ${portfolio.dailyPL>=0?"text-sky-400":"text-orange-400"}`}>
                   {portfolio.dailyPL>=0?"+":""}{fmtMoney(portfolio.dailyPL)}
                 </p>
-                <p className={`text-[10px] font-bold ${portfolio.dailyPL>=0?"text-sky-400":"text-orange-400"}`}>
-                  {portfolio.dailyPL>=0?"▲":"▼"} {Math.abs(portfolio.dailyPct).toFixed(2)}%
-                </p>
               </div>
             </div>
+
             <p className="text-[10px] text-zinc-700 mt-2">{portfolio.count} หลักทรัพย์ · {lastRefresh}</p>
           </div>
 
