@@ -1,26 +1,44 @@
 @import "tailwindcss";
 
+/* ── Theme Variables ── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg-base:    #0a0a0c;
+  --bg-card:    #111113;
+  --bg-card2:   #18181b;
+  --bg-header:  #0d0d0f;
+  --border:     #27272a;
+  --text:       #ffffff;
+  --text-sub:   #71717a;
+  --accent:     #f0aa4f;
+  --accent-glow:#f0aa4f44;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+[data-theme="ocean"] {
+  --bg-base:    #020b18;
+  --bg-card:    #041424;
+  --bg-card2:   #06213a;
+  --bg-header:  #031020;
+  --border:     #0e3a5c;
+  --text:       #e0f2fe;
+  --text-sub:   #4a90b8;
+  --accent:     #38bdf8;
+  --accent-glow:#38bdf844;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+[data-theme="gold"] {
+  --bg-base:    #0c0a00;
+  --bg-card:    #1a1500;
+  --bg-card2:   #211b00;
+  --bg-header:  #110e00;
+  --border:     #3d3000;
+  --text:       #fef9ee;
+  --text-sub:   #a08040;
+  --accent:     #f59e0b;
+  --accent-glow:#f59e0b44;
 }
 
+/* ── Apply theme colors ── */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--bg-base);
+  color: var(--text);
 }
