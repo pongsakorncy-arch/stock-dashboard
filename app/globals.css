@@ -1,23 +1,111 @@
 @import "tailwindcss";
 
-:root {
-  --bg-base:    #0a0a0c;
-  --bg-card:    #111113;
-  --bg-card2:   #18181b;
-  --bg-header:  #0d0d0f;
-  --border:     #27272a;
-  --text:       #ffffff;
-  --text-sub:   #71717a;
-  --accent:     #f0aa4f;
+/* ── Count-up animation ── */
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-body {
-  background-color: var(--bg-base);
-  color: var(--text);
-  transition: background-color 0.3s ease, color 0.3s ease;
+/* ── Stagger fade-in ── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Smooth theme transition for all elements */
-*, *::before, *::after {
-  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.2s ease;
+/* ── Shimmer skeleton ── */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
 }
+
+/* ── Glow pulse for profit ── */
+@keyframes glowGreen {
+  0%, 100% { text-shadow: 0 0 0px #10b981; }
+  50%       { text-shadow: 0 0 12px #10b98188; }
+}
+@keyframes glowRed {
+  0%, 100% { text-shadow: 0 0 0px #ef4444; }
+  50%       { text-shadow: 0 0 12px #ef444488; }
+}
+
+/* ── Progress bar fill ── */
+@keyframes fillBar {
+  from { width: 0%; }
+  to   { width: var(--bar-width); }
+}
+
+/* ── Equity curve draw ── */
+@keyframes drawLine {
+  from { stroke-dashoffset: 1000; }
+  to   { stroke-dashoffset: 0; }
+}
+
+/* ── Toast slide in ── */
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(20px) scale(0.95); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes toastOut {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(10px) scale(0.95); }
+}
+
+/* ── Button press ── */
+@keyframes btnPress {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(0.93); }
+  100% { transform: scale(1); }
+}
+
+/* ── Utility classes ── */
+.count-up  { animation: countUp 0.6s cubic-bezier(0.22,1,0.36,1) both; }
+.count-up-1 { animation: countUp 0.6s 0.1s cubic-bezier(0.22,1,0.36,1) both; }
+.count-up-2 { animation: countUp 0.6s 0.2s cubic-bezier(0.22,1,0.36,1) both; }
+.count-up-3 { animation: countUp 0.6s 0.3s cubic-bezier(0.22,1,0.36,1) both; }
+
+.fade-up   { animation: fadeInUp 0.5s cubic-bezier(0.22,1,0.36,1) both; }
+.fade-up-1 { animation: fadeInUp 0.5s 0.08s cubic-bezier(0.22,1,0.36,1) both; }
+.fade-up-2 { animation: fadeInUp 0.5s 0.16s cubic-bezier(0.22,1,0.36,1) both; }
+.fade-up-3 { animation: fadeInUp 0.5s 0.24s cubic-bezier(0.22,1,0.36,1) both; }
+.fade-up-4 { animation: fadeInUp 0.5s 0.32s cubic-bezier(0.22,1,0.36,1) both; }
+
+.shimmer {
+  background: linear-gradient(90deg, #1f1f23 25%, #2a2a30 50%, #1f1f23 75%);
+  background-size: 400px 100%;
+  animation: shimmer 1.4s infinite linear;
+}
+
+.glow-green { animation: glowGreen 2s ease-in-out infinite; }
+.glow-red   { animation: glowRed   2s ease-in-out infinite; }
+
+.btn-press:active { animation: btnPress 0.15s ease both; }
+
+.toast-in  { animation: toastIn  0.3s cubic-bezier(0.22,1,0.36,1) both; }
+.toast-out { animation: toastOut 0.25s ease both; }
+
+.equity-line {
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  animation: drawLine 1.5s ease both;
+}
+
+/* ── Hover lift ── */
+.hover-lift {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+}
+
+/* ── Ripple ── */
+.ripple { position: relative; overflow: hidden; }
+.ripple::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.ripple:active::after { opacity: 1; }
