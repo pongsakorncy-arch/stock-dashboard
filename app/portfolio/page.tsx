@@ -108,9 +108,8 @@ export default function PortfolioPage() {
           targetAlloc: Number(r.target_alloc)||0,
         })));
       } else {
-        // First time — load initial data and save to Supabase
-        setPositions(INITIAL_PORTFOLIO);
-        await savePositionsToSupabase(user.id, INITIAL_PORTFOLIO);
+        // New user — start with empty portfolio
+        setPositions([]);
       }
 
       // Load cash
@@ -352,11 +351,14 @@ export default function PortfolioPage() {
     setPositions(newPositions);
     localStorage.setItem("yok_portfolio_v4", JSON.stringify(newPositions));
     const { data: { user } } = await supabase.auth.getUser();
+    console.log("user:", user?.id);
     if (user) {
-      await supabase.from("portfolios")
+      const { error } = await supabase.from("portfolios")
         .delete()
         .eq("user_id", user.id)
         .eq("ticker", ticker);
+      console.log("delete error:", error);
+      console.log("deleted ticker:", ticker);
     }
   };
 
