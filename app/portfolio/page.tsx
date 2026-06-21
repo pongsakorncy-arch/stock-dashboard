@@ -375,6 +375,7 @@ export default function PortfolioPage() {
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
+    <>
     <style>{`
   @keyframes fadeInUp {
     from { opacity:0; transform:translateY(16px); }
@@ -802,5 +803,6 @@ export default function PortfolioPage() {
         </div>
       )}
     </main>
+    </>
   );
 }
