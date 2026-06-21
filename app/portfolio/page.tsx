@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import CurrencyToggle from "@/components/CurrencyToggle";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -519,24 +519,114 @@ export default function PortfolioPage() {
             </div>
           )}
 
-                    {/* Donut (compact, right side) */}  {/* fade-up-1 */}
-          <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-4 flex items-center gap-4">
-            <div className="relative w-24 h-24 flex-shrink-0">
-              <div className="w-24 h-24 rounded-full"
-                style={{ background: `conic-gradient(${donutSlices})` }} />
-              <div className="absolute inset-2.5 bg-[#18181b] rounded-full flex items-center justify-center">
-                <span className="text-xs font-bold text-zinc-400">{positions.length}x</span>
+                    {/* Donut — Interactive */}
+          {(() => {
+            const [hoveredIdx, setHoveredIdx] = React.useState<number|null>(null);
+            const [donutMounted, setDonutMounted] = React.useState(false);
+            React.useEffect(() => { setTimeout(() => setDonutMounted(true), 100); }, []);
+
+            const hovered = hoveredIdx !== null ? sortedPositions[hoveredIdx] : null;
+            const hoveredVal = hovered ? hovered.shares*(hovered.currentPrice||hovered.avgCost) : 0;
+            const hoveredPct = marketValue > 0 ? (hoveredVal/marketValue)*100 : 0;
+
+            // Build conic gradient with hover highlight
+            let start = 0;
+            const slices = sortedPositions.map((p,i) => {
+              const val = p.shares*(p.currentPrice||p.avgCost);
+              const pct = marketValue > 0 ? (val/marketValue)*100 : 0;
+              const end = start + pct;
+              const color = COLORS[i%COLORS.length];
+              const isHovered = hoveredIdx === i;
+              const slice = { start, end, color, pct, isHovered };
+              start = end;
+              return slice;
+            });
+
+            const conicParts = slices.map(s => {
+              const color = s.isHovered ? s.color : (hoveredIdx !== null ? s.color+"88" : s.color);
+              return `${color} ${s.start.toFixed(2)}% ${s.end.toFixed(2)}%`;
+            }).join(", ");
+
+            return (
+              <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-4 flex items-center gap-4 fade-up-1">
+                {/* Donut SVG */}
+                <div className="relative flex-shrink-0 w-28 h-28">
+                  {/* Animated conic gradient */}
+                  <div className="w-28 h-28 rounded-full transition-all duration-300"
+                    style={{
+                      background: `conic-gradient(${conicParts})`,
+                      transform: donutMounted ? "scale(1) rotate(-90deg)" : "scale(0.5) rotate(-90deg)",
+                      opacity: donutMounted ? 1 : 0,
+                      transition: "transform 0.8s cubic-bezier(0.34,1.56,0.64,1), opacity 0.5s ease",
+                    }}/>
+
+                  {/* Inner circle */}
+                  <div className="absolute inset-3 bg-[#18181b] rounded-full flex flex-col items-center justify-center transition-all duration-200">
+                    {hovered ? (
+                      <>
+                        <span className="text-[9px] font-black leading-none" style={{color: COLORS[sortedPositions.indexOf(hovered)%COLORS.length]}}>
+                          {hovered.ticker}
+                        </span>
+                        <span className="text-sm font-black text-white leading-none mt-0.5">
+                          {hoveredPct.toFixed(1)}%
+                        </span>
+                        <span className="text-[8px] text-zinc-500 leading-none mt-0.5">
+                          {fmtMoney(hoveredVal)}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-[9px] text-zinc-500 leading-none">พอร์ต</span>
+                        <span className="text-xs font-black text-white leading-none mt-0.5">{positions.length} หุ้น</span>
+                        <span className="text-[8px] text-zinc-500 leading-none mt-0.5">{fmtMoney(marketValue)}</span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Hover zones (invisible) */}
+                  {slices.map((s,i) => {
+                    const midAngle = ((s.start + s.end) / 2 / 100) * 360 - 90;
+                    const rad = midAngle * Math.PI / 180;
+                    const r = 44;
+                    const cx = 56 + r * Math.cos(rad);
+                    const cy = 56 + r * Math.sin(rad);
+                    return (
+                      <div key={i}
+                        className="absolute w-5 h-5 rounded-full cursor-pointer"
+                        style={{ left: cx - 10, top: cy - 10, zIndex: 10 }}
+                        onMouseEnter={() => setHoveredIdx(i)}
+                        onMouseLeave={() => setHoveredIdx(null)}/>
+                    );
+                  })}
+                </div>
+
+                {/* Legend */}
+                <div className="flex-1 overflow-hidden">
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 max-h-28 overflow-hidden">
+                    {sortedPositions.slice(0,10).map((p,i) => {
+                      const val = p.shares*(p.currentPrice||p.avgCost);
+                      const pct = marketValue>0?(val/marketValue)*100:0;
+                      const isHov = hoveredIdx === i;
+                      return (
+                        <div key={p.ticker}
+                          className="flex items-center gap-1.5 cursor-pointer transition-opacity"
+                          style={{ opacity: hoveredIdx===null||isHov ? 1 : 0.4 }}
+                          onMouseEnter={()=>setHoveredIdx(i)}
+                          onMouseLeave={()=>setHoveredIdx(null)}>
+                          <span className="w-2 h-2 rounded-sm flex-shrink-0 transition-transform"
+                            style={{ background: COLORS[i%COLORS.length], transform: isHov?"scale(1.4)":"scale(1)" }}/>
+                          <span className={`text-[10px] font-bold transition-colors ${isHov?"text-white":"text-zinc-400"}`}>
+                            {p.ticker}
+                          </span>
+                          <span className="text-[9px] text-zinc-600 ml-auto">{pct.toFixed(1)}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="flex flex-wrap gap-1 overflow-hidden max-h-24">
-              {sortedPositions.slice(0,10).map((p,i) => (
-                <span key={p.ticker} className="flex items-center gap-1 text-[10px] text-zinc-400">
-                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: COLORS[i%COLORS.length] }}/>
-                  {p.ticker}
-                </span>
-              ))}
-            </div>
-          </div>
+            );
+          })()}
         </div>
 
         {/* ── Table ── */}
