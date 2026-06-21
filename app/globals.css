@@ -1,6 +1,5 @@
 @import "tailwindcss";
 
-/* ── Theme Variables ── */
 :root {
   --bg-base:    #0a0a0c;
   --bg-card:    #111113;
@@ -10,35 +9,15 @@
   --text:       #ffffff;
   --text-sub:   #71717a;
   --accent:     #f0aa4f;
-  --accent-glow:#f0aa4f44;
 }
 
-[data-theme="ocean"] {
-  --bg-base:    #020b18;
-  --bg-card:    #041424;
-  --bg-card2:   #06213a;
-  --bg-header:  #031020;
-  --border:     #0e3a5c;
-  --text:       #e0f2fe;
-  --text-sub:   #4a90b8;
-  --accent:     #38bdf8;
-  --accent-glow:#38bdf844;
-}
-
-[data-theme="gold"] {
-  --bg-base:    #0c0a00;
-  --bg-card:    #1a1500;
-  --bg-card2:   #211b00;
-  --bg-header:  #110e00;
-  --border:     #3d3000;
-  --text:       #fef9ee;
-  --text-sub:   #a08040;
-  --accent:     #f59e0b;
-  --accent-glow:#f59e0b44;
-}
-
-/* ── Apply theme colors ── */
 body {
   background-color: var(--bg-base);
   color: var(--text);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Smooth theme transition for all elements */
+*, *::before, *::after {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.2s ease;
 }
