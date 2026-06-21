@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import ThemeSwitcher from "@/components/ThemeSwitcher";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type IndexData = {
@@ -379,7 +380,7 @@ export default function Home() {
             className="px-3 py-1.5 text-xs bg-zinc-800 hover:bg-zinc-700 rounded-lg font-medium transition-colors disabled:opacity-40">
             {loading ? "⟳ Loading..." : "⟳ Refresh"}
           </button>
-
+          <ThemeSwitcher />
         </div>
       </header>
 
