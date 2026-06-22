@@ -555,17 +555,12 @@ export default function Home() {
                     </linearGradient>
                   </defs>
                   {/* Simulated equity curve from pl% */}
-                  {(() => {
-                    const pts = [0,2,1,4,3,6,5,8,7,10,9,12,11,14,13,portfolio.plPct].map((v,i,a) =>
-                      `${(i/(a.length-1))*120},${32-Math.max(0,Math.min(v/Math.max(portfolio.plPct,1)*28,28))}`
-                    );
-                    const fill = `0,32 ${pts.join(" ")} 120,32`;
-                    const color = portfolio.pl>=0?"#10b981":"#ef4444";
-                    return <>
-                      <polygon points={fill} fill="url(#sparkGrad)"/>
-                      <polyline points={pts.join(" ")} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round"/>
-                    </>;
-                  })()}
+                  <polygon
+                      points={`0,32 ${[0,2,1,4,3,6,5,8,7,10,9,12,11,14,13,portfolio.plPct].map((v,i,a)=>`${(i/(a.length-1))*120},${32-Math.max(0,Math.min(v/Math.max(portfolio.plPct,1)*28,28))}`).join(" ")} 120,32`}
+                      fill="url(#sparkGrad)"/>
+                    <polyline
+                      points={[0,2,1,4,3,6,5,8,7,10,9,12,11,14,13,portfolio.plPct].map((v,i,a)=>`${(i/(a.length-1))*120},${32-Math.max(0,Math.min(v/Math.max(portfolio.plPct,1)*28,28))}`).join(" ")}
+                      fill="none" stroke={portfolio.pl>=0?"#10b981":"#ef4444"} strokeWidth="1.5" strokeLinejoin="round"/>
                 </svg>
               </div>
             </div>
@@ -661,10 +656,10 @@ export default function Home() {
                 <path d="M 10 55 A 40 40 0 0 1 90 55" fill="none" stroke={fearColor}
                   strokeWidth="8" strokeLinecap="round"
                   strokeDasharray={`${fearGreed * 1.257} 200`} opacity="0.9"/>
-                {(() => {
-                  const ang = ((fearGreed / 100) * 180 - 180) * (Math.PI / 180);
-                  return <line x1="50" y1="55" x2={50 + 28 * Math.cos(ang)} y2={55 + 28 * Math.sin(ang)} stroke="white" strokeWidth="1.5" strokeLinecap="round"/>;
-                })()}
+                <line x1="50" y1="55"
+                  x2={50 + 28 * Math.cos(((fearGreed / 100) * 180 - 180) * (Math.PI / 180))}
+                  y2={55 + 28 * Math.sin(((fearGreed / 100) * 180 - 180) * (Math.PI / 180))}
+                  stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
                 <circle cx="50" cy="55" r="3" fill="white"/>
               </svg>
             </div>
