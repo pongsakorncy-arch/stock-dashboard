@@ -471,34 +471,54 @@ export default function PortfolioClient() {
 
         {/* ── Donut ── */}
         <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-4 flex items-center gap-4 fade-up-1">
-          <div className="relative flex-shrink-0 w-24 h-24">
-            <div className="w-24 h-24 rounded-full" style={{background:`conic-gradient(${donutGradient})`}}/>
-            <div className="absolute inset-3 bg-[#18181b] rounded-full flex items-center justify-center">
-              {hoveredIdx !== null && sorted[hoveredIdx] ? (
-                <div className="text-center">
-                  <p className="text-[9px] font-black" style={{color:COLORS[hoveredIdx%COLORS.length]}}>{sorted[hoveredIdx].ticker}</p>
-                  <p className="text-xs font-black text-white">{marketValue>0?((sorted[hoveredIdx].shares*(sorted[hoveredIdx].currentPrice||sorted[hoveredIdx].avgCost)/marketValue)*100).toFixed(1):0}%</p>
-                </div>
+          {/* Donut circle */}
+          <div className="relative flex-shrink-0 w-28 h-28">
+            <div className="w-28 h-28 rounded-full transition-all duration-300"
+              style={{background:`conic-gradient(${donutGradient})`, transform:"rotate(-90deg)"}}/>
+            {/* Inner circle */}
+            <div className="absolute inset-3 bg-[#18181b] rounded-full flex flex-col items-center justify-center">
+              {hoveredIdx!==null && sorted[hoveredIdx] ? (
+                <>
+                  <span className="text-[9px] font-black leading-none" style={{color:COLORS[hoveredIdx%COLORS.length]}}>
+                    {sorted[hoveredIdx].ticker}
+                  </span>
+                  <span className="text-sm font-black text-white leading-none mt-0.5">
+                    {marketValue>0?((sorted[hoveredIdx].shares*(sorted[hoveredIdx].currentPrice||sorted[hoveredIdx].avgCost)/marketValue)*100).toFixed(1):0}%
+                  </span>
+                  <span className="text-[8px] text-zinc-500 leading-none mt-0.5">
+                    {fmtMoney(sorted[hoveredIdx].shares*(sorted[hoveredIdx].currentPrice||sorted[hoveredIdx].avgCost))}
+                  </span>
+                </>
               ) : (
-                <span className="text-xs font-bold text-zinc-400">{positions.length}x</span>
+                <>
+                  <span className="text-[9px] text-zinc-500 leading-none">พอร์ต</span>
+                  <span className="text-xs font-black text-white leading-none mt-0.5">{positions.length} หุ้น</span>
+                  <span className="text-[8px] text-zinc-500 leading-none mt-0.5">{fmtMoney(marketValue)}</span>
+                </>
               )}
             </div>
           </div>
-          <div className="flex flex-wrap gap-1 overflow-hidden max-h-24">
-            {sorted.slice(0,10).map((p,i) => {
-              const v = p.shares*(p.currentPrice||p.avgCost);
-              const pv = marketValue>0?(v/marketValue)*100:0;
-              return (
-                <span key={p.ticker}
-                  className="flex items-center gap-1 text-[10px] cursor-pointer transition-opacity"
-                  style={{opacity: hoveredIdx===null||hoveredIdx===i?1:0.4}}
-                  onMouseEnter={()=>setHoveredIdx(i)} onMouseLeave={()=>setHoveredIdx(null)}>
-                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{background:COLORS[i%COLORS.length]}}/>
-                  <span className={hoveredIdx===i?"text-white font-bold":"text-zinc-400"}>{p.ticker}</span>
-                  <span className="text-zinc-600">{pv.toFixed(1)}%</span>
-                </span>
-              );
-            })}
+
+          {/* Legend */}
+          <div className="flex-1 overflow-hidden">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 max-h-28 overflow-hidden">
+              {sorted.slice(0,10).map((p,i) => {
+                const v = p.shares*(p.currentPrice||p.avgCost);
+                const pv = marketValue>0?(v/marketValue)*100:0;
+                const isHov = hoveredIdx===i;
+                return (
+                  <div key={p.ticker}
+                    className="flex items-center gap-1.5 cursor-pointer transition-opacity"
+                    style={{opacity:hoveredIdx===null||isHov?1:0.4}}
+                    onMouseEnter={()=>setHoveredIdx(i)} onMouseLeave={()=>setHoveredIdx(null)}>
+                    <span className="w-2 h-2 rounded-sm flex-shrink-0 transition-transform"
+                      style={{background:COLORS[i%COLORS.length],transform:isHov?"scale(1.4)":"scale(1)"}}/>
+                    <span className={`text-[10px] font-bold transition-colors ${isHov?"text-white":"text-zinc-400"}`}>{p.ticker}</span>
+                    <span className="text-[9px] text-zinc-600 ml-auto">{pv.toFixed(1)}%</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
 
