@@ -1,3 +1,6 @@
+"use client";
+
+
 // ─── S/R Matrix Component ─────────────────────────────────────────────────────
 function SRMatrix({ invest, srS, srR }: { invest: string; srS: string[]; srR: string[] }) {
   const inv = parseFloat(invest) || 0;
@@ -48,8 +51,6 @@ function SRMatrix({ invest, srS, srR }: { invest: string; srS: string[]; srR: st
     </div>
   );
 }
-
-"use client";
 
 import Link from "next/link";
 import React, { useEffect, useMemo, useRef, useState } from "react";
