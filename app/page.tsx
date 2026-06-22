@@ -321,18 +321,13 @@ export default function Home() {
 หุ้นในพอร์ต: GOOGL, AMZN, ASML, MSFT, META, NVDA, RBRK, ALAB, NVO, NFLX, AMD, SOFI, PLTR, IONQ, TSM, UBER, RKLB, CRWD, TMDX
 วิเคราะห์สั้นๆ ว่าพอร์ตเป็นอย่างไร มีจุดแข็งอะไร ควรระวังอะไร`;
 
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 1000,
-          messages: [{ role: "user", content: prompt }]
-        })
+        body: JSON.stringify({ prompt })
       });
       const data = await res.json();
-      const text = data?.content?.[0]?.text || "ไม่สามารถวิเคราะห์ได้ในขณะนี้";
-      setAiAnalysis(text);
+      setAiAnalysis(data.text || "ไม่สามารถวิเคราะห์ได้ในขณะนี้");
     } catch {
       setAiAnalysis("ไม่สามารถเชื่อมต่อ AI ได้ในขณะนี้");
     }
