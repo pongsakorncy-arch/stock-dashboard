@@ -1,6 +1,86 @@
 "use client";
 
 
+
+// ─── DCA Calculator Component ─────────────────────────────────────────────────
+function DCACalculator({
+  p, dcaAmount, setDcaAmount, dcaPrice, setDcaPrice, dcaMode, setDcaMode, marketValue, fmtMoney
+}: {
+  p: { ticker:string; shares:number; avgCost:number; currentPrice:number };
+  dcaAmount:string; setDcaAmount:(v:string)=>void;
+  dcaPrice:string;  setDcaPrice:(v:string)=>void;
+  dcaMode:"amount"|"shares"; setDcaMode:(v:"amount"|"shares")=>void;
+  marketValue:number;
+  fmtMoney:(v:number)=>string;
+}) {
+  const currentPrice = p.currentPrice || p.avgCost;
+  const addAmt = parseFloat(dcaAmount) || 0;
+  const buyPx  = parseFloat(dcaPrice)  || currentPrice;
+  const addSh  = dcaMode === "amount" ? addAmt / buyPx : addAmt;
+  const newSh  = p.shares + addSh;
+  const newCost= newSh > 0 ? (p.shares*p.avgCost + (dcaMode==="amount"?addAmt:addSh*buyPx)) / newSh : 0;
+  const newAlloc= marketValue>0 ? newSh*currentPrice/(marketValue+(dcaMode==="amount"?addAmt:addSh*buyPx))*100 : 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-zinc-800/40 rounded-xl p-3 text-xs">
+        <p className="text-zinc-400 font-bold mb-2">{p.ticker} — ปัจจุบัน</p>
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div><p className="text-zinc-600">ถือ</p><p className="font-bold">{p.shares.toFixed(4)}</p></div>
+          <div><p className="text-zinc-600">Avg Cost</p><p className="font-bold text-yellow-400">${p.avgCost.toFixed(2)}</p></div>
+          <div><p className="text-zinc-600">ราคาตอนนี้</p><p className="font-bold">${currentPrice.toFixed(2)}</p></div>
+        </div>
+      </div>
+
+      <div className="flex gap-1 bg-zinc-800/50 p-1 rounded-lg">
+        <button type="button" onClick={()=>setDcaMode("amount")}
+          className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-colors ${dcaMode==="amount"?"bg-zinc-700 text-white":"text-zinc-500"}`}>
+          ใส่เป็น $
+        </button>
+        <button type="button" onClick={()=>setDcaMode("shares")}
+          className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-colors ${dcaMode==="shares"?"bg-zinc-700 text-white":"text-zinc-500"}`}>
+          ใส่เป็นหุ้น
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-zinc-400 mb-1 block">
+            {dcaMode==="amount"?"เงินที่ซื้อเพิ่ม ($)":"จำนวนหุ้น"}
+          </label>
+          <input type="number" inputMode="decimal" step="any"
+            value={dcaAmount} placeholder={dcaMode==="amount"?"100":"5"}
+            onChange={e=>setDcaAmount(e.target.value)}
+            className="w-full bg-[#111113] border border-yellow-400/40 focus:border-yellow-400 rounded-lg px-3 py-2.5 text-sm outline-none font-mono text-yellow-400 font-bold"/>
+        </div>
+        <div>
+          <label className="text-xs text-zinc-400 mb-1 block">ราคาที่ซื้อ ($)</label>
+          <input type="number" inputMode="decimal" step="any"
+            value={dcaPrice}
+            onChange={e=>setDcaPrice(e.target.value)}
+            className="w-full bg-[#111113] border border-zinc-700 focus:border-blue-400 rounded-lg px-3 py-2.5 text-sm outline-none font-mono"/>
+        </div>
+      </div>
+
+      {addAmt > 0 ? (
+        <div className="bg-gradient-to-br from-zinc-800/60 to-zinc-900/60 border border-zinc-700/50 rounded-xl p-4 space-y-2.5">
+          <p className="text-xs font-black text-zinc-400 uppercase tracking-wider mb-3">ผลลัพธ์หลัง DCA</p>
+          <div className="flex justify-between"><span className="text-xs text-zinc-500">ต้นทุนเฉลี่ยใหม่</span><span className="font-black text-base text-yellow-400">${newCost.toFixed(2)}</span></div>
+          <div className="flex justify-between"><span className="text-xs text-zinc-500">จำนวนหุ้นทั้งหมด</span><span className="font-bold text-sm text-white">{newSh.toFixed(4)}</span></div>
+          <div className="flex justify-between"><span className="text-xs text-zinc-500">ต้นทุนรวมใหม่</span><span className="font-bold text-sm text-zinc-300">${(newSh*newCost).toFixed(2)}</span></div>
+          <div className="flex justify-between"><span className="text-xs text-zinc-500">สัดส่วนในพอร์ต</span><span className="font-bold text-sm text-purple-400">{newAlloc.toFixed(1)}%</span></div>
+          <div className={`flex items-center gap-2 pt-2 border-t border-zinc-700/50 text-xs font-bold ${newCost<p.avgCost?"text-emerald-400":"text-red-400"}`}>
+            <span>{newCost<p.avgCost?"▼ ต้นทุนลดลง":"▲ ต้นทุนเพิ่มขึ้น"}</span>
+            <span>${Math.abs(newCost-p.avgCost).toFixed(2)} ({Math.abs((newCost-p.avgCost)/p.avgCost*100).toFixed(2)}%)</span>
+          </div>
+        </div>
+      ) : (
+        <p className="text-center text-zinc-600 text-xs py-2">ใส่จำนวนเงินหรือหุ้นที่จะซื้อเพิ่มครับ</p>
+      )}
+    </div>
+  );
+}
+
 // ─── S/R Matrix Component ─────────────────────────────────────────────────────
 function SRMatrix({ invest, srS, srR }: { invest: string; srS: string[]; srR: string[] }) {
   const inv = parseFloat(invest) || 0;
@@ -1006,79 +1086,18 @@ export default function PortfolioPage() {
             )}
 
             {/* DCA Calculator */}
-            {modalTab === "dca" && (()=>{
-              const p = positions.find(x => x.ticker === formTicker);
-              if (!p) return <p className="text-zinc-500 text-sm text-center py-4">เลือกหุ้นก่อนครับ</p>;
-              const currentPrice = p.currentPrice || p.avgCost;
-              const addAmt = parseFloat(dcaAmount) || 0;
-              const buyPx  = parseFloat(dcaPrice)  || currentPrice;
-              const addSh  = dcaMode === "amount" ? addAmt / buyPx : addAmt;
-              const newSh  = p.shares + addSh;
-              const newCost= newSh > 0 ? (p.shares*p.avgCost + (dcaMode==="amount"?addAmt:addSh*buyPx)) / newSh : 0;
-              const newAlloc= marketValue>0 ? newSh*currentPrice/(marketValue+(dcaMode==="amount"?addAmt:addSh*buyPx))*100 : 0;
-              return (
-                <div className="space-y-4">
-                  <div className="bg-zinc-800/40 rounded-xl p-3 text-xs">
-                    <p className="text-zinc-400 font-bold mb-2">{p.ticker} — ปัจจุบัน</p>
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div><p className="text-zinc-600">ถือ</p><p className="font-bold">{p.shares.toFixed(4)}</p></div>
-                      <div><p className="text-zinc-600">Avg Cost</p><p className="font-bold text-yellow-400">${p.avgCost.toFixed(2)}</p></div>
-                      <div><p className="text-zinc-600">ราคาตอนนี้</p><p className="font-bold">${currentPrice.toFixed(2)}</p></div>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-1 bg-zinc-800/50 p-1 rounded-lg">
-                    <button type="button" onClick={()=>setDcaMode("amount")}
-                      className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-colors ${dcaMode==="amount"?"bg-zinc-700 text-white":"text-zinc-500"}`}>
-                      ใส่เป็น $
-                    </button>
-                    <button type="button" onClick={()=>setDcaMode("shares")}
-                      className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-colors ${dcaMode==="shares"?"bg-zinc-700 text-white":"text-zinc-500"}`}>
-                      ใส่เป็นหุ้น
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs text-zinc-400 mb-1 block">
-                        {dcaMode==="amount"?"เงินที่ซื้อเพิ่ม ($)":"จำนวนหุ้น"}
-                      </label>
-                      <input
-                        type="number" inputMode="decimal" step="any"
-                        value={dcaAmount} placeholder={dcaMode==="amount"?"100":"5"}
-                        onChange={e=>setDcaAmount(e.target.value)}
-                        className="w-full bg-[#111113] border border-yellow-400/40 focus:border-yellow-400 rounded-lg px-3 py-2.5 text-sm outline-none font-mono text-yellow-400 font-bold"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-zinc-400 mb-1 block">ราคาที่ซื้อ ($)</label>
-                      <input
-                        type="number" inputMode="decimal" step="any"
-                        value={dcaPrice}
-                        onChange={e=>setDcaPrice(e.target.value)}
-                        className="w-full bg-[#111113] border border-zinc-700 focus:border-blue-400 rounded-lg px-3 py-2.5 text-sm outline-none font-mono"
-                      />
-                    </div>
-                  </div>
-
-                  {addAmt > 0 ? (
-                    <div className="bg-gradient-to-br from-zinc-800/60 to-zinc-900/60 border border-zinc-700/50 rounded-xl p-4 space-y-2.5">
-                      <p className="text-xs font-black text-zinc-400 uppercase tracking-wider mb-3">ผลลัพธ์หลัง DCA</p>
-                      <div className="flex justify-between"><span className="text-xs text-zinc-500">ต้นทุนเฉลี่ยใหม่</span><span className="font-black text-base text-yellow-400">${newCost.toFixed(2)}</span></div>
-                      <div className="flex justify-between"><span className="text-xs text-zinc-500">จำนวนหุ้นทั้งหมด</span><span className="font-bold text-sm text-white">{newSh.toFixed(4)}</span></div>
-                      <div className="flex justify-between"><span className="text-xs text-zinc-500">ต้นทุนรวมใหม่</span><span className="font-bold text-sm text-zinc-300">${(newSh*newCost).toFixed(2)}</span></div>
-                      <div className="flex justify-between"><span className="text-xs text-zinc-500">สัดส่วนในพอร์ต</span><span className="font-bold text-sm text-purple-400">{newAlloc.toFixed(1)}%</span></div>
-                      <div className={`flex items-center gap-2 pt-2 border-t border-zinc-700/50 text-xs font-bold ${newCost<p.avgCost?"text-emerald-400":"text-red-400"}`}>
-                        <span>{newCost<p.avgCost?"▼ ต้นทุนลดลง":"▲ ต้นทุนเพิ่มขึ้น"}</span>
-                        <span>${Math.abs(newCost-p.avgCost).toFixed(2)} ({Math.abs((newCost-p.avgCost)/p.avgCost*100).toFixed(2)}%)</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-center text-zinc-600 text-xs py-2">ใส่จำนวนเงินหรือหุ้นที่จะซื้อเพิ่มครับ</p>
-                  )}
-                </div>
-              );
-            })()}
+            {modalTab === "dca" && (
+              positions.find(x=>x.ticker===formTicker)
+                ? <DCACalculator
+                    p={positions.find(x=>x.ticker===formTicker)!}
+                    dcaAmount={dcaAmount} setDcaAmount={setDcaAmount}
+                    dcaPrice={dcaPrice}   setDcaPrice={setDcaPrice}
+                    dcaMode={dcaMode}     setDcaMode={setDcaMode}
+                    marketValue={marketValue}
+                    fmtMoney={fmtMoney}
+                  />
+                : <p className="text-zinc-500 text-sm text-center py-4">เลือกหุ้นก่อนครับ</p>
+            )}
 
             {/* S/R Matrix */}
             {(modalTab as any) === "sr" && (
