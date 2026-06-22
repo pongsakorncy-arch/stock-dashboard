@@ -95,6 +95,11 @@ export default function PortfolioPage() {
   const [dcaPrice,  setDcaPrice]  = useState("");
   const [dcaMode,   setDcaMode]   = useState<"amount"|"shares">("amount");
 
+  // S/R Matrix states
+  const [srInvest, setSrInvest] = useState("");
+  const [srS, setSrS] = useState(["","","","",""]);
+  const [srR, setSrR] = useState(["","","",""]);
+
   // Donut states
   const [hoveredIdx,   setHoveredIdx]   = useState<number|null>(null);
   const [donutMounted, setDonutMounted] = useState(false);
@@ -868,15 +873,19 @@ export default function PortfolioPage() {
 
             {!editingTicker && (
               <>
-                {/* Main tabs: Trade / DCA */}
+                {/* Main tabs: Trade / DCA / SR */}
                 <div className="flex gap-1 mb-4 bg-zinc-800/50 p-1 rounded-xl">
-                  <button onClick={()=>setModalTab("trade")}
-                    className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${modalTab==="trade"?"bg-zinc-700 text-white":"text-zinc-500"}`}>
+                  <button type="button" onClick={()=>setModalTab("trade")}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors ${modalTab==="trade"?"bg-zinc-700 text-white":"text-zinc-500"}`}>
                     💹 ซื้อ/ขาย
                   </button>
-                  <button onClick={()=>setModalTab("dca")}
-                    className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${modalTab==="dca"?"bg-yellow-400/20 text-yellow-400 border border-yellow-400/30":"text-zinc-500"}`}>
-                    📊 คำนวณ DCA
+                  <button type="button" onClick={()=>setModalTab("dca")}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors ${modalTab==="dca"?"bg-yellow-400/20 text-yellow-400":"text-zinc-500"}`}>
+                    📊 DCA
+                  </button>
+                  <button type="button" onClick={()=>setModalTab("sr" as any)}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-colors ${modalTab==="sr"?"bg-purple-400/20 text-purple-400":"text-zinc-500"}`}>
+                    🎯 S/R
                   </button>
                 </div>
 
@@ -966,6 +975,105 @@ export default function PortfolioPage() {
                 </div>
               );
             })()}
+
+            {/* S/R Matrix */}
+            {(modalTab as any) === "sr" && (
+              <div className="space-y-3">
+                {/* Investment amount */}
+                <div>
+                  <label className="text-xs text-zinc-400 mb-1 block">💰 เงินลงทุน ($)</label>
+                  <input type="number" inputMode="decimal" step="any"
+                    value={srInvest} placeholder="1000"
+                    onChange={e=>setSrInvest(e.target.value)}
+                    className="w-full bg-[#111113] border border-yellow-400/40 focus:border-yellow-400 rounded-lg px-3 py-2 text-sm outline-none font-mono text-yellow-400 font-black"/>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Support levels */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-black text-emerald-400">📗 แนวรับ (ซื้อ)</p>
+                    {["S1","S2","S3","S4","S5"].map((label,i)=>(
+                      <div key={label} className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-black text-emerald-400 w-5">{label}</span>
+                        <input type="number" inputMode="decimal" step="any"
+                          value={srS[i]} placeholder="ราคา"
+                          onChange={e=>{const n=[...srS];n[i]=e.target.value;setSrS(n);}}
+                          className="flex-1 bg-[#111113] border border-emerald-900/50 focus:border-emerald-400 rounded-lg px-2 py-1.5 text-xs outline-none font-mono"/>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Resistance levels */}
+                  <div className="space-y-2">
+                    <p className="text-xs font-black text-red-400">📕 แนวต้าน (ขาย)</p>
+                    {["R1","R2","R3","R4"].map((label,i)=>(
+                      <div key={label} className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-black text-red-400 w-5">{label}</span>
+                        <input type="number" inputMode="decimal" step="any"
+                          value={srR[i]} placeholder="ราคา"
+                          onChange={e=>{const n=[...srR];n[i]=e.target.value;setSrR(n);}}
+                          className="flex-1 bg-[#111113] border border-red-900/50 focus:border-red-400 rounded-lg px-2 py-1.5 text-xs outline-none font-mono"/>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Matrix Table */}
+                {srInvest && srS.some(s=>s) && srR.some(r=>r) && (()=>{
+                  const invest = parseFloat(srInvest)||0;
+                  const supports = srS.map(s=>parseFloat(s)||0).filter(s=>s>0);
+                  const resists  = srR.map(r=>parseFloat(r)||0).filter(r=>r>0);
+                  if (!supports.length || !resists.length) return null;
+                  return (
+                    <div className="overflow-x-auto rounded-xl border border-zinc-800">
+                      <table className="w-full text-[10px]">
+                        <thead>
+                          <tr className="bg-[#111113]">
+                            <th className="px-2 py-2 text-yellow-400 font-black text-left">ซื้อที่ \ ขายที่</th>
+                            {resists.map((r,i)=>(
+                              <th key={i} className="px-2 py-2 text-center">
+                                <p className="text-red-400 font-black">R{i+1}</p>
+                                <p className="text-zinc-400">${r.toFixed(2)}</p>
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {supports.map((s,si)=>(
+                            <tr key={si} className="border-t border-zinc-800">
+                              <td className="px-2 py-2 bg-[#111113]">
+                                <p className="text-emerald-400 font-black">S{si+1}</p>
+                                <p className="text-zinc-400">${s.toFixed(2)}</p>
+                              </td>
+                              {resists.map((r,ri)=>{
+                                const shares = invest / s;
+                                const pl = (r - s) * shares;
+                                const pct = ((r-s)/s)*100;
+                                const pos = pl >= 0;
+                                return (
+                                  <td key={ri} className={`px-2 py-2 text-center border-l border-zinc-800 ${pos?"bg-emerald-400/5":"bg-red-400/5"}`}>
+                                    <p className={`font-black ${pos?"text-emerald-400":"text-red-400"}`}>
+                                      {pos?"+":""}{pl<0?"-":""}{Math.abs(pl).toFixed(0)}$
+                                    </p>
+                                    <p className={`${pos?"text-emerald-600":"text-red-600"}`}>
+                                      ({pos?"+":""}{pct.toFixed(1)}%)
+                                    </p>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
+
+                {(!srInvest || (!srS.some(s=>s) && !srR.some(r=>r))) && (
+                  <p className="text-center text-zinc-600 text-xs py-2">ใส่เงินลงทุน + ราคา S/R แล้วตารางจะขึ้นอัตโนมัติครับ</p>
+                )}
+              </div>
+            )}
 
             {/* Trade Form */}
             {(modalTab === "trade" || editingTicker) && (
