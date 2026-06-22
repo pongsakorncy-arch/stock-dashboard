@@ -88,6 +88,7 @@ export default function PortfolioPage() {
 
   // Modal
   const [modal, setModal]         = useState<{ type: "buy"|"sell"|"edit"; ticker: string }|null>(null);
+  const [modalTab, setModalTab]     = useState<"trade"|"dca">("trade");
   const [mode, setMode]           = useState<TradeMode>("buy");
   const [formTicker, setFormTicker]   = useState("");
   const [formShares, setFormShares]   = useState("");
@@ -280,7 +281,7 @@ export default function PortfolioPage() {
   const openBuy = (ticker: string) => {
     const p = positions.find(x=>x.ticker===ticker);
     setMode("buy"); setFormTicker(ticker); setFormShares(""); setFormPrice(p?String(p.currentPrice||p.avgCost):"");
-    setFormName(p?.name||""); setFormAlloc(""); setFormTarget(""); setEditingTicker(null); setFormError("");
+    setFormName(p?.name||""); setFormAlloc(""); setFormTarget(""); setEditingTicker(null); setFormError(""); setModalTab("trade");
     setModal({ type:"buy", ticker });
   };
   const openSell = (ticker: string) => {
@@ -853,14 +854,138 @@ export default function PortfolioPage() {
             </div>
 
             {!editingTicker && (
-              <div className="flex gap-2 mb-4">
-                <button onClick={()=>setMode("buy")}
-                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${mode==="buy"?"bg-emerald-500 text-black":"bg-zinc-800 text-zinc-400"}`}>ซื้อ</button>
-                <button onClick={()=>setMode("sell")}
-                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${mode==="sell"?"bg-blue-500 text-white":"bg-zinc-800 text-zinc-400"}`}>ขาย</button>
-              </div>
+              <>
+                {/* Main tabs: Trade / DCA */}
+                <div className="flex gap-1 mb-4 bg-zinc-800/50 p-1 rounded-xl">
+                  <button onClick={()=>setModalTab("trade")}
+                    className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${modalTab==="trade"?"bg-zinc-700 text-white":"text-zinc-500"}`}>
+                    💹 ซื้อ/ขาย
+                  </button>
+                  <button onClick={()=>setModalTab("dca")}
+                    className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${modalTab==="dca"?"bg-yellow-400/20 text-yellow-400 border border-yellow-400/30":"text-zinc-500"}`}>
+                    📊 คำนวณ DCA
+                  </button>
+                </div>
+
+                {/* Sub tabs for trade mode */}
+                {modalTab === "trade" && (
+                  <div className="flex gap-2 mb-4">
+                    <button onClick={()=>setMode("buy")}
+                      className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${mode==="buy"?"bg-emerald-500 text-black":"bg-zinc-800 text-zinc-400"}`}>ซื้อ</button>
+                    <button onClick={()=>setMode("sell")}
+                      className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${mode==="sell"?"bg-blue-500 text-white":"bg-zinc-800 text-zinc-400"}`}>ขาย</button>
+                  </div>
+                )}
+              </>
             )}
 
+            {/* DCA Calculator */}
+            {modalTab === "dca" && (() => {
+              const p = positions.find(x => x.ticker === formTicker);
+              if (!p) return <p className="text-zinc-500 text-sm text-center py-4">เลือกหุ้นก่อนครับ</p>;
+
+              const currentPrice = p.currentPrice || p.avgCost;
+              const currentShares = p.shares;
+              const currentCost = p.shares * p.avgCost;
+              const currentAlloc = marketValue > 0 ? (p.shares * currentPrice / marketValue) * 100 : 0;
+
+              const [dcaAmount, setDcaAmount] = React.useState("");
+              const [dcaPrice, setDcaPrice] = React.useState(String(currentPrice.toFixed(2)));
+              const [dcaMode, setDcaMode] = React.useState<"amount"|"shares">("amount");
+
+              const addAmount = parseFloat(dcaAmount) || 0;
+              const buyPrice = parseFloat(dcaPrice) || currentPrice;
+              const addShares = dcaMode === "amount" ? (addAmount / buyPrice) : addAmount;
+              const newShares = currentShares + addShares;
+              const newCost = (currentCost + (dcaMode === "amount" ? addAmount : addShares * buyPrice)) / newShares;
+              const newAlloc = marketValue > 0 ? (newShares * currentPrice / (marketValue + (dcaMode === "amount" ? addAmount : addShares * buyPrice))) * 100 : 0;
+              const breakeven = newCost;
+
+              return (
+                <div className="space-y-4">
+                  {/* Current position */}
+                  <div className="bg-zinc-800/40 rounded-xl p-3 text-xs space-y-1.5">
+                    <p className="text-zinc-400 font-bold mb-2">{p.ticker} — ตำแหน่งปัจจุบัน</p>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div>
+                        <p className="text-zinc-600">ถือ</p>
+                        <p className="font-bold text-white">{currentShares.toFixed(4)}</p>
+                      </div>
+                      <div>
+                        <p className="text-zinc-600">Avg Cost</p>
+                        <p className="font-bold text-yellow-400">{money(p.avgCost)}</p>
+                      </div>
+                      <div>
+                        <p className="text-zinc-600">ราคาปัจจุบัน</p>
+                        <p className="font-bold text-white">{money(currentPrice)}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Input mode toggle */}
+                  <div className="flex gap-1 bg-zinc-800/50 p-1 rounded-lg">
+                    <button onClick={()=>setDcaMode("amount")}
+                      className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-colors ${dcaMode==="amount"?"bg-zinc-700 text-white":"text-zinc-500"}`}>
+                      ใส่เป็น $ จำนวนเงิน
+                    </button>
+                    <button onClick={()=>setDcaMode("shares")}
+                      className={`flex-1 py-1.5 rounded-md text-xs font-bold transition-colors ${dcaMode==="shares"?"bg-zinc-700 text-white":"text-zinc-500"}`}>
+                      ใส่เป็นจำนวนหุ้น
+                    </button>
+                  </div>
+
+                  {/* Inputs */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-zinc-400 mb-1 block">
+                        {dcaMode==="amount" ? "เงินที่จะซื้อเพิ่ม ($)" : "จำนวนหุ้นที่จะซื้อ"}
+                      </label>
+                      <input type="number" step="any" value={dcaAmount} placeholder={dcaMode==="amount"?"100":"5"}
+                        onChange={e=>setDcaAmount(e.target.value)}
+                        className="w-full bg-[#111113] border border-zinc-700 focus:border-yellow-400 rounded-lg px-3 py-2.5 text-sm outline-none font-mono text-yellow-400 font-bold"/>
+                    </div>
+                    <div>
+                      <label className="text-xs text-zinc-400 mb-1 block">ราคาที่ซื้อ ($)</label>
+                      <input type="number" step="any" value={dcaPrice}
+                        onChange={e=>setDcaPrice(e.target.value)}
+                        className="w-full bg-[#111113] border border-zinc-700 focus:border-blue-400 rounded-lg px-3 py-2.5 text-sm outline-none font-mono"/>
+                    </div>
+                  </div>
+
+                  {/* Result */}
+                  {addAmount > 0 && (
+                    <div className="bg-gradient-to-br from-zinc-800/60 to-zinc-900/60 border border-zinc-700/50 rounded-xl p-4 space-y-2.5">
+                      <p className="text-xs font-black text-zinc-400 uppercase tracking-wider mb-3">ผลลัพธ์หลัง DCA</p>
+                      {[
+                        { label: "ต้นทุนเฉลี่ยใหม่", value: money(newCost), color: "text-yellow-400", big: true },
+                        { label: "จำนวนหุ้นทั้งหมด", value: newShares.toFixed(4) + " หุ้น", color: "text-white" },
+                        { label: "ต้นทุนรวมใหม่", value: money(newShares * newCost), color: "text-zinc-300" },
+                        { label: "สัดส่วนในพอร์ต", value: newAlloc.toFixed(1) + "%", color: "text-purple-400" },
+                        { label: "Breakeven", value: money(breakeven), color: "text-emerald-400" },
+                      ].map(item => (
+                        <div key={item.label} className="flex items-center justify-between">
+                          <span className="text-xs text-zinc-500">{item.label}</span>
+                          <span className={`font-black ${item.big ? "text-base" : "text-sm"} ${item.color}`}>{item.value}</span>
+                        </div>
+                      ))}
+
+                      {/* Avg cost change indicator */}
+                      <div className={`flex items-center gap-2 pt-2 border-t border-zinc-700/50 text-xs font-bold ${newCost < p.avgCost ? "text-emerald-400" : "text-red-400"}`}>
+                        <span>{newCost < p.avgCost ? "▼ ต้นทุนลดลง" : "▲ ต้นทุนเพิ่มขึ้น"}</span>
+                        <span>{money(Math.abs(newCost - p.avgCost))} ({Math.abs(((newCost - p.avgCost)/p.avgCost)*100).toFixed(2)}%)</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {!addAmount && (
+                    <p className="text-center text-zinc-600 text-xs py-2">ใส่จำนวนเงินหรือหุ้นที่จะซื้อเพิ่มครับ</p>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* Trade Form */}
+            {(modalTab === "trade" || editingTicker) && (
             <div className="flex flex-col gap-3">
               <div>
                 <label className="text-xs text-zinc-400 mb-1 block">Ticker</label>
@@ -933,6 +1058,7 @@ export default function PortfolioPage() {
                 {editingTicker ? "✓ บันทึกการแก้ไข" : mode==="buy" ? "✓ บันทึกการซื้อ" : "✓ บันทึกการขาย"}
               </button>
             </div>
+            )}
           </div>
         </div>
       )}
