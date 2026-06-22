@@ -100,8 +100,8 @@ export default function PortfolioPage() {
 
   // S/R Matrix states
   const [srInvest, setSrInvest] = useState("");
-  const [srS, setSrS] = useState(["","","","",""]);
-  const [srR, setSrR] = useState(["","","",""]);
+  const [srS, setSrS] = useState(["","",""]);
+  const [srR, setSrR] = useState(["","",""]);
 
   // Donut states
   const [hoveredIdx,   setHoveredIdx]   = useState<number|null>(null);
@@ -1009,6 +1009,23 @@ export default function PortfolioPage() {
             {/* S/R Matrix */}
             {(modalTab as any) === "sr" && (
               <div className="space-y-3">
+                {/* Current position info — เหมือน DCA */}
+                {(()=>{
+                  const p = positions.find(x=>x.ticker===formTicker);
+                  if (!p) return null;
+                  const currentPrice = p.currentPrice||p.avgCost;
+                  return (
+                    <div className="bg-zinc-800/40 rounded-xl p-3 text-xs">
+                      <p className="text-zinc-400 font-bold mb-2">{p.ticker} — ปัจจุบัน</p>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div><p className="text-zinc-600">ถือ</p><p className="font-bold">{p.shares.toFixed(4)}</p></div>
+                        <div><p className="text-zinc-600">Avg Cost</p><p className="font-bold text-yellow-400">${p.avgCost.toFixed(2)}</p></div>
+                        <div><p className="text-zinc-600">ราคาตอนนี้</p><p className="font-bold">${currentPrice.toFixed(2)}</p></div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Investment amount */}
                 <div>
                   <label className="text-xs text-zinc-400 mb-1 block">💰 เงินลงทุน ($)</label>
@@ -1019,10 +1036,10 @@ export default function PortfolioPage() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  {/* Support levels */}
+                  {/* Support levels — แค่ 3 */}
                   <div className="space-y-2">
                     <p className="text-xs font-black text-emerald-400">📗 แนวรับ (ซื้อ)</p>
-                    {["S1","S2","S3","S4","S5"].map((label,i)=>(
+                    {["S1","S2","S3"].map((label,i)=>(
                       <div key={label} className="flex items-center gap-1.5">
                         <span className="text-[10px] font-black text-emerald-400 w-5">{label}</span>
                         <input type="number" inputMode="decimal" step="any"
@@ -1033,10 +1050,10 @@ export default function PortfolioPage() {
                     ))}
                   </div>
 
-                  {/* Resistance levels */}
+                  {/* Resistance levels — แค่ 3 */}
                   <div className="space-y-2">
                     <p className="text-xs font-black text-red-400">📕 แนวต้าน (ขาย)</p>
-                    {["R1","R2","R3","R4"].map((label,i)=>(
+                    {["R1","R2","R3"].map((label,i)=>(
                       <div key={label} className="flex items-center gap-1.5">
                         <span className="text-[10px] font-black text-red-400 w-5">{label}</span>
                         <input type="number" inputMode="decimal" step="any"
