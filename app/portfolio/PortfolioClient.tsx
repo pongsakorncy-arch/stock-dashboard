@@ -1,6 +1,11 @@
 "use client";
 
-
+const COLORS = [
+  "#4f7df3","#69c36b","#f0aa4f","#d43d52","#9650e6",
+  "#3b82f6","#5fc46b","#f59e0b","#ef4444","#8b5cf6",
+  "#06b6d4","#10b981","#f97316","#ec4899","#14b8a6",
+  "#a78bfa","#fb923c","#34d399","#f472b6","#60a5fa",
+];
 
 // ─── Donut Chart Component ────────────────────────────────────────────────────
 const DONUT_COLORS = [
@@ -109,12 +114,6 @@ function PortfolioRow({ p, idx, marketValue, plMode, fmtMoney, openBuy, openSell
   openBuy: (t:string)=>void; openSell: (t:string)=>void;
   openEdit: (t:string)=>void; deletePosition: (t:string)=>void;
 }) {
-  const COLORS = [
-    "#4f7df3","#69c36b","#f0aa4f","#d43d52","#9650e6",
-    "#3b82f6","#5fc46b","#f59e0b","#ef4444","#8b5cf6",
-    "#06b6d4","#10b981","#f97316","#ec4899","#14b8a6",
-    "#a78bfa","#fb923c","#34d399","#f472b6","#60a5fa",
-  ];
   const price    = p.currentPrice || p.avgCost;
   const val      = p.shares * price;
   const cost     = p.shares * p.avgCost;
@@ -406,13 +405,6 @@ const INITIAL_PORTFOLIO: Position[] = [
   { ticker: "RKLB",  name: "Rocket Lab Corp",        shares: 5.4644484,  avgCost: 91.36,  currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
   { ticker: "CRWD",  name: "คราวด์สไตรก์",           shares: 0.8078283,  avgCost: 371.37, currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
   { ticker: "TMDX",  name: "TransMedics Group Inc",  shares: 5.6205782,  avgCost: 98.46,  currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
-];
-
-const COLORS = [
-  "#4f7df3","#69c36b","#f0aa4f","#d43d52","#9650e6",
-  "#3b82f6","#5fc46b","#f59e0b","#ef4444","#8b5cf6",
-  "#06b6d4","#10b981","#f97316","#ec4899","#14b8a6",
-  "#a78bfa","#fb923c","#34d399","#f472b6","#60a5fa",
 ];
 
 const money = (v: number) =>
