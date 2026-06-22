@@ -103,6 +103,28 @@ export default function PortfolioPage() {
   const [srS, setSrS] = useState(["","",""]);
   const [srR, setSrR] = useState(["","",""]);
 
+  // Load SR data from localStorage when ticker changes
+  useEffect(() => {
+    if (!formTicker) return;
+    try {
+      const saved = localStorage.getItem(`sr_${formTicker}`);
+      if (saved) {
+        const d = JSON.parse(saved);
+        if (d.invest) setSrInvest(d.invest);
+        if (d.s) setSrS(d.s);
+        if (d.r) setSrR(d.r);
+      } else {
+        setSrInvest(""); setSrS(["","",""]); setSrR(["","",""]);
+      }
+    } catch {}
+  }, [formTicker]);
+
+  // Save SR to localStorage
+  const saveSR = (invest: string, s: string[], r: string[]) => {
+    if (!formTicker) return;
+    localStorage.setItem(`sr_${formTicker}`, JSON.stringify({ invest, s, r }));
+  };
+
   // Donut states
   const [hoveredIdx,   setHoveredIdx]   = useState<number|null>(null);
   const [donutMounted, setDonutMounted] = useState(false);
@@ -1031,7 +1053,7 @@ export default function PortfolioPage() {
                   <label className="text-xs text-zinc-400 mb-1 block">💰 เงินลงทุน ($)</label>
                   <input type="number" inputMode="decimal" step="any"
                     value={srInvest} placeholder="1000"
-                    onChange={e=>setSrInvest(e.target.value)}
+                    onChange={e=>{ setSrInvest(e.target.value); saveSR(e.target.value, srS, srR); }}
                     className="w-full bg-[#111113] border border-yellow-400/40 focus:border-yellow-400 rounded-lg px-3 py-2 text-sm outline-none font-mono text-yellow-400 font-black"/>
                 </div>
 
@@ -1044,7 +1066,7 @@ export default function PortfolioPage() {
                         <span className="text-[10px] font-black text-emerald-400 w-5">{label}</span>
                         <input type="number" inputMode="decimal" step="any"
                           value={srS[i]} placeholder="ราคา"
-                          onChange={e=>{const n=[...srS];n[i]=e.target.value;setSrS(n);}}
+                          onChange={e=>{const n=[...srS];n[i]=e.target.value;setSrS(n);saveSR(srInvest,n,srR);}}
                           className="flex-1 bg-[#111113] border border-emerald-900/50 focus:border-emerald-400 rounded-lg px-2 py-1.5 text-xs outline-none font-mono"/>
                       </div>
                     ))}
@@ -1058,12 +1080,21 @@ export default function PortfolioPage() {
                         <span className="text-[10px] font-black text-red-400 w-5">{label}</span>
                         <input type="number" inputMode="decimal" step="any"
                           value={srR[i]} placeholder="ราคา"
-                          onChange={e=>{const n=[...srR];n[i]=e.target.value;setSrR(n);}}
+                          onChange={e=>{const n=[...srR];n[i]=e.target.value;setSrR(n);saveSR(srInvest,srS,n);}}
                           className="flex-1 bg-[#111113] border border-red-900/50 focus:border-red-400 rounded-lg px-2 py-1.5 text-xs outline-none font-mono"/>
                       </div>
                     ))}
                   </div>
                 </div>
+
+                {/* Clear button */}
+                {(srInvest||srS.some(s=>s)||srR.some(r=>r)) && (
+                  <button type="button"
+                    onClick={()=>{ setSrInvest(""); setSrS(["","",""]); setSrR(["","",""]); if(formTicker) localStorage.removeItem(`sr_${formTicker}`); }}
+                    className="w-full py-1.5 text-xs text-zinc-600 hover:text-red-400 border border-zinc-800 hover:border-red-400/30 rounded-lg transition-colors">
+                    🗑 ล้างข้อมูล S/R นี้
+                  </button>
+                )}
 
                 {/* Matrix Table */}
                 {srInvest && srS.some(s=>s) && srR.some(r=>r) && (()=>{
