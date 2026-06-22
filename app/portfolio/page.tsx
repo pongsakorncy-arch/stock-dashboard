@@ -106,6 +106,135 @@ function DonutChart({
   );
 }
 
+
+// ─── Portfolio Row Component ──────────────────────────────────────────────────
+function PortfolioRow({ p, idx, marketValue, plMode, fmtMoney, openBuy, openSell, openEdit, deletePosition }: {
+  p: any; idx: number; marketValue: number; plMode: string;
+  fmtMoney: (v:number)=>string;
+  openBuy: (t:string)=>void; openSell: (t:string)=>void;
+  openEdit: (t:string)=>void; deletePosition: (t:string)=>void;
+}) {
+  const COLORS = [
+    "#4f7df3","#69c36b","#f0aa4f","#d43d52","#9650e6",
+    "#3b82f6","#5fc46b","#f59e0b","#ef4444","#8b5cf6",
+    "#06b6d4","#10b981","#f97316","#ec4899","#14b8a6",
+    "#a78bfa","#fb923c","#34d399","#f472b6","#60a5fa",
+  ];
+  const price    = p.currentPrice || p.avgCost;
+  const val      = p.shares * price;
+  const cost     = p.shares * p.avgCost;
+  const pl       = val - cost;
+  const plPct    = cost > 0 ? (pl/cost)*100 : 0;
+  const allocNow = marketValue > 0 ? (val/marketValue)*100 : 0;
+  const targetPct = p.targetAlloc || 0;
+  const dailyPL  = p.prevClose&&p.currentPrice ? p.shares*(p.currentPrice-p.prevClose) : null;
+  const dailyPct = p.prevClose&&p.currentPrice ? ((p.currentPrice-p.prevClose)/p.prevClose)*100 : null;
+  const isPos    = pl >= 0;
+  const isDailyPos = dailyPL !== null ? dailyPL >= 0 : null;
+  const allocDiff = targetPct > 0 ? allocNow - targetPct : null;
+
+  return (
+    <tr className="row-hover border-t border-zinc-800 transition-colors">
+      <td className="px-3 py-3">
+        <div className="flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: COLORS[idx%COLORS.length] }}/>
+          <div>
+            <p className="font-bold text-sm">{p.ticker}</p>
+            <p className="text-xs text-zinc-500 truncate max-w-[100px]">{p.name}</p>
+          </div>
+        </div>
+      </td>
+      <td className="px-3 py-3 text-sm text-yellow-300 font-mono hidden lg:table-cell">{p.shares.toFixed(4)}</td>
+      <td className="px-3 py-3 text-sm font-medium hidden lg:table-cell">{fmtMoney(p.avgCost)}</td>
+      <td className="px-3 py-3 text-sm text-zinc-300 hidden lg:table-cell">{fmtMoney(price)}</td>
+      <td className="px-3 py-3 text-sm font-bold">{fmtMoney(val)}</td>
+      <td className="px-3 py-3 min-w-[140px]">
+        {plMode === "total" ? (
+          <>
+            <p className={`text-sm font-bold count-up ${isPos?"text-emerald-400 glow-green":"text-red-400 glow-red"}`}>
+              {isPos?"+":""}{fmtMoney(pl)}
+            </p>
+            <p className={`text-xs ${isPos?"text-emerald-400":"text-red-400"}`}>
+              {isPos?"▲":"▼"} {Math.abs(plPct).toFixed(2)}%
+            </p>
+            {p.extType!=="none" && p.extPrice>0 && (
+              <div className="flex items-center gap-1 mt-0.5">
+                <span className={`text-[9px] font-black px-1 py-0.5 rounded ${p.extType==="pre"?"bg-yellow-400/20 text-yellow-400":"bg-purple-400/20 text-purple-400"}`}>
+                  {p.extType==="pre"?"PRE":"AH"}
+                </span>
+                <span className={`text-[9px] font-bold ${p.extPct>=0?"text-emerald-400":"text-red-400"}`}>
+                  {p.extPct>=0?"+":""}{p.extPct.toFixed(2)}%
+                </span>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {dailyPL !== null ? (
+              <>
+                <p className={`text-sm font-bold ${isDailyPos?"text-sky-400":"text-orange-400"}`}>
+                  {isDailyPos?"+":""}{fmtMoney(dailyPL)}
+                </p>
+                <p className={`text-xs ${isDailyPos?"text-sky-400":"text-orange-400"}`}>
+                  {isDailyPos?"▲":"▼"} {Math.abs(dailyPct!).toFixed(2)}%
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-zinc-600">— ไม่มีข้อมูล</p>
+            )}
+          </>
+        )}
+      </td>
+      <td className="px-3 py-3 min-w-[130px] hidden md:table-cell">
+        <div className="flex items-center justify-between mb-0.5">
+          <span className="text-[10px] text-zinc-600">ปัจจุบัน</span>
+          <span className="text-xs font-bold text-zinc-300">{allocNow.toFixed(1)}%</span>
+        </div>
+        <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden mb-1">
+          <div className="h-full rounded-full transition-all" style={{ width:`${Math.min(allocNow,100)}%`, background: COLORS[idx%COLORS.length] }}/>
+        </div>
+        {targetPct > 0 ? (
+          <>
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="text-[10px] text-zinc-600">เป้าหมาย</span>
+              <span className="text-[10px] font-bold text-purple-400">{targetPct.toFixed(1)}%</span>
+            </div>
+            <div className="h-1 bg-zinc-800 rounded-full overflow-hidden mb-1">
+              <div className="h-full rounded-full bg-purple-500/50" style={{ width:`${Math.min(targetPct,100)}%` }}/>
+            </div>
+            {allocDiff !== null && (
+              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                Math.abs(allocDiff) < 0.5 ? "bg-zinc-700 text-zinc-400" :
+                allocDiff > 0 ? "bg-orange-400/10 text-orange-400" : "bg-blue-400/10 text-blue-400"
+              }`}>
+                {allocDiff > 0 ? "▲ เกิน" : "▼ ขาด"} {Math.abs(allocDiff).toFixed(1)}%
+              </span>
+            )}
+          </>
+        ) : (
+          <p className="text-[10px] text-zinc-700">ยังไม่ตั้งเป้า</p>
+        )}
+      </td>
+      <td className="px-2 py-3">
+        <div className="flex items-center justify-center gap-1">
+          <button onClick={()=>openBuy(p.ticker)} className="ripple btn-press px-1.5 py-1 text-xs bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded font-bold transition-colors">
+            <span className="hidden sm:inline">ซื้อ</span><span className="sm:hidden">+</span>
+          </button>
+          <button onClick={()=>openSell(p.ticker)} className="ripple btn-press px-1.5 py-1 text-xs bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 rounded font-bold transition-colors">
+            <span className="hidden sm:inline">ขาย</span><span className="sm:hidden">-</span>
+          </button>
+          <button onClick={()=>openEdit(p.ticker)} className="ripple btn-press px-1.5 py-1 text-xs bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 rounded font-bold transition-colors">
+            <span className="hidden sm:inline">แก้</span><span className="sm:hidden">✎</span>
+          </button>
+          <button onClick={()=>deletePosition(p.ticker)} className="px-1.5 py-1 text-xs bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded font-bold transition-colors">
+            <span className="hidden sm:inline">ลบ</span><span className="sm:hidden">✕</span>
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 // ─── DCA Calculator Component ─────────────────────────────────────────────────
 function DCACalculator({
   p, dcaAmount, setDcaAmount, dcaPrice, setDcaPrice, dcaMode, setDcaMode, marketValue, fmtMoney
@@ -887,22 +1016,11 @@ export default function PortfolioPage() {
                 </tr>
               </thead>
               <tbody>
-                {sortedPositions.map((p, idx) => {
-                  const price    = p.currentPrice || p.avgCost;
-                  const val      = p.shares * price;
-                  const cost     = p.shares * p.avgCost;
-                  const pl       = val - cost;
-                  const plPct    = cost > 0 ? (pl/cost)*100 : 0;
-                  const allocNow = marketValue > 0 ? (val/marketValue)*100 : 0;
-                  const targetPct = p.targetAlloc || 0;
-                  const dailyPL  = p.prevClose&&p.currentPrice ? p.shares*(p.currentPrice-p.prevClose) : null;
-                  const dailyPct = p.prevClose&&p.currentPrice ? ((p.currentPrice-p.prevClose)/p.prevClose)*100 : null;
-                  const isPos    = pl >= 0;
-                  const isDailyPos = dailyPL !== null ? dailyPL >= 0 : null;
-                  // Alloc diff: positive = ถือเกินเป้า, negative = ถือน้อยกว่าเป้า
-                  const allocDiff = targetPct > 0 ? allocNow - targetPct : null;
-
-                  return (
+                {sortedPositions.map((p, idx) => (
+                  <PortfolioRow key={p.ticker} p={p} idx={idx} marketValue={marketValue}
+                    plMode={plMode} fmtMoney={fmtMoney}
+                    openBuy={openBuy} openSell={openSell} openEdit={openEdit} deletePosition={deletePosition}
+                  />
                     <tr key={p.ticker} className="row-hover border-t border-zinc-800 transition-colors">
 
                       {/* หุ้น */}
@@ -1031,8 +1149,7 @@ export default function PortfolioPage() {
                         </div>
                       </td>
                     </tr>
-                  );
-                })}
+                ))}
               </tbody>
             </table>
           </div>
