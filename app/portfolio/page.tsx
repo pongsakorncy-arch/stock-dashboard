@@ -2,6 +2,108 @@
 
 
 
+
+// ─── Donut Chart Component ────────────────────────────────────────────────────
+const DONUT_COLORS = [
+  "#4f7df3","#69c36b","#f0aa4f","#d43d52","#9650e6",
+  "#3b82f6","#5fc46b","#f59e0b","#ef4444","#8b5cf6",
+  "#06b6d4","#10b981","#f97316","#ec4899","#14b8a6",
+  "#a78bfa","#fb923c","#34d399","#f472b6","#60a5fa",
+];
+
+function DonutChart({
+  positions, marketValue, hoveredIdx, setHoveredIdx, donutMounted, fmtMoney
+}: {
+  positions: {ticker:string;shares:number;currentPrice:number;avgCost:number}[];
+  marketValue: number;
+  hoveredIdx: number|null;
+  setHoveredIdx: (v:number|null)=>void;
+  donutMounted: boolean;
+  fmtMoney: (v:number)=>string;
+}) {
+  const hovered = hoveredIdx !== null ? positions[hoveredIdx] : null;
+  const hoveredVal = hovered ? hovered.shares*(hovered.currentPrice||hovered.avgCost) : 0;
+  const hoveredPct = marketValue > 0 ? (hoveredVal/marketValue)*100 : 0;
+
+  let start = 0;
+  const slices = positions.map((p,i) => {
+    const val = p.shares*(p.currentPrice||p.avgCost);
+    const pct = marketValue > 0 ? (val/marketValue)*100 : 0;
+    const end = start + pct;
+    const color = DONUT_COLORS[i%DONUT_COLORS.length];
+    const isHovered = hoveredIdx === i;
+    const slice = { start, end, color, pct, isHovered };
+    start = end;
+    return slice;
+  });
+
+  const conicParts = slices.map(s => {
+    const color = s.isHovered ? s.color : (hoveredIdx !== null ? s.color+"88" : s.color);
+    return `${color} ${s.start.toFixed(2)}% ${s.end.toFixed(2)}%`;
+  }).join(", ");
+
+  return (
+    <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-4 flex items-center gap-4 fade-up-1">
+      <div className="relative flex-shrink-0 w-28 h-28">
+        <div className="w-28 h-28 rounded-full transition-all duration-300"
+          style={{
+            background: `conic-gradient(${conicParts})`,
+            transform: donutMounted ? "scale(1) rotate(-90deg)" : "scale(0.5) rotate(-90deg)",
+            opacity: donutMounted ? 1 : 0,
+            transition: "transform 0.8s cubic-bezier(0.34,1.56,0.64,1), opacity 0.5s ease",
+          }}/>
+        <div className="absolute inset-3 bg-[#18181b] rounded-full flex flex-col items-center justify-center transition-all duration-200">
+          {hovered ? (
+            <>
+              <span className="text-[9px] font-black leading-none" style={{color: DONUT_COLORS[positions.indexOf(hovered)%DONUT_COLORS.length]}}>
+                {hovered.ticker}
+              </span>
+              <span className="text-sm font-black text-white leading-none mt-0.5">{hoveredPct.toFixed(1)}%</span>
+              <span className="text-[8px] text-zinc-500 leading-none mt-0.5">{fmtMoney(hoveredVal)}</span>
+            </>
+          ) : (
+            <>
+              <span className="text-[9px] text-zinc-500 leading-none">พอร์ต</span>
+              <span className="text-xs font-black text-white leading-none mt-0.5">{positions.length} หุ้น</span>
+              <span className="text-[8px] text-zinc-500 leading-none mt-0.5">{fmtMoney(marketValue)}</span>
+            </>
+          )}
+        </div>
+        {slices.map((s,i) => {
+          const midAngle = ((s.start + s.end) / 2 / 100) * 360 - 90;
+          const rad = midAngle * Math.PI / 180;
+          const r = 44;
+          const cx = 56 + r * Math.cos(rad);
+          const cy = 56 + r * Math.sin(rad);
+          return (
+            <div key={i} className="absolute w-5 h-5 rounded-full cursor-pointer" style={{ left: cx-10, top: cy-10, zIndex: 10 }}
+              onMouseEnter={()=>setHoveredIdx(i)} onMouseLeave={()=>setHoveredIdx(null)}/>
+          );
+        })}
+      </div>
+      <div className="flex-1 overflow-hidden">
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 max-h-28 overflow-hidden">
+          {positions.slice(0,10).map((p,i) => {
+            const val = p.shares*(p.currentPrice||p.avgCost);
+            const pct = marketValue>0?(val/marketValue)*100:0;
+            const isHov = hoveredIdx === i;
+            return (
+              <div key={p.ticker} className="flex items-center gap-1.5 cursor-pointer transition-opacity"
+                style={{ opacity: hoveredIdx===null||isHov ? 1 : 0.4 }}
+                onMouseEnter={()=>setHoveredIdx(i)} onMouseLeave={()=>setHoveredIdx(null)}>
+                <span className="w-2 h-2 rounded-sm flex-shrink-0 transition-transform"
+                  style={{ background: DONUT_COLORS[i%DONUT_COLORS.length], transform: isHov?"scale(1.4)":"scale(1)" }}/>
+                <span className={`text-[10px] font-bold transition-colors ${isHov?"text-white":"text-zinc-400"}`}>{p.ticker}</span>
+                <span className="text-[9px] text-zinc-600 ml-auto">{pct.toFixed(1)}%</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── DCA Calculator Component ─────────────────────────────────────────────────
 function DCACalculator({
   p, dcaAmount, setDcaAmount, dcaPrice, setDcaPrice, dcaMode, setDcaMode, marketValue, fmtMoney
@@ -728,112 +830,14 @@ export default function PortfolioPage() {
           )}
 
                     {/* Donut — Interactive */}
-          {(() => {
-
-
-
-            const hovered = hoveredIdx !== null ? sortedPositions[hoveredIdx] : null;
-            const hoveredVal = hovered ? hovered.shares*(hovered.currentPrice||hovered.avgCost) : 0;
-            const hoveredPct = marketValue > 0 ? (hoveredVal/marketValue)*100 : 0;
-
-            // Build conic gradient with hover highlight
-            let start = 0;
-            const slices = sortedPositions.map((p,i) => {
-              const val = p.shares*(p.currentPrice||p.avgCost);
-              const pct = marketValue > 0 ? (val/marketValue)*100 : 0;
-              const end = start + pct;
-              const color = COLORS[i%COLORS.length];
-              const isHovered = hoveredIdx === i;
-              const slice = { start, end, color, pct, isHovered };
-              start = end;
-              return slice;
-            });
-
-            const conicParts = slices.map(s => {
-              const color = s.isHovered ? s.color : (hoveredIdx !== null ? s.color+"88" : s.color);
-              return `${color} ${s.start.toFixed(2)}% ${s.end.toFixed(2)}%`;
-            }).join(", ");
-
-            return (
-              <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-4 flex items-center gap-4 fade-up-1">
-                {/* Donut SVG */}
-                <div className="relative flex-shrink-0 w-28 h-28">
-                  {/* Animated conic gradient */}
-                  <div className="w-28 h-28 rounded-full transition-all duration-300"
-                    style={{
-                      background: `conic-gradient(${conicParts})`,
-                      transform: donutMounted ? "scale(1) rotate(-90deg)" : "scale(0.5) rotate(-90deg)",
-                      opacity: donutMounted ? 1 : 0,
-                      transition: "transform 0.8s cubic-bezier(0.34,1.56,0.64,1), opacity 0.5s ease",
-                    }}/>
-
-                  {/* Inner circle */}
-                  <div className="absolute inset-3 bg-[#18181b] rounded-full flex flex-col items-center justify-center transition-all duration-200">
-                    {hovered ? (
-                      <>
-                        <span className="text-[9px] font-black leading-none" style={{color: COLORS[sortedPositions.indexOf(hovered)%COLORS.length]}}>
-                          {hovered.ticker}
-                        </span>
-                        <span className="text-sm font-black text-white leading-none mt-0.5">
-                          {hoveredPct.toFixed(1)}%
-                        </span>
-                        <span className="text-[8px] text-zinc-500 leading-none mt-0.5">
-                          {fmtMoney(hoveredVal)}
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="text-[9px] text-zinc-500 leading-none">พอร์ต</span>
-                        <span className="text-xs font-black text-white leading-none mt-0.5">{positions.length} หุ้น</span>
-                        <span className="text-[8px] text-zinc-500 leading-none mt-0.5">{fmtMoney(marketValue)}</span>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Hover zones (invisible) */}
-                  {slices.map((s,i) => {
-                    const midAngle = ((s.start + s.end) / 2 / 100) * 360 - 90;
-                    const rad = midAngle * Math.PI / 180;
-                    const r = 44;
-                    const cx = 56 + r * Math.cos(rad);
-                    const cy = 56 + r * Math.sin(rad);
-                    return (
-                      <div key={i}
-                        className="absolute w-5 h-5 rounded-full cursor-pointer"
-                        style={{ left: cx - 10, top: cy - 10, zIndex: 10 }}
-                        onMouseEnter={() => setHoveredIdx(i)}
-                        onMouseLeave={() => setHoveredIdx(null)}/>
-                    );
-                  })}
-                </div>
-
-                {/* Legend */}
-                <div className="flex-1 overflow-hidden">
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 max-h-28 overflow-hidden">
-                    {sortedPositions.slice(0,10).map((p,i) => {
-                      const val = p.shares*(p.currentPrice||p.avgCost);
-                      const pct = marketValue>0?(val/marketValue)*100:0;
-                      const isHov = hoveredIdx === i;
-                      return (
-                        <div key={p.ticker}
-                          className="flex items-center gap-1.5 cursor-pointer transition-opacity"
-                          style={{ opacity: hoveredIdx===null||isHov ? 1 : 0.4 }}
-                          onMouseEnter={()=>setHoveredIdx(i)}
-                          onMouseLeave={()=>setHoveredIdx(null)}>
-                          <span className="w-2 h-2 rounded-sm flex-shrink-0 transition-transform"
-                            style={{ background: COLORS[i%COLORS.length], transform: isHov?"scale(1.4)":"scale(1)" }}/>
-                          <span className={`text-[10px] font-bold transition-colors ${isHov?"text-white":"text-zinc-400"}`}>
-                            {p.ticker}
-                          </span>
-                          <span className="text-[9px] text-zinc-600 ml-auto">{pct.toFixed(1)}%</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
+          <DonutChart
+            positions={sortedPositions}
+            marketValue={marketValue}
+            hoveredIdx={hoveredIdx}
+            setHoveredIdx={setHoveredIdx}
+            donutMounted={donutMounted}
+            fmtMoney={fmtMoney}
+          />
         </div>
 
         {/* ── Table ── */}
