@@ -1021,6 +1021,7 @@ export default function PortfolioPage() {
                     plMode={plMode} fmtMoney={fmtMoney}
                     openBuy={openBuy} openSell={openSell} openEdit={openEdit} deletePosition={deletePosition}
                   />
+                ))}
               </tbody>
             </table>
           </div>
