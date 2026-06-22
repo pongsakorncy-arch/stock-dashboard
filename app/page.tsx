@@ -301,8 +301,43 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState("-");
   const [moversTab, setMoversTab] = useState<"gainers" | "losers">("gainers");
+  const [aiAnalysis, setAiAnalysis] = useState<string>("");
+  const [aiLoading, setAiLoading]   = useState(false);
+  const [aiExpanded, setAiExpanded] = useState(false);
   const portfolio = usePortfolioSnapshot();
   const { currency, rate, lastUpdate: rateUpdate, toggleCurrency, format: fmtMoney } = useCurrency();
+
+  const fetchAI = async () => {
+    if (aiLoading) return;
+    setAiLoading(true);
+    setAiAnalysis("");
+    try {
+      const snap = portfolio;
+      const prompt = `คุณเป็น AI วิเคราะห์การลงทุน วิเคราะห์พอร์ตหุ้นนี้เป็นภาษาไทยสั้นๆ กระชับ ไม่เกิน 5 บรรทัด:
+- มูลค่าพอร์ต: $${snap.value.toFixed(2)}
+- กำไร/ขาดทุนรวม: $${snap.pl.toFixed(2)} (${snap.plPct.toFixed(2)}%)
+- กำไรวันนี้: $${snap.dailyPL.toFixed(2)} (${snap.dailyPct.toFixed(2)}%)
+- จำนวนหุ้น: ${snap.count} ตัว
+หุ้นในพอร์ต: GOOGL, AMZN, ASML, MSFT, META, NVDA, RBRK, ALAB, NVO, NFLX, AMD, SOFI, PLTR, IONQ, TSM, UBER, RKLB, CRWD, TMDX
+วิเคราะห์สั้นๆ ว่าพอร์ตเป็นอย่างไร มีจุดแข็งอะไร ควรระวังอะไร`;
+
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 1000,
+          messages: [{ role: "user", content: prompt }]
+        })
+      });
+      const data = await res.json();
+      const text = data?.content?.[0]?.text || "ไม่สามารถวิเคราะห์ได้ในขณะนี้";
+      setAiAnalysis(text);
+    } catch {
+      setAiAnalysis("ไม่สามารถเชื่อมต่อ AI ได้ในขณะนี้");
+    }
+    setAiLoading(false);
+  };
 
   const fetchAll = async () => {
     setLoading(true);
@@ -708,8 +743,41 @@ export default function Home() {
           </div>
         </div>
 
-        {/* ── Row 3: News (TH) + Calendar + Sectors + Key Levels ── */}
+        {/* ── Row 3: AI + News + Calendar ── */}
         <div className="grid lg:grid-cols-[1fr_320px] gap-5">
+
+          <div className="flex flex-col gap-4">
+          {/* AI Analysis Box */}
+          <div className="bg-gradient-to-br from-[#0f0f1a] to-[#0a0a0c] border border-purple-900/40 rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-purple-900/30 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🤖</span>
+                <p className="text-sm font-bold text-purple-300">AI วิเคราะห์พอร์ต</p>
+                <span className="text-[10px] bg-purple-400/10 text-purple-400 px-2 py-0.5 rounded-full font-bold">Claude AI</span>
+              </div>
+              <button onClick={fetchAI} disabled={aiLoading}
+                className="px-3 py-1.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 text-xs font-bold rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1">
+                {aiLoading ? <><span className="animate-spin">⟳</span> กำลังวิเคราะห์...</> : "✨ วิเคราะห์"}
+              </button>
+            </div>
+            <div className="px-4 py-3">
+              {aiAnalysis ? (
+                <>
+                  <p className={`text-sm text-zinc-300 leading-relaxed whitespace-pre-line ${!aiExpanded ? "line-clamp-3" : ""}`}>
+                    {aiAnalysis}
+                  </p>
+                  {aiAnalysis.length > 150 && (
+                    <button onClick={()=>setAiExpanded(!aiExpanded)}
+                      className="text-xs text-purple-400 hover:text-purple-300 mt-1.5 transition-colors">
+                      {aiExpanded ? "ย่อลง ▲" : "ดูเพิ่มเติม ▼"}
+                    </button>
+                  )}
+                </>
+              ) : (
+                <p className="text-xs text-zinc-600 py-1">กด "✨ วิเคราะห์" เพื่อให้ AI ดูพอร์ตและแนะนำครับ</p>
+              )}
+            </div>
+          </div>
 
           {/* News ภาษาไทย */}
           <div className="bg-[#111113] border border-zinc-800 rounded-xl overflow-hidden">
@@ -721,7 +789,7 @@ export default function Home() {
               <span className="text-xs text-zinc-600">{lastRefresh}</span>
             </div>
             <div className="divide-y divide-zinc-800/60">
-              {(news.length === 0 ? DEMO_NEWS : news).map((n, i) => (
+              {(news.length === 0 ? DEMO_NEWS : news).slice(0, 4).map((n, i) => (
                 <a key={i} href={n.url} target="_blank" rel="noopener noreferrer"
                   className="block px-5 py-3.5 hover:bg-zinc-800/30 transition-colors group">
                   <div className="flex items-center gap-2 mb-1">
@@ -739,6 +807,7 @@ export default function Home() {
               ))}
             </div>
           </div>
+          </div>{/* end left col */}
 
           {/* Right column */}
           <div className="flex flex-col gap-4">
