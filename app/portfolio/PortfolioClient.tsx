@@ -8,13 +8,6 @@ const COLORS = [
 ];
 
 // ─── Donut Chart Component ────────────────────────────────────────────────────
-const DONUT_COLORS = [
-  "#4f7df3","#69c36b","#f0aa4f","#d43d52","#9650e6",
-  "#3b82f6","#5fc46b","#f59e0b","#ef4444","#8b5cf6",
-  "#06b6d4","#10b981","#f97316","#ec4899","#14b8a6",
-  "#a78bfa","#fb923c","#34d399","#f472b6","#60a5fa",
-];
-
 function DonutChart({
   positions, marketValue, hoveredIdx, setHoveredIdx, donutMounted, fmtMoney
 }: {
@@ -34,7 +27,7 @@ function DonutChart({
     const val = p.shares*(p.currentPrice||p.avgCost);
     const pct = marketValue > 0 ? (val/marketValue)*100 : 0;
     const end = prev + pct;
-    const color = DONUT_COLORS[i%DONUT_COLORS.length];
+    const color = COLORS[i%COLORS.length];
     const isHovered = hoveredIdx === i;
     return [...acc, { start: prev, end, color, pct, isHovered }];
   }, []);
@@ -57,7 +50,7 @@ function DonutChart({
         <div className="absolute inset-3 bg-[#18181b] rounded-full flex flex-col items-center justify-center transition-all duration-200">
           {hovered ? (
             <>
-              <span className="text-[9px] font-black leading-none" style={{color: DONUT_COLORS[positions.indexOf(hovered)%DONUT_COLORS.length]}}>
+              <span className="text-[9px] font-black leading-none" style={{color: COLORS[positions.indexOf(hovered)%COLORS.length]}}>
                 {hovered.ticker}
               </span>
               <span className="text-sm font-black text-white leading-none mt-0.5">{hoveredPct.toFixed(1)}%</span>
@@ -94,7 +87,7 @@ function DonutChart({
                 style={{ opacity: hoveredIdx===null||isHov ? 1 : 0.4 }}
                 onMouseEnter={()=>setHoveredIdx(i)} onMouseLeave={()=>setHoveredIdx(null)}>
                 <span className="w-2 h-2 rounded-sm flex-shrink-0 transition-transform"
-                  style={{ background: DONUT_COLORS[i%DONUT_COLORS.length], transform: isHov?"scale(1.4)":"scale(1)" }}/>
+                  style={{ background: COLORS[i%COLORS.length], transform: isHov?"scale(1.4)":"scale(1)" }}/>
                 <span className={`text-[10px] font-bold transition-colors ${isHov?"text-white":"text-zinc-400"}`}>{p.ticker}</span>
                 <span className="text-[9px] text-zinc-600 ml-auto">{pct.toFixed(1)}%</span>
               </div>
@@ -669,18 +662,6 @@ export default function PortfolioPage() {
       return sortDir==="asc" ? cmp : -cmp;
     });
   }, [positions, sortKey, sortDir, marketValue]);
-
-  // ── Donut ─────────────────────────────────────────────────────────────────────
-  const donutSlices = useMemo(() => {
-    if (marketValue<=0) return "#27272a 0% 100%";
-    return sortedPositions.reduce((acc: string[], p, i) => {
-      const prev = acc.length > 0 ? parseFloat(acc[acc.length-1].split(' ')[2]) : 0;
-      const val = p.shares*(p.currentPrice||p.avgCost);
-      const pct = (val/marketValue)*100;
-      const end = prev + pct;
-      return [...acc, `${COLORS[i%COLORS.length]} ${prev.toFixed(2)}% ${end.toFixed(2)}%`];
-    }, []).join(", ");
-  }, [marketValue, sortedPositions]);
 
   // ── Modal helpers ──────────────────────────────────────────────────────────────
   const closeModal = () => {
