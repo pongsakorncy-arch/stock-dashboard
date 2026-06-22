@@ -15,6 +15,9 @@ type Position = {
   currentPrice: number;
   prevClose: number;
   targetAlloc: number; // % เป้าหมายที่ตั้งไว้
+  extPrice: number;   // pre/after market price
+  extPct: number;     // pre/after % change
+  extType: "pre"|"after"|"none";
 };
 
 type TradeMode = "buy" | "sell";
@@ -24,25 +27,25 @@ type PLMode = "total" | "daily"; // toggle กำไรรวม vs วันน
 
 // ─── Initial Data ─────────────────────────────────────────────────────────────
 const INITIAL_PORTFOLIO: Position[] = [
-  { ticker: "GOOGL", name: "อัลฟาเบท",              shares: 7.1646262,  avgCost: 240.83, currentPrice: 0, prevClose: 0, targetAlloc: 0 },
-  { ticker: "AMZN",  name: "แอมะซอน",               shares: 10.5848651, avgCost: 222.19, currentPrice: 0, prevClose: 0, targetAlloc: 0 },
-  { ticker: "ASML",  name: "อาเอสเอ็มแอล โฮลดิง",  shares: 1.120274,   avgCost: 750.37, currentPrice: 0, prevClose: 0, targetAlloc: 0 },
-  { ticker: "MSFT",  name: "ไมโครซอฟท์",             shares: 4.5660891,  avgCost: 456.60, currentPrice: 0, prevClose: 0, targetAlloc: 0 },
-  { ticker: "META",  name: "Meta",                   shares: 2.9587672,  avgCost: 627.48, currentPrice: 0, prevClose: 0, targetAlloc: 0 },
-  { ticker: "NVDA",  name: "เอ็นวิเดีย",             shares: 7.9079846,  avgCost: 156.18, currentPrice: 0, prevClose: 0, targetAlloc: 0 },
-  { ticker: "RBRK",  name: "Rubrik Inc",             shares: 22.4047329, avgCost: 62.39,  currentPrice: 0, prevClose: 0, targetAlloc: 0 },
-  { ticker: "ALAB",  name: "Astera Labs, Inc",       shares: 3.7271679,  avgCost: 133.28, currentPrice: 0, prevClose: 0, targetAlloc: 0 },
-  { ticker: "NVO",   name: "โนโว นอร์ดิสค์",        shares: 34.6614128, avgCost: 48.19,  currentPrice: 0, prevClose: 0, targetAlloc: 0 },
-  { ticker: "NFLX",  name: "เน็ตฟลิกซ์",             shares: 17.7666769, avgCost: 101.18, currentPrice: 0, prevClose: 0, targetAlloc: 0 },
-  { ticker: "AMD",   name: "เอเอ็มดี",               shares: 2.4819359,  avgCost: 199.32, currentPrice: 0, prevClose: 0, targetAlloc: 0 },
-  { ticker: "SOFI",  name: "SoFi Technologies Inc",  shares: 63.2978785, avgCost: 19.84,  currentPrice: 0, prevClose: 0, targetAlloc: 0 },
-  { ticker: "PLTR",  name: "Palantir Technologies",  shares: 7.560984,   avgCost: 140.91, currentPrice: 0, prevClose: 0, targetAlloc: 0 },
-  { ticker: "IONQ",  name: "IONQ Inc",               shares: 12.3795114, avgCost: 48.39,  currentPrice: 0, prevClose: 0, targetAlloc: 0 },
-  { ticker: "TSM",   name: "ทีเอสเอ็มซี",            shares: 1.3873869,  avgCost: 252.07, currentPrice: 0, prevClose: 0, targetAlloc: 0 },
-  { ticker: "UBER",  name: "อูเบอร์",                shares: 8.1490212,  avgCost: 73.51,  currentPrice: 0, prevClose: 0, targetAlloc: 0 },
-  { ticker: "RKLB",  name: "Rocket Lab Corp",        shares: 5.4644484,  avgCost: 91.36,  currentPrice: 0, prevClose: 0, targetAlloc: 0 },
-  { ticker: "CRWD",  name: "คราวด์สไตรก์",           shares: 0.8078283,  avgCost: 371.37, currentPrice: 0, prevClose: 0, targetAlloc: 0 },
-  { ticker: "TMDX",  name: "TransMedics Group Inc",  shares: 5.6205782,  avgCost: 98.46,  currentPrice: 0, prevClose: 0, targetAlloc: 0 },
+  { ticker: "GOOGL", name: "อัลฟาเบท",              shares: 7.1646262,  avgCost: 240.83, currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
+  { ticker: "AMZN",  name: "แอมะซอน",               shares: 10.5848651, avgCost: 222.19, currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
+  { ticker: "ASML",  name: "อาเอสเอ็มแอล โฮลดิง",  shares: 1.120274,   avgCost: 750.37, currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
+  { ticker: "MSFT",  name: "ไมโครซอฟท์",             shares: 4.5660891,  avgCost: 456.60, currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
+  { ticker: "META",  name: "Meta",                   shares: 2.9587672,  avgCost: 627.48, currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
+  { ticker: "NVDA",  name: "เอ็นวิเดีย",             shares: 7.9079846,  avgCost: 156.18, currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
+  { ticker: "RBRK",  name: "Rubrik Inc",             shares: 22.4047329, avgCost: 62.39,  currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
+  { ticker: "ALAB",  name: "Astera Labs, Inc",       shares: 3.7271679,  avgCost: 133.28, currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
+  { ticker: "NVO",   name: "โนโว นอร์ดิสค์",        shares: 34.6614128, avgCost: 48.19,  currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
+  { ticker: "NFLX",  name: "เน็ตฟลิกซ์",             shares: 17.7666769, avgCost: 101.18, currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
+  { ticker: "AMD",   name: "เอเอ็มดี",               shares: 2.4819359,  avgCost: 199.32, currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
+  { ticker: "SOFI",  name: "SoFi Technologies Inc",  shares: 63.2978785, avgCost: 19.84,  currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
+  { ticker: "PLTR",  name: "Palantir Technologies",  shares: 7.560984,   avgCost: 140.91, currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
+  { ticker: "IONQ",  name: "IONQ Inc",               shares: 12.3795114, avgCost: 48.39,  currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
+  { ticker: "TSM",   name: "ทีเอสเอ็มซี",            shares: 1.3873869,  avgCost: 252.07, currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
+  { ticker: "UBER",  name: "อูเบอร์",                shares: 8.1490212,  avgCost: 73.51,  currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
+  { ticker: "RKLB",  name: "Rocket Lab Corp",        shares: 5.4644484,  avgCost: 91.36,  currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
+  { ticker: "CRWD",  name: "คราวด์สไตรก์",           shares: 0.8078283,  avgCost: 371.37, currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
+  { ticker: "TMDX",  name: "TransMedics Group Inc",  shares: 5.6205782,  avgCost: 98.46,  currentPrice: 0, prevClose: 0, targetAlloc: 0, extPrice: 0, extPct: 0, extType: "none" as const },
 ];
 
 const COLORS = [
@@ -132,6 +135,7 @@ export default function PortfolioPage() {
           currentPrice: Number(r.current_price)||0,
           prevClose: Number(r.prev_close)||0,
           targetAlloc: Number(r.target_alloc)||0,
+          extPrice: 0, extPct: 0, extType: "none" as const,
         })));
       } else {
         // New user — start with empty portfolio
@@ -169,15 +173,27 @@ export default function PortfolioPage() {
     else localStorage.setItem("yok_portfolio_v4", JSON.stringify(newPositions));
   };
 
+  // ── Market session ───────────────────────────────────────────────────────────────
+  const getMarketSession = (): "pre"|"after"|"open"|"closed" => {
+    const now = new Date();
+    const etMin = now.getUTCHours()*60 + now.getUTCMinutes() - 240;
+    const day = now.getUTCDay();
+    if (day===0||day===6) return "closed";
+    if (etMin>=240 && etMin<570)  return "pre";
+    if (etMin>=570 && etMin<960)  return "open";
+    if (etMin>=960 && etMin<1200) return "after";
+    return "closed";
+  };
+
   // ── Fetch ─────────────────────────────────────────────────────────────────────
-  const getQuote = async (sym: string): Promise<{ c: number; pc: number }> => {
+  const getQuote = async (sym: string): Promise<{ c: number; pc: number; o: number }> => {
     const key = process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
-    if (!key) return { c: 0, pc: 0 };
+    if (!key) return { c: 0, pc: 0, o: 0 };
     try {
       const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${sym}&token=${key}`);
       const d = await r.json();
-      return { c: Number(d.c||0), pc: Number(d.pc||0) };
-    } catch { return { c: 0, pc: 0 }; }
+      return { c: Number(d.c||0), pc: Number(d.pc||0), o: Number(d.o||0) };
+    } catch { return { c: 0, pc: 0, o: 0 }; }
   };
 
   const refreshPrices = async () => {
@@ -185,8 +201,12 @@ export default function PortfolioPage() {
     setIsRefreshing(true);
     const updated = await Promise.all(
       positions.map(async p => {
-        const { c, pc } = await getQuote(p.ticker);
-        return { ...p, currentPrice: c||p.currentPrice, prevClose: pc||p.prevClose };
+        const { c, pc, o } = await getQuote(p.ticker);
+        const sess = getMarketSession();
+        const extPrice = (sess==="pre"||sess==="after") && o > 0 ? o : 0;
+        const extPct   = extPrice > 0 && c > 0 ? ((extPrice-c)/c)*100 : 0;
+        const extType  = sess==="pre"||sess==="after" ? sess : "none";
+        return { ...p, currentPrice: c||p.currentPrice, prevClose: pc||p.prevClose, extPrice, extPct, extType };
       })
     );
     await syncPositions(updated);
@@ -758,6 +778,16 @@ export default function PortfolioPage() {
                             <p className={`text-xs ${isPos?"text-emerald-400":"text-red-400"}`}>
                               {isPos?"▲":"▼"} {Math.abs(plPct).toFixed(2)}%
                             </p>
+                            {p.extType!=="none" && p.extPrice>0 && (
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <span className={`text-[9px] font-black px-1 py-0.5 rounded ${p.extType==="pre"?"bg-yellow-400/20 text-yellow-400":"bg-purple-400/20 text-purple-400"}`}>
+                                  {p.extType==="pre"?"PRE":"AH"}
+                                </span>
+                                <span className={`text-[9px] font-bold ${p.extPct>=0?"text-emerald-400":"text-red-400"}`}>
+                                  {p.extPct>=0?"+":""}{p.extPct.toFixed(2)}%
+                                </span>
+                              </div>
+                            )}
                           </>
                         ) : (
                           <>
