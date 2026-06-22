@@ -24,17 +24,15 @@ function DonutChart({
   const hoveredVal = hovered ? hovered.shares*(hovered.currentPrice||hovered.avgCost) : 0;
   const hoveredPct = marketValue > 0 ? (hoveredVal/marketValue)*100 : 0;
 
-  let start = 0;
-  const slices = positions.map((p,i) => {
+  const slices = positions.reduce((acc: {start:number;end:number;color:string;pct:number;isHovered:boolean}[], p, i) => {
+    const prev = acc.length > 0 ? acc[acc.length-1].end : 0;
     const val = p.shares*(p.currentPrice||p.avgCost);
     const pct = marketValue > 0 ? (val/marketValue)*100 : 0;
-    const end = start + pct;
+    const end = prev + pct;
     const color = DONUT_COLORS[i%DONUT_COLORS.length];
     const isHovered = hoveredIdx === i;
-    const slice = { start, end, color, pct, isHovered };
-    start = end;
-    return slice;
-  });
+    return [...acc, { start: prev, end, color, pct, isHovered }];
+  }, []);
 
   const conicParts = slices.map(s => {
     const color = s.isHovered ? s.color : (hoveredIdx !== null ? s.color+"88" : s.color);
@@ -683,14 +681,13 @@ export default function PortfolioPage() {
   // ── Donut ─────────────────────────────────────────────────────────────────────
   const donutSlices = useMemo(() => {
     if (marketValue<=0) return "#27272a 0% 100%";
-    let start = 0;
-    return sortedPositions.map((p,i) => {
+    return sortedPositions.reduce((acc: string[], p, i) => {
+      const prev = acc.length > 0 ? parseFloat(acc[acc.length-1].split(' ')[2]) : 0;
       const val = p.shares*(p.currentPrice||p.avgCost);
       const pct = (val/marketValue)*100;
-      const end = start+pct;
-      const s = `${COLORS[i%COLORS.length]} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
-      start = end; return s;
-    }).join(", ");
+      const end = prev + pct;
+      return [...acc, `${COLORS[i%COLORS.length]} ${prev.toFixed(2)}% ${end.toFixed(2)}%`];
+    }, []).join(", ");
   }, [marketValue, sortedPositions]);
 
   // ── Modal helpers ──────────────────────────────────────────────────────────────
