@@ -89,6 +89,15 @@ export default function PortfolioPage() {
   // Modal
   const [modal, setModal]         = useState<{ type: "buy"|"sell"|"edit"; ticker: string }|null>(null);
   const [modalTab, setModalTab]     = useState<"trade"|"dca">("trade");
+
+  // DCA Calculator states
+  const [dcaAmount, setDcaAmount] = useState("");
+  const [dcaPrice,  setDcaPrice]  = useState("");
+  const [dcaMode,   setDcaMode]   = useState<"amount"|"shares">("amount");
+
+  // Donut states
+  const [hoveredIdx,   setHoveredIdx]   = useState<number|null>(null);
+  const [donutMounted, setDonutMounted] = useState(false);
   const [mode, setMode]           = useState<TradeMode>("buy");
   const [formTicker, setFormTicker]   = useState("");
   const [formShares, setFormShares]   = useState("");
@@ -225,6 +234,8 @@ export default function PortfolioPage() {
   const stockPct      = totalAssets > 0 ? (marketValue/totalAssets)*100 : 100;
   const cashPct       = totalAssets > 0 ? (cash/totalAssets)*100 : 0;
 
+  useEffect(() => { setTimeout(() => setDonutMounted(true), 100); }, []);
+
   // ── Sort ──────────────────────────────────────────────────────────────────────
   const handleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir(d => d==="asc"?"desc":"asc");
@@ -282,6 +293,7 @@ export default function PortfolioPage() {
     const p = positions.find(x=>x.ticker===ticker);
     setMode("buy"); setFormTicker(ticker); setFormShares(""); setFormPrice(p?String(p.currentPrice||p.avgCost):"");
     setFormName(p?.name||""); setFormAlloc(""); setFormTarget(""); setEditingTicker(null); setFormError(""); setModalTab("trade");
+    setDcaAmount(""); setDcaPrice(p ? String((p.currentPrice||p.avgCost).toFixed(2)) : "");
     setModal({ type:"buy", ticker });
   };
   const openSell = (ticker: string) => {
@@ -538,9 +550,8 @@ export default function PortfolioPage() {
 
                     {/* Donut — Interactive */}
           {(() => {
-            const [hoveredIdx, setHoveredIdx] = React.useState<number|null>(null);
-            const [donutMounted, setDonutMounted] = React.useState(false);
-            React.useEffect(() => { setTimeout(() => setDonutMounted(true), 100); }, []);
+
+
 
             const hovered = hoveredIdx !== null ? sortedPositions[hoveredIdx] : null;
             const hoveredVal = hovered ? hovered.shares*(hovered.currentPrice||hovered.avgCost) : 0;
@@ -887,19 +898,13 @@ export default function PortfolioPage() {
               const currentPrice = p.currentPrice || p.avgCost;
               const currentShares = p.shares;
               const currentCost = p.shares * p.avgCost;
-              const currentAlloc = marketValue > 0 ? (p.shares * currentPrice / marketValue) * 100 : 0;
-
-              const [dcaAmount, setDcaAmount] = React.useState("");
-              const [dcaPrice, setDcaPrice] = React.useState(String(currentPrice.toFixed(2)));
-              const [dcaMode, setDcaMode] = React.useState<"amount"|"shares">("amount");
 
               const addAmount = parseFloat(dcaAmount) || 0;
               const buyPrice = parseFloat(dcaPrice) || currentPrice;
               const addShares = dcaMode === "amount" ? (addAmount / buyPrice) : addAmount;
               const newShares = currentShares + addShares;
-              const newCost = (currentCost + (dcaMode === "amount" ? addAmount : addShares * buyPrice)) / newShares;
+              const newCost = newShares > 0 ? (currentCost + (dcaMode === "amount" ? addAmount : addShares * buyPrice)) / newShares : 0;
               const newAlloc = marketValue > 0 ? (newShares * currentPrice / (marketValue + (dcaMode === "amount" ? addAmount : addShares * buyPrice))) * 100 : 0;
-              const breakeven = newCost;
 
               return (
                 <div className="space-y-4">
