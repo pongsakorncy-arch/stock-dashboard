@@ -28,6 +28,7 @@ type NewsItem = {
   source: string;
   time: string;
   url: string;
+  ticker?: string;
 };
 
 type Mover = {
@@ -139,19 +140,47 @@ async function fetchCandles(sym: string, key: string): Promise<number[]> {
   return Array.isArray(d.c) ? d.c.slice(-20) : [];
 }
 
+// หุ้นในพอร์ต
+const PORTFOLIO_TICKERS = [
+  "GOOGL","AMZN","ASML","MSFT","META","NVDA","RBRK",
+  "ALAB","NVO","NFLX","AMD","SOFI","PLTR","IONQ",
+  "TSM","UBER","RKLB","CRWD","TMDX"
+];
+
 async function fetchNews(key: string): Promise<NewsItem[]> {
-  const r = await fetch(`https://finnhub.io/api/v1/news?category=general&token=${key}`);
-  const data = await r.json();
-  const raw = (Array.isArray(data) ? data : []).slice(0, 8);
-  return raw.map((n: any) => ({
-    headline: n.headline,
-    headlineTh: n.headline, // ภาษาอังกฤษก่อน
-    source: n.source,
-    time: new Date(n.datetime * 1000).toLocaleString("th-TH", {
-      hour: "2-digit", minute: "2-digit", month: "short", day: "numeric",
-    }),
-    url: n.url,
-  }));
+  if (!key) return [];
+  
+  const now = Math.floor(Date.now() / 1000);
+  const from = now - 86400 * 3; // ย้อนหลัง 3 วัน
+  
+  // สุ่มหยิบ 5 หุ้นมาดึงข่าว (ไม่เกิน rate limit)
+  const picks = [...PORTFOLIO_TICKERS].sort(() => Math.random() - 0.5).slice(0, 5);
+  
+  const results = await Promise.allSettled(
+    picks.map(sym =>
+      fetch(`https://finnhub.io/api/v1/company-news?symbol=${sym}&from=${new Date(from*1000).toISOString().split('T')[0]}&to=${new Date(now*1000).toISOString().split('T')[0]}&token=${key}`)
+        .then(r => r.json())
+        .then((data: any[]) => (Array.isArray(data) ? data : []).slice(0, 2).map((n: any) => ({
+          headline: n.headline,
+          headlineTh: n.headline,
+          source: n.source || sym,
+          time: new Date(n.datetime * 1000).toLocaleString("th-TH", {
+            hour: "2-digit", minute: "2-digit", month: "short", day: "numeric",
+          }),
+          url: n.url,
+          ticker: sym,
+        })))
+    )
+  );
+  
+  const all: NewsItem[] = results
+    .filter((r): r is PromiseFulfilledResult<NewsItem[]> => r.status === "fulfilled")
+    .flatMap(r => r.value)
+    .filter(n => n.headline && n.headline.length > 10)
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 8);
+    
+  return all;
 }
 
 // Top movers: fetch quotes for S&P500 + NASDAQ big caps in batches
@@ -231,12 +260,14 @@ function usePortfolioSnapshot() {
 
 // ─── Demo data ────────────────────────────────────────────────────────────────
 const DEMO_NEWS: NewsItem[] = [
-  { headline: "Fed holds rates steady, signals 2 cuts in 2025", headlineTh: "เฟดคงอัตราดอกเบี้ย พร้อมส่งสัญญาณลดดอกเบี้ย 2 ครั้งในปี 2025", source: "Reuters", time: "2ชม.ที่แล้ว", url: "#" },
-  { headline: "NVIDIA announces next-gen Blackwell Ultra chip", headlineTh: "NVIDIA เปิดตัวชิป Blackwell Ultra รุ่นใหม่ล่าสุด", source: "Bloomberg", time: "3ชม.ที่แล้ว", url: "#" },
-  { headline: "Apple Vision Pro 2 launch reportedly pushed to 2026", headlineTh: "รายงานชี้ Apple Vision Pro 2 เลื่อนเปิดตัวไปปี 2026", source: "WSJ", time: "5ชม.ที่แล้ว", url: "#" },
-  { headline: "Oil prices slip amid global demand concerns", headlineTh: "ราคาน้ำมันร่วงลงท่ามกลางความกังวลความต้องการพลังงานโลก", source: "FT", time: "6ชม.ที่แล้ว", url: "#" },
-  { headline: "Strong jobs report keeps rate-cut hopes alive", headlineTh: "ตัวเลขการจ้างงานแข็งแกร่ง ยังมีความหวังเฟดลดดอกเบี้ย", source: "CNBC", time: "8ชม.ที่แล้ว", url: "#" },
-  { headline: "Microsoft Azure revenue beats estimates by 3%", headlineTh: "รายได้ Azure ของ Microsoft เกินคาดการณ์ 3%", source: "Seeking Alpha", time: "9ชม.ที่แล้ว", url: "#" },
+  { headline: "NVIDIA's Blackwell Ultra demand surges ahead of Q3 earnings", headlineTh: "", source: "Bloomberg", time: "1ชม.ที่แล้ว", url: "#", ticker: "NVDA" },
+  { headline: "Alphabet beats estimates, Google Cloud grows 28% YoY", headlineTh: "", source: "Reuters", time: "2ชม.ที่แล้ว", url: "#", ticker: "GOOGL" },
+  { headline: "Amazon Web Services expands AI infrastructure investment", headlineTh: "", source: "WSJ", time: "3ชม.ที่แล้ว", url: "#", ticker: "AMZN" },
+  { headline: "AMD launches next-gen MI400 AI accelerator chips", headlineTh: "", source: "The Verge", time: "4ชม.ที่แล้ว", url: "#", ticker: "AMD" },
+  { headline: "Meta AI assistant reaches 1 billion users milestone", headlineTh: "", source: "CNBC", time: "5ชม.ที่แล้ว", url: "#", ticker: "META" },
+  { headline: "ASML reports record EUV machine orders from TSMC", headlineTh: "", source: "FT", time: "6ชม.ที่แล้ว", url: "#", ticker: "ASML" },
+  { headline: "Palantir wins new US defense AI contract worth $400M", headlineTh: "", source: "Defense News", time: "7ชม.ที่แล้ว", url: "#", ticker: "PLTR" },
+  { headline: "CrowdStrike expands cybersecurity platform with AI features", headlineTh: "", source: "TechCrunch", time: "8ชม.ที่แล้ว", url: "#", ticker: "CRWD" },
 ];
 
 const DEMO_GAINERS: Mover[] = [
@@ -666,8 +697,8 @@ export default function Home() {
           <div className="bg-[#111113] border border-zinc-800 rounded-xl overflow-hidden">
             <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <p className="text-sm font-bold">ข่าวตลาดวันนี้</p>
-                <span className="text-[10px] bg-yellow-400/10 text-yellow-400 px-2 py-0.5 rounded-full font-bold">ภาษาไทย</span>
+                <p className="text-sm font-bold">ข่าวหุ้นในพอร์ต</p>
+                <span className="text-[10px] bg-blue-400/10 text-blue-400 px-2 py-0.5 rounded-full font-bold">Portfolio News</span>
               </div>
               <span className="text-xs text-zinc-600">{lastRefresh}</span>
             </div>
@@ -675,13 +706,17 @@ export default function Home() {
               {(news.length === 0 ? DEMO_NEWS : news).map((n, i) => (
                 <a key={i} href={n.url} target="_blank" rel="noopener noreferrer"
                   className="block px-5 py-3.5 hover:bg-zinc-800/30 transition-colors group">
-                  {/* Thai headline prominent */}
+                  <div className="flex items-center gap-2 mb-1">
+                    {n.ticker && (
+                      <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-zinc-700 text-zinc-300 flex-shrink-0">
+                        {n.ticker}
+                      </span>
+                    )}
+                    <p className="text-xs text-zinc-500 truncate">{n.source} · {n.time}</p>
+                  </div>
                   <p className="text-sm text-zinc-100 font-medium leading-snug line-clamp-2 group-hover:text-white">
-                    {n.headlineTh}
+                    {n.headline}
                   </p>
-                  {/* English sub */}
-                  <p className="text-xs text-zinc-600 mt-0.5 line-clamp-1">{n.headline}</p>
-                  <p className="text-xs text-zinc-700 mt-1">{n.source} · {n.time}</p>
                 </a>
               ))}
             </div>
