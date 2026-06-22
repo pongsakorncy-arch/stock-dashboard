@@ -1,11 +1,8 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-export const runtime = "edge";
+import NextDynamic from "next/dynamic";
 
-import dynamic from "next/dynamic";
-
-const PortfolioPage = dynamic(() => import("./PortfolioClient"), { ssr: false });
+const PortfolioPage = NextDynamic(() => import("./PortfolioClient"), { ssr: false });
 
 export default function Page() {
   return <PortfolioPage />;
