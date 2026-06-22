@@ -28,6 +28,7 @@ type Trade = {
   totalPL: number;
   slPrice: number;
   tpPrice: number;
+  riskAmount: number;
   rr: number;
   result: Result;
   smcConcept: SMCConcept[];
@@ -111,6 +112,7 @@ const defaultForm = () => ({
   lotPerOrder: 0.10,
   slPrice: 0,
   tpPrice: 0,
+  riskAmount: 5,
   rr: 0,
   htfBias: "Bearish" as "Bullish"|"Bearish"|"Neutral",
   smcConcept: [] as SMCConcept[],
@@ -190,13 +192,21 @@ export default function JournalPage() {
   const totalLot  = exits.length * form.lotPerOrder;
   const result: Result = totalPL > 0.01 ? "WIN" : totalPL < -0.01 ? "LOSS" : "BE";
 
-  // Auto-calc R:R from Entry/SL/TP
+  // Auto-calc R:R จาก P/L ÷ Risk Amount
+  const riskAmount = (form as any).riskAmount || 5;
   const autoRR = (() => {
+    // ถ้ามี TP/SL ใช้แบบเดิม
     const e = form.entryPrice, sl = form.slPrice, tp = form.tpPrice;
-    if (!e || !sl || !tp) return 0;
-    const risk   = Math.abs(e - sl);
-    const reward = Math.abs(tp - e);
-    return risk > 0 ? Math.round((reward / risk) * 100) / 100 : 0;
+    if (e && sl && tp) {
+      const risk   = Math.abs(e - sl);
+      const reward = Math.abs(tp - e);
+      return risk > 0 ? Math.round((reward / risk) * 100) / 100 : 0;
+    }
+    // ไม่มี SL — ใช้ Risk Amount แทน
+    if (riskAmount > 0 && totalPL !== 0) {
+      return Math.round((totalPL / riskAmount) * 100) / 100;
+    }
+    return 0;
   })();
 
   // ── Add one exit price ────────────────────────────────────────────────────
@@ -236,7 +246,7 @@ export default function JournalPage() {
       lotPerOrder: form.lotPerOrder,
       orderCount: exits.length, totalLot,
       totalPL: Math.round(totalPL*100)/100,
-      slPrice: form.slPrice, rr: form.rr, result,
+      slPrice: form.slPrice, riskAmount: (form as any).riskAmount || 5, rr: autoRR || form.rr, result,
       smcConcept: form.smcConcept, htfBias: form.htfBias,
       entryModel: form.entryModel, tf: (form as any).tf ?? "M5",
       notes: form.notes, tpPrice: (form as any).tpPrice ?? 0,
@@ -523,25 +533,39 @@ export default function JournalPage() {
                 className="w-full bg-[#111113] border border-zinc-700 focus:border-yellow-400 rounded-lg px-3 py-2.5 text-base outline-none font-mono font-black text-yellow-300"/>
             </div>
 
-            {/* TP / SL / BE row */}
-            <div className="grid grid-cols-3 gap-2">
+            {/* Risk Amount + Lot row */}
+            <div className="grid grid-cols-2 gap-2 mb-1">
               <div>
-                <label className="text-[10px] text-zinc-500 mb-1 block">Take Profit 🟢</label>
+                <label className="text-[10px] text-zinc-500 mb-1 block">💰 Risk Amount ($)</label>
+                <div className="relative">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-yellow-400 font-black text-sm">$</span>
+                  <input type="number" step="0.5" min="0.5" value={(form as any).riskAmount||5} placeholder="5"
+                    onChange={e=>f("riskAmount",parseFloat(e.target.value)||5)}
+                    className="w-full bg-yellow-400/10 border border-yellow-400/40 focus:border-yellow-400 rounded-lg pl-7 pr-3 py-2 text-sm outline-none font-mono font-black text-yellow-400"/>
+                </div>
+                <p className="text-[10px] text-zinc-600 mt-0.5">risk ต่อ session นี้</p>
+              </div>
+              <div>
+                <label className="text-[10px] text-zinc-500 mb-1 block">Lot / Order</label>
+                <input type="number" step="0.01" min="0.01" value={form.lotPerOrder||""} placeholder="0.01"
+                  onChange={e=>f("lotPerOrder",parseFloat(e.target.value)||0.01)}
+                  className="w-full bg-[#111113] border border-zinc-700 focus:border-yellow-400 rounded-lg px-2 py-2 text-sm outline-none font-mono"/>
+              </div>
+            </div>
+
+            {/* TP / SL (optional) */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] text-zinc-500 mb-1 block">Take Profit 🟢 <span className="text-zinc-700">(ไม่บังคับ)</span></label>
                 <input type="number" step="0.001" value={form.tpPrice||""} placeholder="TP"
                   onChange={e=>f("tpPrice",parseFloat(e.target.value)||0)}
                   className="w-full bg-[#111113] border border-zinc-700 focus:border-emerald-400 rounded-lg px-2 py-2 text-sm outline-none font-mono text-emerald-400"/>
               </div>
               <div>
-                <label className="text-[10px] text-zinc-500 mb-1 block">Stop Loss 🔴</label>
+                <label className="text-[10px] text-zinc-500 mb-1 block">Stop Loss 🔴 <span className="text-zinc-700">(ไม่บังคับ)</span></label>
                 <input type="number" step="0.001" value={form.slPrice||""} placeholder="SL"
                   onChange={e=>f("slPrice",parseFloat(e.target.value)||0)}
                   className="w-full bg-[#111113] border border-zinc-700 focus:border-red-400 rounded-lg px-2 py-2 text-sm outline-none font-mono text-red-400"/>
-              </div>
-              <div>
-                <label className="text-[10px] text-zinc-500 mb-1 block">Lot / Order</label>
-                <input type="number" step="0.01" min="0.01" value={form.lotPerOrder||""} placeholder="0.01"
-                  onChange={e=>f("lotPerOrder",parseFloat(e.target.value)||0.1)}
-                  className="w-full bg-[#111113] border border-zinc-700 focus:border-yellow-400 rounded-lg px-2 py-2 text-sm outline-none font-mono"/>
               </div>
             </div>
 
@@ -699,7 +723,9 @@ export default function JournalPage() {
             {/* R:R — แสดง auto หรือกรอกเอง */}
             <div>
               <label className="text-[10px] text-zinc-500 mb-1 block">
-                R:R {autoRR > 0 ? <span className="text-purple-400 ml-1">← คำนวณจาก TP/SL อัตโนมัติ: 1:{autoRR}</span> : "(กรอกเองถ้าไม่มี TP/SL)"}
+                R:R {autoRR > 0
+                  ? <span className="text-purple-400 ml-1">← อัตโนมัติ: 1:{autoRR} {totalPL !== 0 && !form.slPrice ? `(P/L $${totalPL.toFixed(2)} ÷ Risk $${riskAmount})` : ""}</span>
+                  : <span className="text-zinc-600">(จะคำนวณอัตโนมัติหลังใส่ exit)</span>}
               </label>
               <input type="number" step="0.1"
                 value={autoRR > 0 ? autoRR : (form.rr||"")}
