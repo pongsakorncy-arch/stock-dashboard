@@ -1,3 +1,54 @@
+// ─── S/R Matrix Component ─────────────────────────────────────────────────────
+function SRMatrix({ invest, srS, srR }: { invest: string; srS: string[]; srR: string[] }) {
+  const inv = parseFloat(invest) || 0;
+  const supports = srS.map(s => parseFloat(s) || 0).filter(s => s > 0);
+  const resists  = srR.map(r => parseFloat(r) || 0).filter(r => r > 0);
+  if (!supports.length || !resists.length || !inv) return null;
+  return (
+    <div className="overflow-x-auto rounded-xl border border-zinc-800">
+      <table className="w-full text-[10px]">
+        <thead>
+          <tr className="bg-[#111113]">
+            <th className="px-2 py-2 text-yellow-400 font-black text-left">ซื้อ \ ขาย</th>
+            {resists.map((r,i) => (
+              <th key={i} className="px-2 py-2 text-center">
+                <p className="text-red-400 font-black">R{i+1}</p>
+                <p className="text-zinc-400">${r.toFixed(2)}</p>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {supports.map((s, si) => (
+            <tr key={si} className="border-t border-zinc-800">
+              <td className="px-2 py-2 bg-[#111113]">
+                <p className="text-emerald-400 font-black">S{si+1}</p>
+                <p className="text-zinc-400">${s.toFixed(2)}</p>
+              </td>
+              {resists.map((r, ri) => {
+                const shares = inv / s;
+                const pl  = (r - s) * shares;
+                const pct = ((r - s) / s) * 100;
+                const pos = pl >= 0;
+                return (
+                  <td key={ri} className={`px-2 py-2 text-center border-l border-zinc-800 ${pos ? "bg-emerald-400/5" : "bg-red-400/5"}`}>
+                    <p className={`font-black ${pos ? "text-emerald-400" : "text-red-400"}`}>
+                      {pos ? "+" : "-"}${Math.abs(pl).toFixed(0)}
+                    </p>
+                    <p className={pos ? "text-emerald-600" : "text-red-600"}>
+                      ({pos ? "+" : ""}{pct.toFixed(1)}%)
+                    </p>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 "use client";
 
 import Link from "next/link";
@@ -1032,21 +1083,16 @@ export default function PortfolioPage() {
             {(modalTab as any) === "sr" && (
               <div className="space-y-3">
                 {/* Current position info — เหมือน DCA */}
-                {(()=>{
-                  const p = positions.find(x=>x.ticker===formTicker);
-                  if (!p) return null;
-                  const currentPrice = p.currentPrice||p.avgCost;
-                  return (
-                    <div className="bg-zinc-800/40 rounded-xl p-3 text-xs">
-                      <p className="text-zinc-400 font-bold mb-2">{p.ticker} — ปัจจุบัน</p>
-                      <div className="grid grid-cols-3 gap-2 text-center">
-                        <div><p className="text-zinc-600">ถือ</p><p className="font-bold">{p.shares.toFixed(4)}</p></div>
-                        <div><p className="text-zinc-600">Avg Cost</p><p className="font-bold text-yellow-400">${p.avgCost.toFixed(2)}</p></div>
-                        <div><p className="text-zinc-600">ราคาตอนนี้</p><p className="font-bold">${currentPrice.toFixed(2)}</p></div>
-                      </div>
+                {positions.find(x=>x.ticker===formTicker) && (
+                  <div className="bg-zinc-800/40 rounded-xl p-3 text-xs">
+                    <p className="text-zinc-400 font-bold mb-2">{positions.find(x=>x.ticker===formTicker)!.ticker} — ปัจจุบัน</p>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div><p className="text-zinc-600">ถือ</p><p className="font-bold">{positions.find(x=>x.ticker===formTicker)!.shares.toFixed(4)}</p></div>
+                      <div><p className="text-zinc-600">Avg Cost</p><p className="font-bold text-yellow-400">${positions.find(x=>x.ticker===formTicker)!.avgCost.toFixed(2)}</p></div>
+                      <div><p className="text-zinc-600">ราคาตอนนี้</p><p className="font-bold">${(positions.find(x=>x.ticker===formTicker)!.currentPrice||positions.find(x=>x.ticker===formTicker)!.avgCost).toFixed(2)}</p></div>
                     </div>
-                  );
-                })()}
+                  </div>
+                )}
 
                 {/* Investment amount */}
                 <div>
@@ -1096,58 +1142,10 @@ export default function PortfolioPage() {
                   </button>
                 )}
 
-                {/* Matrix Table */}
-                {srInvest && srS.some(s=>s) && srR.some(r=>r) && (()=>{
-                  const invest = parseFloat(srInvest)||0;
-                  const supports = srS.map(s=>parseFloat(s)||0).filter(s=>s>0);
-                  const resists  = srR.map(r=>parseFloat(r)||0).filter(r=>r>0);
-                  if (!supports.length || !resists.length) return null;
-                  return (
-                    <div className="overflow-x-auto rounded-xl border border-zinc-800">
-                      <table className="w-full text-[10px]">
-                        <thead>
-                          <tr className="bg-[#111113]">
-                            <th className="px-2 py-2 text-yellow-400 font-black text-left">ซื้อที่ \ ขายที่</th>
-                            {resists.map((r,i)=>(
-                              <th key={i} className="px-2 py-2 text-center">
-                                <p className="text-red-400 font-black">R{i+1}</p>
-                                <p className="text-zinc-400">${r.toFixed(2)}</p>
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {supports.map((s,si)=>(
-                            <tr key={si} className="border-t border-zinc-800">
-                              <td className="px-2 py-2 bg-[#111113]">
-                                <p className="text-emerald-400 font-black">S{si+1}</p>
-                                <p className="text-zinc-400">${s.toFixed(2)}</p>
-                              </td>
-                              {resists.map((r,ri)=>{
-                                const shares = invest / s;
-                                const pl = (r - s) * shares;
-                                const pct = ((r-s)/s)*100;
-                                const pos = pl >= 0;
-                                return (
-                                  <td key={ri} className={`px-2 py-2 text-center border-l border-zinc-800 ${pos?"bg-emerald-400/5":"bg-red-400/5"}`}>
-                                    <p className={`font-black ${pos?"text-emerald-400":"text-red-400"}`}>
-                                      {pos?"+":""}{pl<0?"-":""}{Math.abs(pl).toFixed(0)}$
-                                    </p>
-                                    <p className={`${pos?"text-emerald-600":"text-red-600"}`}>
-                                      ({pos?"+":""}{pct.toFixed(1)}%)
-                                    </p>
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  );
-                })()}
-
-                {(!srInvest || (!srS.some(s=>s) && !srR.some(r=>r))) && (
+                {/* Matrix Table — ไม่ใช้ IIFE */}
+                {srInvest && srS.some(s=>s) && srR.some(r=>r) ? (
+                  <SRMatrix invest={srInvest} srS={srS} srR={srR} />
+                ) : (
                   <p className="text-center text-zinc-600 text-xs py-2">ใส่เงินลงทุน + ราคา S/R แล้วตารางจะขึ้นอัตโนมัติครับ</p>
                 )}
               </div>
