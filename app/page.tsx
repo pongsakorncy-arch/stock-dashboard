@@ -228,7 +228,7 @@ const INDEX_CONFIG = [
 // ─── Portfolio snapshot ───────────────────────────────────────────────────────
 function usePortfolioSnapshot() {
   const [snap, setSnap] = useState({
-    value: 0, pl: 0, plPct: 0, dailyPL: 0, dailyPct: 0, count: 0,
+    value: 0, pl: 0, plPct: 0, dailyPL: 0, dailyPct: 0, count: 0, extPL: 0, extPct: 0, extType: "none",
   });
   useEffect(() => {
     try {
@@ -252,7 +252,15 @@ function usePortfolioSnapshot() {
       const prevValue = marketValue - dailyPL;
       const dailyPct = prevValue > 0 ? (dailyPL / prevValue) * 100 : 0;
 
-      setSnap({ value: marketValue, pl, plPct, dailyPL, dailyPct, count: positions.length });
+      // Pre/After market P/L
+      const extPL = positions.reduce((s: number, p: any) => {
+        if (!p.extPrice || !p.currentPrice || p.extType === "none") return s;
+        return s + p.shares * (p.extPrice - p.currentPrice);
+      }, 0);
+      const extPct = marketValue > 0 ? (extPL / marketValue) * 100 : 0;
+      const extType = positions.find((p: any) => p.extType !== "none")?.extType || "none";
+
+      setSnap({ value: marketValue, pl, plPct, dailyPL, dailyPct, count: positions.length, extPL, extPct, extType });
     } catch {}
   }, []);
   return snap;
@@ -559,6 +567,16 @@ export default function Home() {
                 <p className={`text-sm font-black ${portfolio.dailyPL>=0?"text-sky-400":"text-orange-400"}`}>
                   {portfolio.dailyPL>=0?"+":""}{fmtMoney(portfolio.dailyPL)}
                 </p>
+                {portfolio.extType!=="none" && portfolio.extPL!==0 && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${portfolio.extType==="pre"?"bg-yellow-400/20 text-yellow-400":"bg-purple-400/20 text-purple-400"}`}>
+                      {portfolio.extType==="pre"?"PRE":"AH"}
+                    </span>
+                    <span className={`text-[9px] font-bold ${portfolio.extPL>=0?"text-emerald-400":"text-red-400"}`}>
+                      {portfolio.extPL>=0?"+":""}{fmtMoney(portfolio.extPL)} ({portfolio.extPct>=0?"+":""}{portfolio.extPct.toFixed(2)}%)
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
