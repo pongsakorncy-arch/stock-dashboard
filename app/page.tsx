@@ -114,8 +114,22 @@ function LiveClock() {
 
 // ─── Fetch helpers ────────────────────────────────────────────────────────────
 async function fetchQuote(sym: string, key: string) {
-  const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${sym}&token=${key}`);
-  return r.json();
+  // Use crypto quote for BTC
+  const endpoint = sym.includes(":")
+    ? `https://finnhub.io/api/v1/crypto/candle?symbol=${sym}&resolution=D&from=${Math.floor(Date.now()/1000)-86400}&to=${Math.floor(Date.now()/1000)}&token=${key}`
+    : `https://finnhub.io/api/v1/quote?symbol=${sym}&token=${key}`;
+  try {
+    const r = await fetch(endpoint);
+    const d = await r.json();
+    if (sym.includes(":")) {
+      // crypto candle returns c[] array
+      const closes = Array.isArray(d.c) ? d.c : [];
+      const c = closes[closes.length-1] || 0;
+      const pc = closes[closes.length-2] || c;
+      return { c, d: c-pc, dp: pc>0?((c-pc)/pc)*100:0, pc, o: 0 };
+    }
+    return d;
+  } catch { return { c:0, d:0, dp:0, pc:0, o:0 }; }
 }
 
 // Determine session: pre-market (<9:30 ET) or after-hours (>16:00 ET)
@@ -133,11 +147,15 @@ function getMarketSession(): "pre" | "after" | "open" | "closed" {
 async function fetchCandles(sym: string, key: string): Promise<number[]> {
   const to = Math.floor(Date.now() / 1000);
   const from = to - 86400 * 30;
-  const r = await fetch(
-    `https://finnhub.io/api/v1/stock/candle?symbol=${sym}&resolution=D&from=${from}&to=${to}&token=${key}`
-  );
-  const d = await r.json();
-  return Array.isArray(d.c) ? d.c.slice(-20) : [];
+  // Use crypto endpoint for BTC
+  const endpoint = sym.includes(":")
+    ? `https://finnhub.io/api/v1/crypto/candle?symbol=${sym}&resolution=D&from=${from}&to=${to}&token=${key}`
+    : `https://finnhub.io/api/v1/stock/candle?symbol=${sym}&resolution=D&from=${from}&to=${to}&token=${key}`;
+  try {
+    const r = await fetch(endpoint);
+    const d = await r.json();
+    return Array.isArray(d.c) ? d.c.slice(-20) : [];
+  } catch { return []; }
 }
 
 // หุ้นในพอร์ต
@@ -217,12 +235,12 @@ async function fetchTopMovers(key: string): Promise<{ gainers: Mover[]; losers: 
 
 // ─── Index config ─────────────────────────────────────────────────────────────
 const INDEX_CONFIG = [
-  { symbol: "SPY", label: "S&P 500", color: "#4f7df3" },
-  { symbol: "QQQ", label: "NASDAQ",  color: "#a78bfa" },
-  { symbol: "GLD", label: "GOLD",    color: "#f0aa4f" },
-  { symbol: "UUP", label: "DXY",     color: "#69c36b" },
-  { symbol: "TLT", label: "Bonds",   color: "#06b6d4" },
-  { symbol: "VIX", label: "VIX",     color: "#f43f5e" },
+  { symbol: "SPY",     label: "S&P 500", color: "#4f7df3" },
+  { symbol: "QQQ",     label: "NASDAQ",  color: "#a78bfa" },
+  { symbol: "UUP",     label: "DXY",     color: "#69c36b" },
+  { symbol: "TLT",     label: "Bonds",   color: "#06b6d4" },
+  { symbol: "GLD",     label: "GOLD",    color: "#f0aa4f" },
+  { symbol: "COINBASE:BTC-USD", label: "BTC", color: "#f7931a" },
 ] as const;
 
 // ─── Portfolio snapshot ───────────────────────────────────────────────────────
@@ -632,7 +650,12 @@ export default function Home() {
                       </span>
                     </div>
                   )}
-                  <div className="mt-1.5 h-0.5 rounded-full" style={{background:idx.color,opacity:0.4}}/>
+                  {/* Mini sparkline */}
+                  {idx.sparkline.length > 1 && (
+                    <div className="mt-1.5">
+                      <Sparkline data={idx.sparkline} color={pos?idx.color:"#ef4444"}/>
+                    </div>
+                  )}
                 </div>
               );
             })}
