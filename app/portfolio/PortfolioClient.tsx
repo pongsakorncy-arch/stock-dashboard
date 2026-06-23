@@ -535,9 +535,17 @@ export default function PortfolioClient() {
                   <Th k="value" label="มูลค่า"/>
                   <th className="px-3 py-3 text-left whitespace-nowrap">
                     <div className="flex items-center gap-1">
-                      <button onClick={()=>setPlMode("total")} className={`text-xs px-2 py-0.5 rounded font-bold ${plMode==="total"?"bg-emerald-400/20 text-emerald-400":"text-zinc-600 hover:text-zinc-400"}`}>รวม</button>
-                      <span className="text-zinc-700">|</span>
-                      <button onClick={()=>setPlMode("daily")} className={`text-xs px-2 py-0.5 rounded font-bold ${plMode==="daily"?"bg-sky-400/20 text-sky-400":"text-zinc-600 hover:text-zinc-400"}`}>วันนี้</button>
+                      <button onClick={()=>{setPlMode("total");if(sortKey==="dailyPL"||sortKey==="dailyPct")setSortKey("pl");}}
+                        className={`text-xs px-2 py-0.5 rounded font-bold transition-colors ${plMode==="total"?"bg-emerald-400/20 text-emerald-400":"text-zinc-600 hover:text-zinc-400"}`}>รวม</button>
+                      <span className="text-zinc-700 text-xs">|</span>
+                      <button onClick={()=>{setPlMode("daily");if(sortKey==="pl"||sortKey==="plPct")setSortKey("dailyPL");}}
+                        className={`text-xs px-2 py-0.5 rounded font-bold transition-colors ${plMode==="daily"?"bg-sky-400/20 text-sky-400":"text-zinc-600 hover:text-zinc-400"}`}>วันนี้</button>
+                    </div>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      {plMode==="total"
+                        ? <button onClick={()=>handleSort("plPct")} className="text-[10px] text-zinc-600 hover:text-zinc-400">% <SortIcon k="plPct"/></button>
+                        : <button onClick={()=>handleSort("dailyPct")} className="text-[10px] text-zinc-600 hover:text-zinc-400">% <SortIcon k="dailyPct"/></button>
+                      }
                     </div>
                   </th>
                   <Th k="allocation" label="สัดส่วน" className="hidden md:table-cell"/>
