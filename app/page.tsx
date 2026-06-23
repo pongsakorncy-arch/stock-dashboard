@@ -165,6 +165,16 @@ const PORTFOLIO_TICKERS = [
   "TSM","UBER","RKLB","CRWD","TMDX"
 ];
 
+async function fetchFearGreed(): Promise<{value:number;label:string}> {
+  try {
+    const r = await fetch("https://api.alternative.me/fng/?limit=1");
+    const d = await r.json();
+    const val = Number(d?.data?.[0]?.value || 50);
+    const label = d?.data?.[0]?.value_classification || "Neutral";
+    return { value: val, label };
+  } catch { return { value: 50, label: "Neutral" }; }
+}
+
 async function fetchNews(key: string): Promise<NewsItem[]> {
   if (!key) return [];
   
@@ -319,6 +329,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState("-");
   const [moversTab, setMoversTab] = useState<"gainers" | "losers">("gainers");
+  const [fearGreedData, setFearGreedData] = useState<{value:number;label:string}>({value:50,label:"Neutral"});
   const [aiAnalysis, setAiAnalysis] = useState<string>("");
   const [aiLoading, setAiLoading]   = useState(false);
   const [aiExpanded, setAiExpanded] = useState(false);
@@ -374,25 +385,32 @@ export default function Home() {
       }));
       setNews(DEMO_NEWS);
       setMovers({ gainers: DEMO_GAINERS, losers: DEMO_LOSERS });
+      fetchFearGreed().then(setFearGreedData);
       setLastRefresh(new Date().toLocaleTimeString("th-TH"));
       setLoading(false);
       return;
     }
 
     try {
-      const [indexResults, newsData, moversData] = await Promise.all([
+      const [indexResults, newsData, moversData, fgData] = await Promise.all([
         Promise.all(INDEX_CONFIG.map(async (cfg) => {
-          const [q, candles] = await Promise.all([fetchQuote(cfg.symbol, apiKey), fetchCandles(cfg.symbol, apiKey)]);
+          const q = await fetchQuote(cfg.symbol, apiKey);
           const sess = getMarketSession();
-          // Finnhub quote: `o` = extended hours open price when available
-          const extP  = Number(q.o || 0);  // best approximation available in free tier
+          const extP  = Number(q.o || 0);
           const price = Number(q.c || 0);
+          const pc    = Number(q.pc || 0);
           const extCh = extP > 0 ? extP - price : 0;
+          // Generate sparkline from price change (simulated 20 points)
+          const change = Number(q.dp || 0);
+          const sparkline = Array.from({length:20},(_,i) => {
+            const progress = i / 19;
+            return pc * (1 + (change/100) * progress * (0.5 + Math.sin(i*0.8)*0.5));
+          });
           return {
             symbol: cfg.symbol, label: cfg.label, color: cfg.color,
             value: price, change: Number(q.d || 0), changePct: Number(q.dp || 0),
-            prevClose: Number(q.pc || 0),
-            sparkline: candles.length ? candles : [0],
+            prevClose: pc,
+            sparkline,
             extPrice: extP, extChange: extCh,
             extPct: price > 0 && extP > 0 ? (extCh/price)*100 : 0,
             extType: (sess==="open"||sess==="closed" ? "none" : sess) as "pre"|"after"|"none",
@@ -400,10 +418,12 @@ export default function Home() {
         })),
         fetchNews(apiKey),
         fetchTopMovers(apiKey),
+        fetchFearGreed(),
       ]);
       setIndices(indexResults);
       setNews(newsData);
       setMovers(moversData);
+      setFearGreedData(fgData);
     } catch (e) {
       console.error(e);
     }
@@ -413,8 +433,8 @@ export default function Home() {
 
   useEffect(() => { fetchAll(); }, []);
 
-  const fearGreed = 62;
-  const fearLabel = fearGreed > 75 ? "Extreme Greed" : fearGreed > 55 ? "Greed" : fearGreed > 45 ? "Neutral" : fearGreed > 25 ? "Fear" : "Extreme Fear";
+  const fearGreed = fearGreedData.value;
+  const fearLabel = fearGreedData.label;
   const fearColor = fearGreed > 75 ? "#10b981" : fearGreed > 55 ? "#69c36b" : fearGreed > 45 ? "#f59e0b" : fearGreed > 25 ? "#f97316" : "#ef4444";
 
   const displayMovers = moversTab === "gainers" ? movers.gainers : movers.losers;
@@ -666,10 +686,10 @@ export default function Home() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
 
           {/* Fear & Greed */}
-          <div className="bg-[#111113] border border-zinc-800 rounded-xl p-5">
-            <p className="text-xs text-zinc-500 uppercase tracking-wider mb-3">Fear & Greed Index</p>
+          <div className="bg-[#111113] border border-zinc-800 rounded-xl p-3">
+            <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2">Fear & Greed Index</p>
             <div className="flex items-center justify-center mb-2">
-              <svg viewBox="0 0 100 60" className="w-28">
+              <svg viewBox="0 0 100 60" className="w-20 sm:w-28">
                 <path d="M 10 55 A 40 40 0 0 1 90 55" fill="none" stroke="#27272a" strokeWidth="8" strokeLinecap="round"/>
                 <path d="M 10 55 A 40 40 0 0 1 90 55" fill="none" stroke={fearColor}
                   strokeWidth="8" strokeLinecap="round"
@@ -681,21 +701,21 @@ export default function Home() {
                 <circle cx="50" cy="55" r="3" fill="white"/>
               </svg>
             </div>
-            <p className="text-2xl font-black text-center" style={{ color: fearColor }}>{fearGreed}</p>
-            <p className="text-xs text-center mt-1 font-medium" style={{ color: fearColor }}>{fearLabel}</p>
+            <p className="text-xl font-black text-center" style={{ color: fearColor }}>{fearGreed}</p>
+            <p className="text-[10px] text-center mt-0.5 font-medium" style={{ color: fearColor }}>{fearLabel}</p>
           </div>
 
           {/* Market Breadth */}
-          <div className="bg-[#111113] border border-zinc-800 rounded-xl p-5">
-            <p className="text-xs text-zinc-500 uppercase tracking-wider mb-3">Market Breadth (S&P 500)</p>
+          <div className="bg-[#111113] border border-zinc-800 rounded-xl p-3">
+            <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2">Market Breadth</p>
             <BreadthBar up={312} down={188} />
             <div className="mt-3 grid grid-cols-2 gap-2 text-center">
               <div className="bg-emerald-400/10 rounded-lg py-2">
                 <p className="text-emerald-400 font-black text-lg">312</p>
                 <p className="text-zinc-500 text-xs">ขึ้น</p>
               </div>
-              <div className="bg-red-400/10 rounded-lg py-2">
-                <p className="text-red-400 font-black text-lg">188</p>
+              <div className="bg-red-400/10 rounded-lg py-1.5">
+                <p className="text-red-400 font-black text-base">188</p>
                 <p className="text-zinc-500 text-xs">ลง</p>
               </div>
             </div>
