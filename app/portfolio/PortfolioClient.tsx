@@ -127,9 +127,14 @@ export default function PortfolioClient() {
   };
 
   const syncPositions = async (newPos: Position[]) => {
+    console.log("syncPositions called, positions:", newPos.length);
     setPositions(newPos);
     const { data: { user } } = await supabase.auth.getUser();
-    if (user) await saveToSupabase(user.id, newPos);
+    console.log("user:", user?.id);
+    if (user) {
+      const result = await saveToSupabase(user.id, newPos);
+      console.log("saveToSupabase done");
+    }
   };
 
   // ── Market session ────────────────────────────────────────────────────────────
@@ -306,6 +311,7 @@ export default function PortfolioClient() {
     const sym = formTicker.toUpperCase().trim();
     const qty = parseFloat(formShares);
     const tradePrice = parseFloat(formPrice);
+    console.log("saveTrade called:", {sym, qty, tradePrice, mode, editingTicker});
     const target = parseFloat(formTarget)||0;
     if (!sym) { setFormError("กรุณาใส่ Ticker"); return; }
     if (isNaN(qty)||qty<=0) { setFormError("จำนวนหุ้นต้องมากกว่า 0"); return; }
