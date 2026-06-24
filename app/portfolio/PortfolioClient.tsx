@@ -968,7 +968,7 @@ const syncPositions = async (newPos: Position[]) => {
             <span className={`text-xs transition-transform ${showHistory?"rotate-180":""}`}>▼</span>
           </button>
           {showHistory && (
-          {tradeHistory.length === 0 ? (
+            tradeHistory.length === 0 ? (
             <div className="p-6 text-center">
               <p className="text-zinc-600 text-sm">ยังไม่มีประวัติการซื้อขาย</p>
             </div>
