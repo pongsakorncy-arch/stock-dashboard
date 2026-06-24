@@ -165,13 +165,36 @@ const PORTFOLIO_TICKERS = [
   "TSM","UBER","RKLB","CRWD","TMDX"
 ];
 
+// Sector ETFs (SPDR) สำหรับ Sector Performance
+const SECTOR_ETFS: { name: string; sym: string }[] = [
+  { name: "Technology", sym: "XLK" },
+  { name: "Healthcare", sym: "XLV" },
+  { name: "Financials", sym: "XLF" },
+  { name: "Energy",     sym: "XLE" },
+  { name: "Consumer",   sym: "XLY" },
+];
+
+async function fetchSectors(key: string): Promise<{ name: string; pct: number }[]> {
+  if (!key) return [];
+  const results = await Promise.allSettled(
+    SECTOR_ETFS.map(async (s) => {
+      const q = await fetchQuote(s.sym, key);
+      return { name: s.name, pct: Number((q as any)?.dp ?? 0) };
+    })
+  );
+  return results
+    .filter((r): r is PromiseFulfilledResult<{name:string;pct:number}> => r.status === "fulfilled")
+    .map((r) => r.value);
+}
+
 async function fetchFearGreed(): Promise<{value:number;label:string}> {
   try {
-    const r = await fetch("https://api.alternative.me/fng/?limit=1");
+    // CNN Stock-Market Fear & Greed (ผ่าน API route ฝั่ง server)
+    const r = await fetch("/api/fear-greed");
     const d = await r.json();
-    const val = Number(d?.data?.[0]?.value || 50);
-    const label = d?.data?.[0]?.value_classification || "Neutral";
-    return { value: val, label };
+    const val = Number(d?.value ?? 50);
+    const label = d?.label || "Neutral";
+    return { value: isNaN(val) ? 50 : val, label };
   } catch { return { value: 50, label: "Neutral" }; }
 }
 
@@ -321,6 +344,75 @@ const DEMO_LOSERS: Mover[] = [
   { symbol: "SOFI", changePct: -10.51, change: -2.09, price: 17.75 },
 ];
 
+// ─── Economic Calendar (recurring-schedule estimate) ───────────────────────────
+// หมายเหตุ: คำนวณวันโดยประมาณจากรอบการประกาศจริงของสหรัฐฯ (อาจคลาดเคลื่อน ±1-2 วัน
+// เพราะ BLS/Fed กำหนดวันเอง) — Jobless Claims/Jobs Report แม่นยำ, ตัวอื่นเป็นค่าประมาณ
+type EconEvent = { date: Date; event: string; impact: "high"|"med"|"low" };
+
+function getEconomicEvents(): EconEvent[] {
+  const now = new Date();
+  const events: EconEvent[] = [];
+
+  // หา weekday ลำดับที่ n ของเดือน (weekday: 0=อา..6=ส, n เริ่มที่ 1)
+  const nthWeekday = (y: number, m: number, weekday: number, n: number): Date | null => {
+    const d = new Date(y, m, 1);
+    let count = 0;
+    while (d.getMonth() === m) {
+      if (d.getDay() === weekday) { count++; if (count === n) return new Date(d); }
+      d.setDate(d.getDate() + 1);
+    }
+    return null;
+  };
+  // หาวัน weekday ถัดไป (รวมวันนี้)
+  const nextWeekday = (from: Date, weekday: number): Date => {
+    const d = new Date(from);
+    d.setDate(d.getDate() + ((weekday - d.getDay() + 7) % 7));
+    return d;
+  };
+
+  // เดือนนี้ + เดือนหน้า (กันช่วงรอยต่อสิ้นเดือน)
+  for (let mOff = 0; mOff <= 1; mOff++) {
+    const base = new Date(now.getFullYear(), now.getMonth() + mOff, 1);
+    const y = base.getFullYear(), m = base.getMonth();
+
+    const nfp = nthWeekday(y, m, 5, 1);              // ศุกร์แรก = Jobs Report
+    if (nfp) events.push({ date: nfp, event: "Jobs Report (NFP)", impact: "high" });
+
+    events.push({ date: new Date(y, m, 12), event: "CPI (US)",   impact: "high" });
+    events.push({ date: new Date(y, m, 12), event: "Core CPI",   impact: "high" });
+    events.push({ date: new Date(y, m, 13), event: "PPI",        impact: "med"  });
+    events.push({ date: new Date(y, m, 15), event: "Retail Sales", impact: "high" });
+
+    const cs = nthWeekday(y, m, 5, 2);               // ศุกร์ที่ 2 = Consumer Sentiment
+    if (cs) events.push({ date: cs, event: "Consumer Sentiment", impact: "low" });
+  }
+
+  // Jobless Claims = ทุกพฤหัส (4 สัปดาห์ข้างหน้า)
+  const thu = nextWeekday(now, 4);
+  for (let i = 0; i < 4; i++) {
+    events.push({ date: new Date(thu), event: "Jobless Claims", impact: "med" });
+    thu.setDate(thu.getDate() + 7);
+  }
+
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return events
+    .filter(e => e.date >= today)
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
+    .slice(0, 6);
+}
+
+function fmtEventDate(d: Date): string {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diff = Math.round((target.getTime() - today.getTime()) / 86400000);
+  if (diff === 0) return "วันนี้";
+  if (diff === 1) return "พรุ่งนี้";
+  if (diff < 7) return ["อา.","จ.","อ.","พ.","พฤ.","ศ.","ส."][d.getDay()];
+  const months = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+  return `${d.getDate()} ${months[d.getMonth()]}`;
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function Home() {
   const [indices, setIndices] = useState<IndexData[]>([]);
@@ -330,6 +422,7 @@ export default function Home() {
   const [lastRefresh, setLastRefresh] = useState("-");
   const [moversTab, setMoversTab] = useState<"gainers" | "losers">("gainers");
   const [fearGreedData, setFearGreedData] = useState<{value:number;label:string}>({value:50,label:"Neutral"});
+  const [sectorData, setSectorData] = useState<{name:string;pct:number}[]>([]);
   const [aiAnalysis, setAiAnalysis] = useState<string>("");
   const [aiLoading, setAiLoading]   = useState(false);
   const [aiExpanded, setAiExpanded] = useState(false);
@@ -392,7 +485,7 @@ export default function Home() {
     }
 
     try {
-      const [indexResults, newsData, moversData, fgData] = await Promise.all([
+      const [indexResults, newsData, moversData, fgData, sectorResults] = await Promise.all([
         Promise.all(INDEX_CONFIG.map(async (cfg) => {
           const q = await fetchQuote(cfg.symbol, apiKey);
           const sess = getMarketSession();
@@ -419,11 +512,13 @@ export default function Home() {
         fetchNews(apiKey),
         fetchTopMovers(apiKey),
         fetchFearGreed(),
+        fetchSectors(apiKey),
       ]);
       setIndices(indexResults);
       setNews(newsData);
       setMovers(moversData);
       setFearGreedData(fgData);
+      if (sectorResults.length) setSectorData(sectorResults);
     } catch (e) {
       console.error(e);
     }
@@ -849,13 +944,13 @@ export default function Home() {
             <div className="bg-[#111113] border border-zinc-800 rounded-xl p-5">
               <p className="text-xs text-zinc-500 uppercase tracking-wider mb-3">Sector Performance</p>
               <div className="space-y-1.5">
-                {[
-                  { name: "Technology", pct: 1.42 },
-                  { name: "Healthcare", pct: 0.38 },
-                  { name: "Financials", pct: -0.21 },
-                  { name: "Energy",     pct: -1.05 },
-                  { name: "Consumer",   pct: 0.71 },
-                ].map(s => (
+                {(sectorData.length ? sectorData : [
+                  { name: "Technology", pct: 0 },
+                  { name: "Healthcare", pct: 0 },
+                  { name: "Financials", pct: 0 },
+                  { name: "Energy",     pct: 0 },
+                  { name: "Consumer",   pct: 0 },
+                ]).map(s => (
                   <div key={s.name} className="flex items-center gap-2">
                     <p className="text-xs text-zinc-400 w-20 truncate">{s.name}</p>
                     <div className="flex-1 h-4 bg-zinc-800 rounded overflow-hidden">
@@ -864,7 +959,7 @@ export default function Home() {
                           width: `${Math.min(Math.abs(s.pct) * 40 + 20, 100)}%`,
                           background: s.pct >= 0 ? "rgba(16,185,129,0.5)" : "rgba(239,68,68,0.5)",
                         }}>
-                        <span className="text-[10px] font-bold text-white">{s.pct > 0 ? "+" : ""}{s.pct}%</span>
+                        <span className="text-[10px] font-bold text-white">{s.pct > 0 ? "+" : ""}{s.pct.toFixed(2)}%</span>
                       </div>
                     </div>
                   </div>
@@ -878,16 +973,9 @@ export default function Home() {
                 <p className="text-xs font-bold text-zinc-300">📅 Economic Calendar</p>
               </div>
               <div className="divide-y divide-zinc-800/60">
-                {[
-                  { date: "พรุ่งนี้", event: "CPI (US)",          impact: "high" },
-                  { date: "พรุ่งนี้", event: "Core CPI",          impact: "high" },
-                  { date: "พฤ.",      event: "PPI",                impact: "med"  },
-                  { date: "พฤ.",      event: "Jobless Claims",     impact: "med"  },
-                  { date: "ศ.",       event: "Retail Sales",       impact: "high" },
-                  { date: "ศ.",       event: "Consumer Sentiment", impact: "low"  },
-                ].map((e, i) => (
+                {getEconomicEvents().map((e, i) => (
                   <div key={i} className="flex items-center gap-3 px-5 py-2.5">
-                    <span className="text-xs text-zinc-600 w-12">{e.date}</span>
+                    <span className="text-xs text-zinc-600 w-14">{fmtEventDate(e.date)}</span>
                     <span className="text-xs text-zinc-300 flex-1">{e.event}</span>
                     <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
                       e.impact === "high" ? "bg-red-400" : e.impact === "med" ? "bg-yellow-400" : "bg-zinc-600"
