@@ -645,26 +645,39 @@ const syncPositions = async (newPos: Position[]) => {
                       <td className="px-3 py-3 min-w-[120px] hidden md:table-cell">
                         <div className="space-y-1">
                           {/* Combined bar */}
-                          <div className="h-5 bg-zinc-800 rounded-lg overflow-hidden flex relative border border-zinc-700">
-                            {/* Current allocation bar */}
-                            <div className="h-full rounded-lg" style={{width:`${Math.min(allocNow,100)}%`,background:COLORS[idx%COLORS.length],opacity:0.8}} title={`ปัจจุบัน ${allocNow.toFixed(1)}%`}/>
-                            {/* Target allocation indicator */}
-                            {targetPct>0 && (
-                              <div className="absolute h-full w-1 bg-purple-400 opacity-75" style={{left:`${Math.min(targetPct,100)}%`}} title={`เป้าหมาย ${targetPct.toFixed(1)}%`}/>
-                            )}
-                          </div>
-                          {/* Labels */}
-                          <div className="flex items-center justify-between text-[10px]">
-                            <div className="flex items-center gap-1">
-                              <span className="w-2 h-2 rounded-sm" style={{background:COLORS[idx%COLORS.length]}}/>
-                              <span className="text-zinc-400">ปัจจุบัน:</span>
-                              <span className="font-bold text-zinc-300">{allocNow.toFixed(1)}%</span>
+                          {targetPct>0 ? (
+                            <div className="h-6 bg-zinc-800 rounded-lg overflow-hidden flex relative border border-zinc-700">
+                              {/* Background to target */}
+                              <div className="h-full absolute" style={{width:`${Math.min(targetPct,100)}%`,background:allocNow<targetPct?"#10b98133":"#f9731633"}}/>
+                              {/* Current allocation bar */}
+                              <div className="h-full rounded-lg z-10" style={{width:`${Math.min(allocNow,100)}%`,background:allocNow<targetPct?COLORS[idx%COLORS.length]:"#f97316",opacity:0.9}} title={`ปัจจุบัน ${allocNow.toFixed(1)}%`}/>
                             </div>
-                            {targetPct>0 && (
+                          ) : (
+                            <div className="h-6 bg-zinc-800 rounded-lg overflow-hidden border border-zinc-700">
+                              <div className="h-full rounded-lg" style={{width:`${Math.min(allocNow,100)}%`,background:COLORS[idx%COLORS.length],opacity:0.8}} title={`ปัจจุบัน ${allocNow.toFixed(1)}%`}/>
+                            </div>
+                          )}
+                          {/* Labels */}
+                          <div className="space-y-0.5">
+                            <div className="flex items-center justify-between text-[10px]">
                               <div className="flex items-center gap-1">
-                                <span className="w-1.5 h-1.5 bg-purple-400"/>
-                                <span className="text-zinc-400">เป้า:</span>
-                                <span className="font-bold text-purple-400">{targetPct.toFixed(1)}%</span>
+                                <span className="w-2 h-2 rounded-sm" style={{background:COLORS[idx%COLORS.length]}}/>
+                                <span className="text-zinc-400">ปัจจุบัน:</span>
+                                <span className="font-bold text-zinc-300">{allocNow.toFixed(1)}%</span>
+                              </div>
+                              {targetPct>0 && (
+                                <div className="flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 bg-purple-400"/>
+                                  <span className="text-zinc-400">เป้า:</span>
+                                  <span className="font-bold text-purple-400">{targetPct.toFixed(1)}%</span>
+                                </div>
+                              )}
+                            </div>
+                            {/* Dollar amounts */}
+                            {targetPct>0 && (
+                              <div className="flex items-center justify-between text-[8px] text-zinc-500">
+                                <span>{fmtMoney(val)} / {fmtMoney(targetPct>0?marketValue*(targetPct/100):0)}</span>
+                                <span>{allocDiff!==null?(allocDiff>0?"+":"")+fmtMoney(marketValue*(allocDiff/100)):""}</span>
                               </div>
                             )}
                           </div>
