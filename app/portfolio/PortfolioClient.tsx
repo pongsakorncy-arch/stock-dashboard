@@ -654,7 +654,7 @@ const syncPositions = async (newPos: Position[]) => {
                             <div className="flex items-center justify-between text-[8px]">
                               <span className="text-zinc-400">{allocNow.toFixed(1)}% / {targetPct.toFixed(1)}%</span>
                               <span className={`font-bold ${allocDiff>0?"text-orange-400":"text-emerald-400"}`}>
-                                {allocDiff>0?"+":""}{allocDiff!==null?allocDiff.toFixed(1):0}%
+                                {allocDiff>0?"+":""}{allocDiff!==null?allocDiff.toFixed(1):0}% = {allocDiff!==null?fmtMoney(Math.abs(marketValue*(allocDiff/100))):""}
                               </span>
                             </div>
                           </div>
