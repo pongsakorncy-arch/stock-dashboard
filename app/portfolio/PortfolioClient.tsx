@@ -85,6 +85,7 @@ export default function PortfolioClient() {
   const [srR, setSrR]                   = useState(["","",""]);
   const [hoveredIdx, setHoveredIdx]     = useState<number|null>(null);
   const [tradeHistory, setTradeHistory] = useState<any[]>([]);
+  const [showHistory, setShowHistory]   = useState(false);
   const [isTrading, setIsTrading]       = useState(false);
   const tradeTimeoutRef                 = useRef<NodeJS.Timeout|null>(null);
 
@@ -962,9 +963,11 @@ const syncPositions = async (newPos: Position[]) => {
 
         {/* ── Trade History ── */}
         <div className="bg-[#18181b] border border-zinc-800 rounded-xl overflow-hidden fade-up">
-          <div className="p-4 border-b border-zinc-800">
-            <h2 className="text-sm font-bold text-white">📜 ประวัติการซื้อขาย</h2>
-          </div>
+          <button onClick={() => setShowHistory(!showHistory)} className="w-full p-4 border-b border-zinc-800 hover:bg-zinc-800/30 transition-colors flex items-center justify-between">
+            <h2 className="text-sm font-bold text-white">📜 ประวัติการซื้อขาย ({tradeHistory.length})</h2>
+            <span className={`text-xs transition-transform ${showHistory?"rotate-180":""}`}>▼</span>
+          </button>
+          {showHistory && (
           {tradeHistory.length === 0 ? (
             <div className="p-6 text-center">
               <p className="text-zinc-600 text-sm">ยังไม่มีประวัติการซื้อขาย</p>
