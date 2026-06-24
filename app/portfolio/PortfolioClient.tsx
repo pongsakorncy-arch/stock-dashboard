@@ -355,7 +355,7 @@ const syncPositions = async (newPos: Position[]) => {
         const newAvg = (ex.shares*oldAvg+qty*tradePrice)/ns;
         syncPositions(positions.map(p => {
           if (p.ticker!==sym) return p;
-          return {...p, shares:ns, avgCost:newAvg};
+          return {...p, shares:ns, avgCost:newAvg, targetAlloc:target};
         }));
         recordTrade(sym, "buy", qty, tradePrice, oldAvg, newAvg, 0);
       }
@@ -369,7 +369,7 @@ const syncPositions = async (newPos: Position[]) => {
         syncPositions(positions.filter(p=>p.ticker!==sym));
         recordTrade(sym, "sell", qty, tradePrice, ex.avgCost, ex.avgCost, pl);
       } else {
-        syncPositions(positions.map(p=>p.ticker===sym?{...p,shares:p.shares-qty}:p));
+        syncPositions(positions.map(p=>p.ticker===sym?{...p,shares:p.shares-qty,targetAlloc:target}:p));
         recordTrade(sym, "sell", qty, tradePrice, ex.avgCost, ex.avgCost, pl);
       }
     }
