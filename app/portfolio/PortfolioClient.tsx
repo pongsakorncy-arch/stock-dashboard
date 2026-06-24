@@ -643,29 +643,38 @@ const syncPositions = async (newPos: Position[]) => {
                         )}
                       </td>
                       <td className="px-3 py-3 min-w-[120px] hidden md:table-cell">
-                        <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-[10px] text-zinc-600">ปัจจุบัน</span>
-                          <span className="text-xs font-bold text-zinc-300">{allocNow.toFixed(1)}%</span>
-                        </div>
-                        <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden mb-1">
-                          <div className="h-full rounded-full" style={{width:`${Math.min(allocNow,100)}%`,background:COLORS[idx%COLORS.length]}}/>
-                        </div>
-                        {targetPct>0 ? (
-                          <>
-                            <div className="flex items-center justify-between mb-0.5">
-                              <span className="text-[10px] text-zinc-600">เป้าหมาย</span>
-                              <span className="text-[10px] font-bold text-purple-400">{targetPct.toFixed(1)}%</span>
-                            </div>
-                            <div className="h-1 bg-zinc-800 rounded-full overflow-hidden mb-1">
-                              <div className="h-full bg-purple-500/50 rounded-full" style={{width:`${Math.min(targetPct,100)}%`}}/>
-                            </div>
-                            {allocDiff!==null&&(
-                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${Math.abs(allocDiff)<0.5?"bg-zinc-700 text-zinc-400":allocDiff>0?"bg-orange-400/10 text-orange-400":"bg-blue-400/10 text-blue-400"}`}>
-                                {allocDiff>0?"▲ เกิน":"▼ ขาด"} {Math.abs(allocDiff).toFixed(1)}%
-                              </span>
+                        <div className="space-y-1">
+                          {/* Combined bar */}
+                          <div className="h-5 bg-zinc-800 rounded-lg overflow-hidden flex relative border border-zinc-700">
+                            {/* Current allocation bar */}
+                            <div className="h-full rounded-lg" style={{width:`${Math.min(allocNow,100)}%`,background:COLORS[idx%COLORS.length],opacity:0.8}} title={`ปัจจุบัน ${allocNow.toFixed(1)}%`}/>
+                            {/* Target allocation indicator */}
+                            {targetPct>0 && (
+                              <div className="absolute h-full w-1 bg-purple-400 opacity-75" style={{left:`${Math.min(targetPct,100)}%`}} title={`เป้าหมาย ${targetPct.toFixed(1)}%`}/>
                             )}
-                          </>
-                        ) : <p className="text-[10px] text-zinc-700">ยังไม่ตั้งเป้า</p>}
+                          </div>
+                          {/* Labels */}
+                          <div className="flex items-center justify-between text-[10px]">
+                            <div className="flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-sm" style={{background:COLORS[idx%COLORS.length]}}/>
+                              <span className="text-zinc-400">ปัจจุบัน:</span>
+                              <span className="font-bold text-zinc-300">{allocNow.toFixed(1)}%</span>
+                            </div>
+                            {targetPct>0 && (
+                              <div className="flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 bg-purple-400"/>
+                                <span className="text-zinc-400">เป้า:</span>
+                                <span className="font-bold text-purple-400">{targetPct.toFixed(1)}%</span>
+                              </div>
+                            )}
+                          </div>
+                          {allocDiff!==null&&targetPct>0&&(
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded inline-block ${Math.abs(allocDiff)<0.5?"bg-zinc-700 text-zinc-400":allocDiff>0?"bg-orange-400/10 text-orange-400":"bg-blue-400/10 text-blue-400"}`}>
+                              {allocDiff>0?"▲ เกิน":"▼ ขาด"} {Math.abs(allocDiff).toFixed(1)}%
+                            </span>
+                          )}
+                          {targetPct<=0 && <p className="text-[9px] text-zinc-700">ยังไม่ตั้งเป้า</p>}
+                        </div>
                       </td>
                       <td className="px-2 py-3">
                         <div className="flex items-center justify-center gap-1">
