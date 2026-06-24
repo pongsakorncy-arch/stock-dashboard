@@ -958,6 +958,7 @@ const syncPositions = async (newPos: Position[]) => {
       )}
 
 
+
         {/* ── Trade History ── */}
         <div className="bg-[#18181b] border border-zinc-800 rounded-xl overflow-hidden fade-up">
           <div className="p-4 border-b border-zinc-800">
@@ -1014,7 +1015,7 @@ const syncPositions = async (newPos: Position[]) => {
             </div>
           )}
         </div>
-      </div>
+
       {/* Toast */}
       {toast && (
         <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] px-5 py-3 rounded-2xl text-sm font-bold shadow-2xl toast-in ${toast.type==="success"?"bg-emerald-500 text-black":"bg-red-500 text-white"}`}>
