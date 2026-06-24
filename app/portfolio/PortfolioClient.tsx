@@ -56,6 +56,7 @@ const INITIAL: Position[] = [
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function PortfolioClient() {
   const [positions, setPositions]       = useState<Position[]>([]);
+  const positionsRef                    = useRef<Position[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated]   = useState("-");
   const autoRefreshed                   = useRef(false);
@@ -90,6 +91,9 @@ export default function PortfolioClient() {
   const tradeTimeoutRef                 = useRef<NodeJS.Timeout|null>(null);
 
   const { currency, rate, lastUpdate: rateUpdate, toggleCurrency, format: fmtMoney } = useCurrency();
+
+  // Keep positionsRef in sync with the latest positions (prevents stale closure in interval/refresh)
+  useEffect(() => { positionsRef.current = positions; }, [positions]);
 
   const showToast = (msg: string, type: "success"|"error" = "success") => {
     setToast({msg,type});
@@ -181,10 +185,11 @@ const syncPositions = async (newPos: Position[]) => {
   }
 
   const refreshPrices = async () => {
-    if (!positions.length) return;
+    const cur = positionsRef.current;
+    if (!cur.length) return;
     setIsRefreshing(true);
     const sess = getSession();
-    const updated = await Promise.all(positions.map(async p => {
+    const updated = await Promise.all(cur.map(async p => {
       const { c, pc, o } = await getQuote(p.ticker);
       const extPrice = (sess==="pre"||sess==="after") && o > 0 ? o : 0;
       const extPct   = extPrice>0&&c>0 ? ((extPrice-c)/c)*100 : 0;
@@ -333,27 +338,28 @@ const syncPositions = async (newPos: Position[]) => {
     const tradePrice = parseFloat(formPrice);
     console.log("saveTrade called:", {sym, qty, tradePrice, mode, editingTicker});
     const target = parseFloat(formTarget)||0;
+    const cur = positionsRef.current;
     if (!sym) { setFormError("กรุณาใส่ Ticker"); return; }
     if (isNaN(qty)||qty<=0) { setFormError("จำนวนหุ้นต้องมากกว่า 0"); return; }
     if (isNaN(tradePrice)||tradePrice<=0) { setFormError("ราคาต้องมากกว่า 0"); return; }
 
     if (editingTicker) {
-      syncPositions(positions.map(p =>
+      syncPositions(cur.map(p =>
         p.ticker===editingTicker ? {...p, ticker:sym, name:formName||p.name, shares:qty, avgCost:tradePrice, targetAlloc:target} : p
       ));
       showToast(`✓ แก้ไข ${sym} แล้ว`);
       closeModal(); return;
     }
     if (mode==="buy") {
-      const ex = positions.find(p=>p.ticker===sym);
+      const ex = cur.find(p=>p.ticker===sym);
       if (!ex) {
-        syncPositions([...positions, {ticker:sym,name:formName||sym,shares:qty,avgCost:tradePrice,currentPrice:tradePrice,prevClose:0,targetAlloc:target,extPrice:0,extPct:0,extType:"none"}]);
+        syncPositions([...cur, {ticker:sym,name:formName||sym,shares:qty,avgCost:tradePrice,currentPrice:tradePrice,prevClose:0,targetAlloc:target,extPrice:0,extPct:0,extType:"none"}]);
         recordTrade(sym, "buy", qty, tradePrice, 0, tradePrice, 0);
       } else {
         const oldAvg = ex.avgCost;
         const ns = ex.shares+qty;
         const newAvg = (ex.shares*oldAvg+qty*tradePrice)/ns;
-        syncPositions(positions.map(p => {
+        syncPositions(cur.map(p => {
           if (p.ticker!==sym) return p;
           return {...p, shares:ns, avgCost:newAvg, targetAlloc:target};
         }));
@@ -361,15 +367,15 @@ const syncPositions = async (newPos: Position[]) => {
       }
     }
     if (mode==="sell") {
-      const ex = positions.find(p=>p.ticker===sym);
+      const ex = cur.find(p=>p.ticker===sym);
       if (!ex) { setFormError("ไม่พบหุ้นนี้"); return; }
       if (qty>ex.shares) { setFormError(`มีหุ้นแค่ ${ex.shares.toFixed(4)}`); return; }
       const pl = (tradePrice - ex.avgCost) * qty;
       if (ex.shares-qty <= 0.00001) {
-        syncPositions(positions.filter(p=>p.ticker!==sym));
+        syncPositions(cur.filter(p=>p.ticker!==sym));
         recordTrade(sym, "sell", qty, tradePrice, ex.avgCost, ex.avgCost, pl);
       } else {
-        syncPositions(positions.map(p=>p.ticker===sym?{...p,shares:p.shares-qty,targetAlloc:target}:p));
+        syncPositions(cur.map(p=>p.ticker===sym?{...p,shares:p.shares-qty,targetAlloc:target}:p));
         recordTrade(sym, "sell", qty, tradePrice, ex.avgCost, ex.avgCost, pl);
       }
     }
