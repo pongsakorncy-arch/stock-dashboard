@@ -969,11 +969,11 @@ const syncPositions = async (newPos: Position[]) => {
           </button>
           {showHistory && (
             tradeHistory.length === 0 ? (
-            <div className="p-6 text-center">
-              <p className="text-zinc-600 text-sm">ยังไม่มีประวัติการซื้อขาย</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
+              <div className="p-6 text-center">
+                <p className="text-zinc-600 text-sm">ยังไม่มีประวัติการซื้อขาย</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-[#111113]">
                   <tr>
@@ -1017,6 +1017,7 @@ const syncPositions = async (newPos: Position[]) => {
                 </tbody>
               </table>
             </div>
+            )
           )}
         </div>
 
