@@ -189,7 +189,7 @@ const syncPositions = async (newPos: Position[]) => {
       const extPrice = (sess==="pre"||sess==="after") && o > 0 ? o : 0;
       const extPct   = extPrice>0&&c>0 ? ((extPrice-c)/c)*100 : 0;
       const extType: "pre"|"after"|"none" = sess==="pre"||sess==="after" ? sess : "none";
-      return { ...p, currentPrice: c||p.currentPrice, prevClose: pc||p.prevClose, extPrice, extPct, extType };
+      return { ...p, currentPrice: c||p.currentPrice, prevClose: pc||p.prevClose, extPrice, extPct, extType, targetAlloc: p.targetAlloc };
     }));
     await syncPositions(updated);
     setLastUpdated(new Date().toLocaleTimeString("th-TH"));
