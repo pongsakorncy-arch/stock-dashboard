@@ -110,6 +110,7 @@ const defaultForm = () => ({
   entryPrice: 0,
   exitPrices: [] as number[],
   lotPerOrder: 0.10,
+  lotInput: "0.10",
   slPrice: 0,
   tpPrice: 0,
   riskAmount: 5,
@@ -288,7 +289,7 @@ export default function JournalPage() {
       date: t.date, time: t.time, symbol: t.symbol,
       direction: t.direction, session: t.session,
       entryPrice: t.entryPrice, exitPrices: t.exitPrices,
-      lotPerOrder: t.lotPerOrder, slPrice: t.slPrice,
+      lotPerOrder: t.lotPerOrder, lotInput: String(t.lotPerOrder), slPrice: t.slPrice,
       tpPrice: (t as any).tpPrice ?? 0,
       rr: t.rr, result: t.result,
       htfBias: t.htfBias, smcConcept: t.smcConcept,
@@ -547,8 +548,14 @@ export default function JournalPage() {
               </div>
               <div>
                 <label className="text-[10px] text-zinc-500 mb-1 block">Lot / Order</label>
-                <input type="number" step="0.01" min="0.01" value={form.lotPerOrder||""} placeholder="0.01"
-                  onChange={e=>f("lotPerOrder",parseFloat(e.target.value)||0.01)}
+                <input type="text" inputMode="decimal" value={form.lotInput} placeholder="0.01"
+                  onChange={e=>{
+                    const v = e.target.value;
+                    if (v === "" || /^\d*\.?\d*$/.test(v)) {
+                      f("lotInput", v);
+                      f("lotPerOrder", parseFloat(v) || 0);
+                    }
+                  }}
                   className="w-full bg-[#111113] border border-zinc-700 focus:border-yellow-400 rounded-lg px-2 py-2 text-sm outline-none font-mono"/>
               </div>
             </div>
