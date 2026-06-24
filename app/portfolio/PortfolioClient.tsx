@@ -66,7 +66,7 @@ export default function PortfolioClient() {
   const [sortKey, setSortKey]           = useState<SortKey>("value");
   const [sortDir, setSortDir]           = useState<SortDir>("desc");
   const [modal, setModal]               = useState<{type:"buy"|"sell"|"edit";ticker:string}|null>(null);
-  const [modalTab, setModalTab]         = useState<"trade"|"dca"|"sr">("trade");
+  const [modalTab, setModalTab]         = useState<"trade"|"dca"|"sr"|"history">("trade");
   const [mode, setMode]                 = useState<"buy"|"sell">("buy");
   const [formTicker, setFormTicker]     = useState("");
   const [formShares, setFormShares]     = useState("");
@@ -113,6 +113,9 @@ export default function PortfolioClient() {
       }
       const { data: s } = await supabase.from("user_settings").select("cash").eq("user_id", user.id).single();
       if (s) setCash(Number(s.cash)||0);
+      // Load trade history
+      const { data: trades } = await supabase.from("portfolio_trades").select("*").eq("user_id", user.id).order("created_at", {ascending: false});
+      if (trades) setTradeHistory(trades);
     };
     load();
   }, []);
@@ -128,7 +131,20 @@ export default function PortfolioClient() {
     localStorage.setItem("yok_portfolio_v4", JSON.stringify(pos));
   };
 
-  const syncPositions = async (newPos: Position[]) => {
+  const recordTrade = async (ticker: string, type: "buy"|"sell", shares: number, price: number, costBefore: number, costAfter: number, pl: number) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase.from("portfolio_trades").insert({
+      user_id: user.id, ticker, type, shares, price,
+      amount: shares * price,
+      avg_cost_before: costBefore,
+      avg_cost_after: costAfter,
+      pl,
+      created_at: new Date().toISOString(),
+    });
+  };
+
+const syncPositions = async (newPos: Position[]) => {
     console.log("syncPositions called, positions:", newPos.length);
     setPositions(newPos);
     const { data: { user } } = await supabase.auth.getUser();
@@ -330,20 +346,30 @@ export default function PortfolioClient() {
       const ex = positions.find(p=>p.ticker===sym);
       if (!ex) {
         syncPositions([...positions, {ticker:sym,name:formName||sym,shares:qty,avgCost:tradePrice,currentPrice:tradePrice,prevClose:0,targetAlloc:target,extPrice:0,extPct:0,extType:"none"}]);
+        recordTrade(sym, "buy", qty, tradePrice, 0, tradePrice, 0);
       } else {
+        const oldAvg = ex.avgCost;
+        const ns = ex.shares+qty;
+        const newAvg = (ex.shares*oldAvg+qty*tradePrice)/ns;
         syncPositions(positions.map(p => {
           if (p.ticker!==sym) return p;
-          const ns = p.shares+qty;
-          return {...p, shares:ns, avgCost:(p.shares*p.avgCost+qty*tradePrice)/ns};
+          return {...p, shares:ns, avgCost:newAvg};
         }));
+        recordTrade(sym, "buy", qty, tradePrice, oldAvg, newAvg, 0);
       }
     }
     if (mode==="sell") {
       const ex = positions.find(p=>p.ticker===sym);
       if (!ex) { setFormError("ไม่พบหุ้นนี้"); return; }
       if (qty>ex.shares) { setFormError(`มีหุ้นแค่ ${ex.shares.toFixed(4)}`); return; }
-      if (ex.shares-qty <= 0.00001) syncPositions(positions.filter(p=>p.ticker!==sym));
-      else syncPositions(positions.map(p=>p.ticker===sym?{...p,shares:p.shares-qty}:p));
+      const pl = (tradePrice - ex.avgCost) * qty;
+      if (ex.shares-qty <= 0.00001) {
+        syncPositions(positions.filter(p=>p.ticker!==sym));
+        recordTrade(sym, "sell", qty, tradePrice, ex.avgCost, ex.avgCost, pl);
+      } else {
+        syncPositions(positions.map(p=>p.ticker===sym?{...p,shares:p.shares-qty}:p));
+        recordTrade(sym, "sell", qty, tradePrice, ex.avgCost, ex.avgCost, pl);
+      }
     }
     showToast(`✓ บันทึก ${sym} แล้ว`);
     closeModal();
@@ -687,6 +713,7 @@ export default function PortfolioClient() {
                   <button type="button" onClick={()=>setModalTab("trade")} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${modalTab==="trade"?"bg-zinc-700 text-white":"text-zinc-500"}`}>💹 ซื้อ/ขาย</button>
                   <button type="button" onClick={()=>setModalTab("dca")} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${modalTab==="dca"?"bg-yellow-400/20 text-yellow-400":"text-zinc-500"}`}>📊 DCA</button>
                   <button type="button" onClick={()=>setModalTab("sr")} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${modalTab==="sr"?"bg-purple-400/20 text-purple-400":"text-zinc-500"}`}>🎯 S/R</button>
+                  <button type="button" onClick={()=>setModalTab("history")} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${modalTab==="history"?"bg-blue-400/20 text-blue-400":"text-zinc-500"}`}>📜 History</button>
                 </div>
                 {modalTab==="trade" && (
                   <div className="flex gap-2 mb-4">
@@ -886,6 +913,45 @@ export default function PortfolioClient() {
                   className={`w-full py-3 rounded-xl font-bold text-sm mt-1 ${editingTicker?"bg-yellow-400 hover:bg-yellow-300 text-black":mode==="buy"?"bg-emerald-500 hover:bg-emerald-400 text-black":"bg-blue-500 hover:bg-blue-400 text-white"}`}>
                   {editingTicker?"✓ บันทึกการแก้ไข":mode==="buy"?"✓ บันทึกการซื้อ":"✓ บันทึกการขาย"}
                 </button>
+              </div>
+            )}
+
+            {/* History Tab */}
+            {modalTab==="history" && !editingTicker && (
+              <div className="space-y-3">
+                <p className="text-xs text-zinc-400 mb-2">ประวัติการซื้อขาย {formTicker || "ทั้งหมด"}</p>
+                {tradeHistory.length === 0 ? (
+                  <p className="text-center text-zinc-600 text-sm py-4">ยังไม่มีประวัติการซื้อขาย</p>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {tradeHistory.filter(t => !formTicker || t.ticker === formTicker).map((trade, idx) => {
+                      const date = new Date(trade.created_at);
+                      const isPos = trade.type === "buy" || trade.pl > 0;
+                      return (
+                        <div key={idx} className="bg-zinc-800/50 rounded-lg p-2.5 text-xs border border-zinc-700/50">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className={`font-bold ${trade.type==="buy"?"text-emerald-400":"text-blue-400"}`}>
+                              {trade.type==="buy"?"🟢 ซื้อ":"🔵 ขาย"} {trade.ticker}
+                            </span>
+                            <span className="text-zinc-500">{date.toLocaleDateString("th-TH")} {date.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"})}</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-zinc-400 mb-1">
+                            <div><span className="text-zinc-600">จำนวน:</span> {trade.shares.toFixed(4)}</div>
+                            <div><span className="text-zinc-600">ราคา:</span> ${trade.price.toFixed(2)}</div>
+                          </div>
+                          <div className="flex justify-between text-zinc-400">
+                            <span>เงิน: ${trade.amount.toFixed(2)}</span>
+                            {trade.type==="sell" && trade.pl !== null && (
+                              <span className={`font-bold ${trade.pl>0?"text-emerald-400":"text-red-400"}`}>
+                                {trade.pl>0?"+":""}{fmtMoney(trade.pl)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>
