@@ -643,52 +643,24 @@ const syncPositions = async (newPos: Position[]) => {
                         )}
                       </td>
                       <td className="px-3 py-3 min-w-[140px] hidden md:table-cell">
-                        <div className="space-y-1.5">
-                          {/* Title */}
-                          <p className="text-[10px] font-bold text-zinc-300">สัดส่วน</p>
-                          
-                          {/* Combined bar */}
-                          {targetPct>0 ? (
+                        {targetPct>0 ? (
+                          <div className="space-y-0.5">
+                            {/* Bar */}
                             <div className="h-3 bg-zinc-800 rounded-md overflow-hidden flex relative border border-zinc-700">
-                              {/* Current bar: allocNow / targetPct gives the ratio */}
                               <div className="h-full rounded-md z-10" style={{width:`${Math.min((allocNow/targetPct)*100,100)}%`,background:allocNow<targetPct?COLORS[idx%COLORS.length]:"#f97316",opacity:0.85}}/>
-                              {/* Visual guide: rest of target (if allocNow < targetPct) */}
-                              {allocNow<targetPct && (
-                                <div className="h-full" style={{width:`${Math.max(0,100-((allocNow/targetPct)*100))}%`,background:"#10b98111"}}/>
-                              )}
+                              {allocNow<targetPct && <div className="h-full" style={{width:`${Math.max(0,100-((allocNow/targetPct)*100))}%`,background:"#10b98111"}}/>}
                             </div>
-                          ) : (
-                            <div className="h-3 bg-zinc-800 rounded-md overflow-hidden border border-zinc-700">
-                              <div className="h-full rounded-md" style={{width:`${Math.min(allocNow,100)}%`,background:COLORS[idx%COLORS.length],opacity:0.75}}/>
+                            {/* Info line */}
+                            <div className="flex items-center justify-between text-[8px]">
+                              <span className="text-zinc-400">{allocNow.toFixed(1)}% / {targetPct.toFixed(1)}%</span>
+                              <span className={`font-bold ${allocDiff>0?"text-orange-400":"text-emerald-400"}`}>
+                                {allocDiff>0?"+":""}{allocDiff!==null?allocDiff.toFixed(1):0}%
+                              </span>
                             </div>
-                          )}
-                          
-                          {/* Current */}
-                          <div className="flex items-center justify-between text-[9px]">
-                            <span className="text-zinc-400">ปัจจุบัน</span>
-                            <span className="font-bold text-zinc-300">{allocNow.toFixed(1)}% ({fmtMoney(val)})</span>
                           </div>
-                          {targetPct>0 && <div className="text-[8px] text-zinc-500">(เทียบเป้า: {((allocNow/targetPct)*100).toFixed(1)}%)</div>}
-                          
-                          {/* Target */}
-                          {targetPct>0 && (
-                            <>
-                              <div className="flex items-center justify-between text-[9px]">
-                                <span className="text-zinc-400">เป้าหมาย</span>
-                                <span className="font-bold text-purple-300">{targetPct.toFixed(1)}% ({fmtMoney(marketValue*(targetPct/100))})</span>
-                              </div>
-                              
-                              {/* Difference */}
-                              {allocDiff!==null && (
-                                <div className={`text-[8px] font-bold px-2 py-1 rounded ${allocDiff>0?"bg-orange-400/15 text-orange-400":"bg-emerald-400/15 text-emerald-400"}`}>
-                                  {allocDiff>0?"เกินมา":"ขาด"} {Math.abs(allocDiff).toFixed(1)}% = {fmtMoney(Math.abs(marketValue*(allocDiff/100)))}
-                                </div>
-                              )}
-                            </>
-                          )}
-                          
-                          {targetPct<=0 && <p className="text-[8px] text-zinc-600 italic">ยังไม่ตั้งเป้า</p>}
-                        </div>
+                        ) : (
+                          <div className="text-[8px] text-zinc-600">ยังไม่ตั้งเป้า</div>
+                        )}
                       </td>
                       <td className="px-2 py-3">
                         <div className="flex items-center justify-center gap-1">
