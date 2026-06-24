@@ -84,6 +84,7 @@ export default function PortfolioClient() {
   const [srS, setSrS]                   = useState(["","",""]);
   const [srR, setSrR]                   = useState(["","",""]);
   const [hoveredIdx, setHoveredIdx]     = useState<number|null>(null);
+  const [tradeHistory, setTradeHistory] = useState<any[]>([]);
   const [isTrading, setIsTrading]       = useState(false);
   const tradeTimeoutRef                 = useRef<NodeJS.Timeout|null>(null);
 
