@@ -649,13 +649,17 @@ const syncPositions = async (newPos: Position[]) => {
                           
                           {/* Combined bar */}
                           {targetPct>0 ? (
-                            <div className="h-5 bg-zinc-800 rounded-lg overflow-hidden flex relative border border-zinc-700">
-                              <div className="h-full absolute" style={{width:`${Math.min(targetPct,100)}%`,background:allocNow<targetPct?"#10b98122":"#f9731622"}}/>
-                              <div className="h-full rounded-lg z-10" style={{width:`${Math.min(allocNow,100)}%`,background:allocNow<targetPct?COLORS[idx%COLORS.length]:"#f97316",opacity:0.85}}/>
+                            <div className="h-3 bg-zinc-800 rounded-md overflow-hidden flex relative border border-zinc-700">
+                              {/* Current bar: allocNow / targetPct gives the ratio */}
+                              <div className="h-full rounded-md z-10" style={{width:`${Math.min((allocNow/targetPct)*100,100)}%`,background:allocNow<targetPct?COLORS[idx%COLORS.length]:"#f97316",opacity:0.85}}/>
+                              {/* Visual guide: rest of target (if allocNow < targetPct) */}
+                              {allocNow<targetPct && (
+                                <div className="h-full" style={{width:`${Math.max(0,100-((allocNow/targetPct)*100))}%`,background:"#10b98111"}}/>
+                              )}
                             </div>
                           ) : (
-                            <div className="h-5 bg-zinc-800 rounded-lg overflow-hidden border border-zinc-700">
-                              <div className="h-full rounded-lg" style={{width:`${Math.min(allocNow,100)}%`,background:COLORS[idx%COLORS.length],opacity:0.75}}/>
+                            <div className="h-3 bg-zinc-800 rounded-md overflow-hidden border border-zinc-700">
+                              <div className="h-full rounded-md" style={{width:`${Math.min(allocNow,100)}%`,background:COLORS[idx%COLORS.length],opacity:0.75}}/>
                             </div>
                           )}
                           
@@ -664,6 +668,7 @@ const syncPositions = async (newPos: Position[]) => {
                             <span className="text-zinc-400">ปัจจุบัน</span>
                             <span className="font-bold text-zinc-300">{allocNow.toFixed(1)}% ({fmtMoney(val)})</span>
                           </div>
+                          {targetPct>0 && <div className="text-[8px] text-zinc-500">(เทียบเป้า: {((allocNow/targetPct)*100).toFixed(1)}%)</div>}
                           
                           {/* Target */}
                           {targetPct>0 && (
