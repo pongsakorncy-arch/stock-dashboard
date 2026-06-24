@@ -713,7 +713,6 @@ const syncPositions = async (newPos: Position[]) => {
                   <button type="button" onClick={()=>setModalTab("trade")} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${modalTab==="trade"?"bg-zinc-700 text-white":"text-zinc-500"}`}>💹 ซื้อ/ขาย</button>
                   <button type="button" onClick={()=>setModalTab("dca")} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${modalTab==="dca"?"bg-yellow-400/20 text-yellow-400":"text-zinc-500"}`}>📊 DCA</button>
                   <button type="button" onClick={()=>setModalTab("sr")} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${modalTab==="sr"?"bg-purple-400/20 text-purple-400":"text-zinc-500"}`}>🎯 S/R</button>
-                  <button type="button" onClick={()=>setModalTab("history")} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${modalTab==="history"?"bg-blue-400/20 text-blue-400":"text-zinc-500"}`}>📜 History</button>
                 </div>
                 {modalTab==="trade" && (
                   <div className="flex gap-2 mb-4">
@@ -958,6 +957,64 @@ const syncPositions = async (newPos: Position[]) => {
         </div>
       )}
 
+
+        {/* ── Trade History ── */}
+        <div className="bg-[#18181b] border border-zinc-800 rounded-xl overflow-hidden fade-up">
+          <div className="p-4 border-b border-zinc-800">
+            <h2 className="text-sm font-bold text-white">📜 ประวัติการซื้อขาย</h2>
+          </div>
+          {tradeHistory.length === 0 ? (
+            <div className="p-6 text-center">
+              <p className="text-zinc-600 text-sm">ยังไม่มีประวัติการซื้อขาย</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-[#111113]">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">วันที่</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">หุ้น</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">ประเภท</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">จำนวน</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">ราคา</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">เงินทั้งหมด</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">Avg Cost</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-zinc-400 uppercase">P/L</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tradeHistory.slice(0, 50).map((trade, idx) => {
+                    const date = new Date(trade.created_at);
+                    const isPos = trade.pl > 0;
+                    return (
+                      <tr key={idx} className="border-t border-zinc-800 hover:bg-zinc-800/30">
+                        <td className="px-4 py-2.5 text-xs text-zinc-500">{date.toLocaleDateString("th-TH")} {date.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"})}</td>
+                        <td className="px-4 py-2.5 font-bold text-white">{trade.ticker}</td>
+                        <td className="px-4 py-2.5">
+                          <span className={`px-2 py-0.5 rounded text-xs font-bold ${trade.type==="buy"?"bg-emerald-400/20 text-emerald-400":"bg-blue-400/20 text-blue-400"}`}>
+                            {trade.type==="buy"?"ซื้อ":"ขาย"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-sm font-mono text-yellow-300">{trade.shares.toFixed(4)}</td>
+                        <td className="px-4 py-2.5 text-sm">${trade.price.toFixed(2)}</td>
+                        <td className="px-4 py-2.5 text-sm">${trade.amount.toFixed(2)}</td>
+                        <td className="px-4 py-2.5 text-sm text-zinc-400">${trade.avg_cost_before ? trade.avg_cost_before.toFixed(2) : "-"}</td>
+                        <td className="px-4 py-2.5 text-sm text-right font-bold">
+                          {trade.type==="sell" && trade.pl !== null ? (
+                            <span className={isPos?"text-emerald-400":"text-red-400"}>
+                              {isPos?"+":""}{fmtMoney(trade.pl)}
+                            </span>
+                          ) : "-"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
       {/* Toast */}
       {toast && (
         <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] px-5 py-3 rounded-2xl text-sm font-bold shadow-2xl toast-in ${toast.type==="success"?"bg-emerald-500 text-black":"bg-red-500 text-white"}`}>
