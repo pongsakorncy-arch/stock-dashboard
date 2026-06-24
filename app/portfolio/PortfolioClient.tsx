@@ -84,6 +84,8 @@ export default function PortfolioClient() {
   const [srS, setSrS]                   = useState(["","",""]);
   const [srR, setSrR]                   = useState(["","",""]);
   const [hoveredIdx, setHoveredIdx]     = useState<number|null>(null);
+  const [isTrading, setIsTrading]       = useState(false);
+  const tradeTimeoutRef                 = useRef<NodeJS.Timeout|null>(null);
 
   const { currency, rate, lastUpdate: rateUpdate, toggleCurrency, format: fmtMoney } = useCurrency();
 
@@ -184,10 +186,10 @@ export default function PortfolioClient() {
   }, [positions.length]);
 
   useEffect(() => {
-    if (!positions.length) return;
+    if (!positions.length || isTrading) return;
     const id = setInterval(refreshPrices, 60000);
     return () => clearInterval(id);
-  }, [positions.length]);
+  }, [positions.length, isTrading]);
 
   const saveCash = async (val: number) => {
     setCash(val); setShowCashEdit(false);
@@ -345,6 +347,10 @@ export default function PortfolioClient() {
     }
     showToast(`✓ บันทึก ${sym} แล้ว`);
     closeModal();
+    // Prevent auto-refresh for 3 seconds after trade
+    setIsTrading(true);
+    if (tradeTimeoutRef.current) clearTimeout(tradeTimeoutRef.current);
+    tradeTimeoutRef.current = setTimeout(() => setIsTrading(false), 3000);
   }
 
   function SortIcon({ k }: { k: SortKey }) {
