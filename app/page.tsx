@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ThemeToggle from "@/components/ThemeToggle";
 import CurrencyToggle from "@/components/CurrencyToggle";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -10,6 +10,7 @@ import { useCurrency } from "@/hooks/useCurrency";
 type IndexData = {
   symbol: string;
   label: string;
+  etf?: string;
   value: number;
   change: number;
   changePct: number;
@@ -47,12 +48,54 @@ const clamp = (arr: number[]) => {
   return arr.map(v => (mx === mn ? 0.5 : (v - mn) / (mx - mn)));
 };
 
+// แปลงชุดจุดเป็นเส้นโค้งเนียน (Catmull-Rom → cubic bezier)
+function smoothLine(pts: [number, number][]): string {
+  if (pts.length < 2) return pts.length ? `M ${pts[0][0]},${pts[0][1]}` : "";
+  if (pts.length === 2) return `M ${pts[0][0]},${pts[0][1]} L ${pts[1][0]},${pts[1][1]}`;
+  const d = [`M ${pts[0][0]},${pts[0][1]}`];
+  const t = 0.18; // ความเนียน
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i === 0 ? 0 : i - 1];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2 < pts.length ? i + 2 : i + 1];
+    const c1x = p1[0] + (p2[0] - p0[0]) * t;
+    const c1y = p1[1] + (p2[1] - p0[1]) * t;
+    const c2x = p2[0] - (p3[0] - p1[0]) * t;
+    const c2y = p2[1] - (p3[1] - p1[1]) * t;
+    d.push(`C ${c1x.toFixed(2)},${c1y.toFixed(2)} ${c2x.toFixed(2)},${c2y.toFixed(2)} ${p2[0].toFixed(2)},${p2[1].toFixed(2)}`);
+  }
+  return d.join(" ");
+}
+
+// Count-up animation hook (นับเลขวิ่ง)
+function useCountUp(target: number, duration = 900) {
+  const [val, setVal] = useState(0);
+  const fromRef = useRef(0);
+  useEffect(() => {
+    const start = fromRef.current;
+    const startTime = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const t = Math.min((now - startTime) / duration, 1);
+      const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
+      setVal(start + (target - start) * eased);
+      if (t < 1) raf = requestAnimationFrame(tick);
+      else fromRef.current = target;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return val;
+}
+
 // ─── Sparkline ───────────────────────────────────────────────────────────────
 function Sparkline({ data, color }: { data: number[]; color: string }) {
   const n = clamp(data);
   const W = 80, H = 32;
-  const pts = n.map((v, i) => `${(i / (n.length - 1)) * W},${H - v * H}`).join(" ");
-  const fill = n.map((v, i) => `${(i / (n.length - 1)) * W},${H - v * H}`).join(" ");
+  const pts: [number, number][] = n.map((v, i) => [(i / (n.length - 1)) * W, H - v * H]);
+  const line = smoothLine(pts);
+  const area = `${line} L ${W},${H} L 0,${H} Z`;
   const id = `g${color.replace("#", "")}`;
   return (
     <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="overflow-visible">
@@ -62,8 +105,8 @@ function Sparkline({ data, color }: { data: number[]; color: string }) {
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
-      <polygon points={`0,${H} ${fill} ${W},${H}`} fill={`url(#${id})`} />
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
+      <path d={area} fill={`url(#${id})`} />
+      <path d={line} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   );
 }
@@ -187,6 +230,18 @@ async function fetchSectors(key: string): Promise<{ name: string; pct: number }[
     .map((r) => r.value);
 }
 
+// BTC จาก CoinGecko (ฟรี ไม่ต้องใช้ key, รองรับ CORS)
+async function fetchBTC(): Promise<{ c:number; d:number; dp:number; pc:number; o:number }> {
+  try {
+    const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true");
+    const d = await r.json();
+    const c  = Number(d?.bitcoin?.usd ?? 0);
+    const dp = Number(d?.bitcoin?.usd_24h_change ?? 0);
+    const pc = dp !== -100 ? c / (1 + dp / 100) : c;
+    return { c, d: c - pc, dp, pc, o: 0 };
+  } catch { return { c:0, d:0, dp:0, pc:0, o:0 }; }
+}
+
 async function fetchFearGreed(): Promise<{value:number;label:string}> {
   try {
     // CNN Stock-Market Fear & Greed (ผ่าน API route ฝั่ง server)
@@ -267,13 +322,15 @@ async function fetchTopMovers(key: string): Promise<{ gainers: Mover[]; losers: 
 }
 
 // ─── Index config ─────────────────────────────────────────────────────────────
+// หมายเหตุ: Finnhub free ไม่มีค่า index จริง (เช่น S&P 6,000 จุด) จึงใช้ราคา ETF ที่ track ดัชนีนั้นแทน
+// (% การเปลี่ยนแปลงตรงกับดัชนีจริง) — แสดง ticker ETF กำกับไว้ให้ตัวเลขไม่งง
 const INDEX_CONFIG = [
-  { symbol: "SPY",     label: "S&P 500", color: "#4f7df3" },
-  { symbol: "QQQ",     label: "NASDAQ",  color: "#a78bfa" },
-  { symbol: "UUP",     label: "DXY",     color: "#69c36b" },
-  { symbol: "TLT",     label: "Bonds",   color: "#06b6d4" },
-  { symbol: "GLD",     label: "GOLD",    color: "#f0aa4f" },
-  { symbol: "COINBASE:BTC-USD", label: "BTC", color: "#f7931a" },
+  { symbol: "SPY",  etf: "SPY", label: "S&P 500", color: "#4f7df3" },
+  { symbol: "QQQ",  etf: "QQQ", label: "NASDAQ",  color: "#a78bfa" },
+  { symbol: "UUP",  etf: "UUP", label: "USD (DXY)", color: "#69c36b" },
+  { symbol: "TLT",  etf: "TLT", label: "Bonds",   color: "#06b6d4" },
+  { symbol: "GLD",  etf: "GLD", label: "GOLD",    color: "#f0aa4f" },
+  { symbol: "BTC",  etf: "",    label: "BTC",     color: "#f7931a" },
 ] as const;
 
 // ─── Portfolio snapshot ───────────────────────────────────────────────────────
@@ -427,6 +484,7 @@ export default function Home() {
   const [aiLoading, setAiLoading]   = useState(false);
   const [aiExpanded, setAiExpanded] = useState(false);
   const portfolio = usePortfolioSnapshot();
+  const animatedValue = useCountUp(portfolio.value);
   const { currency, rate, lastUpdate: rateUpdate, toggleCurrency, format: fmtMoney } = useCurrency();
 
   const fetchAI = async () => {
@@ -468,7 +526,7 @@ export default function Home() {
         const extP  = price * (1 + [0.0031, -0.0018, 0.0055, 0.0008, -0.0012, 0.014][i]);
         const extCh = extP - price;
         return {
-          symbol: cfg.symbol, label: cfg.label, color: cfg.color,
+          symbol: cfg.symbol, label: cfg.label, etf: cfg.etf, color: cfg.color,
           value: price, change: [12.3,-45.2,1.1,-0.2,-0.8,0.5][i],
           changePct: [0.24,-0.25,0.61,-0.71,-0.87,2.83][i], prevClose: 0,
           sparkline: Array.from({length:20},(_,j)=>100+Math.sin(j*0.4+i)*5+Math.random()*2),
@@ -487,9 +545,10 @@ export default function Home() {
     try {
       const [indexResults, newsData, moversData, fgData, sectorResults] = await Promise.all([
         Promise.all(INDEX_CONFIG.map(async (cfg) => {
-          const q = await fetchQuote(cfg.symbol, apiKey);
+          const isBTC = cfg.symbol === "BTC";
+          const q = isBTC ? await fetchBTC() : await fetchQuote(cfg.symbol, apiKey);
           const sess = getMarketSession();
-          const extP  = Number(q.o || 0);
+          const extP  = isBTC ? 0 : Number(q.o || 0);
           const price = Number(q.c || 0);
           const pc    = Number(q.pc || 0);
           const extCh = extP > 0 ? extP - price : 0;
@@ -500,13 +559,13 @@ export default function Home() {
             return pc * (1 + (change/100) * progress * (0.5 + Math.sin(i*0.8)*0.5));
           });
           return {
-            symbol: cfg.symbol, label: cfg.label, color: cfg.color,
+            symbol: cfg.symbol, label: cfg.label, etf: cfg.etf, color: cfg.color,
             value: price, change: Number(q.d || 0), changePct: Number(q.dp || 0),
             prevClose: pc,
             sparkline,
             extPrice: extP, extChange: extCh,
             extPct: price > 0 && extP > 0 ? (extCh/price)*100 : 0,
-            extType: (sess==="open"||sess==="closed" ? "none" : sess) as "pre"|"after"|"none",
+            extType: (isBTC || sess==="open" || sess==="closed" ? "none" : sess) as "pre"|"after"|"none",
           };
         })),
         fetchNews(apiKey),
@@ -650,8 +709,8 @@ export default function Home() {
             </div>
 
             {/* Main value */}
-            <p className="text-3xl font-black tracking-tight leading-none">
-              {fmtMoney(portfolio.value)}
+            <p className="text-3xl font-black tracking-tight leading-none tabular-nums">
+              {fmtMoney(animatedValue)}
             </p>
 
             {/* Progress ring + Daily bar */}
@@ -682,13 +741,21 @@ export default function Home() {
                       <stop offset="100%" stopColor={portfolio.pl>=0?"#10b981":"#ef4444"} stopOpacity="0"/>
                     </linearGradient>
                   </defs>
-                  {/* Simulated equity curve from pl% */}
-                  <polygon
-                      points={`0,32 ${[0,2,1,4,3,6,5,8,7,10,9,12,11,14,13,portfolio.plPct].map((v,i,a)=>`${(i/(a.length-1))*120},${32-Math.max(0,Math.min(v/Math.max(portfolio.plPct,1)*28,28))}`).join(" ")} 120,32`}
-                      fill="url(#sparkGrad)"/>
-                    <polyline
-                      points={[0,2,1,4,3,6,5,8,7,10,9,12,11,14,13,portfolio.plPct].map((v,i,a)=>`${(i/(a.length-1))*120},${32-Math.max(0,Math.min(v/Math.max(portfolio.plPct,1)*28,28))}`).join(" ")}
-                      fill="none" stroke={portfolio.pl>=0?"#10b981":"#ef4444"} strokeWidth="1.5" strokeLinejoin="round"/>
+                  {/* Simulated equity curve from pl% (เส้นโค้งเนียน) */}
+                  {(() => {
+                    const raw = [0,2,1,4,3,6,5,8,7,10,9,12,11,14,13,portfolio.plPct];
+                    const pts: [number, number][] = raw.map((v,i,a)=>[
+                      (i/(a.length-1))*120,
+                      32 - Math.max(0, Math.min(v/Math.max(portfolio.plPct,1)*28, 28))
+                    ]);
+                    const line = smoothLine(pts);
+                    return (
+                      <>
+                        <path d={`${line} L 120,32 L 0,32 Z`} fill="url(#sparkGrad)"/>
+                        <path d={line} fill="none" stroke={portfolio.pl>=0?"#10b981":"#ef4444"} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round"/>
+                      </>
+                    );
+                  })()}
                 </svg>
               </div>
             </div>
@@ -749,9 +816,12 @@ export default function Home() {
               const extPos=idx.extPct>=0;
               const hasExt=idx.extType!=="none"&&idx.extPrice>0;
               return (
-                <div key={idx.symbol} className="glow-card bg-[var(--surface)] border border-[var(--border)] rounded-xl p-3 hover:border-[var(--border-2)] transition-all cursor-default">
-                  <p className="text-[10px] text-[var(--tx-4)] uppercase tracking-wider">{idx.label}</p>
-                  <p className="text-xs font-mono font-black mt-0.5">{money(idx.value)}</p>
+                <div key={idx.symbol} className="glow-card relative overflow-hidden bg-gradient-to-b from-[var(--surface)] to-[var(--surface-2)] border border-[var(--border)] rounded-xl p-3 hover:border-[var(--border-2)] transition-all cursor-default">
+                  <div className="flex items-center justify-between gap-1">
+                    <p className="text-[10px] text-[var(--tx-4)] uppercase tracking-wider truncate">{idx.label}</p>
+                    {idx.etf && <span className="text-[8px] font-bold text-[var(--tx-5)] bg-[var(--fill)] px-1 py-0.5 rounded flex-shrink-0">{idx.etf}</span>}
+                  </div>
+                  <p className="text-xs font-mono font-black mt-0.5 tabular-nums">{money(idx.value)}</p>
                   <p className={`text-[10px] font-bold mt-0.5 ${pos?"text-emerald-400":"text-red-400"}`}>
                     {pos?"▲":"▼"} {Math.abs(idx.changePct).toFixed(2)}%
                   </p>
