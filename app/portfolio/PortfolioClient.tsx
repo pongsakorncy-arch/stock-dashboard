@@ -399,6 +399,16 @@ export default function PortfolioClient() {
     if (isNaN(qty)||qty<=0) { setFormError("จำนวนหุ้นต้องมากกว่า 0"); return; }
     if (isNaN(tradePrice)||tradePrice<=0) { setFormError("ราคาต้องมากกว่า 0"); return; }
 
+    // ── Lock target allocation: รวมทุกหุ้นต้องไม่เกิน 100% ──
+    // sum ของหุ้นอื่นๆ (ไม่นับตัวที่กำลังแก้/เพิ่ม) + target ใหม่
+    const selfKey = editingTicker || sym;
+    const othersTarget = cur.reduce((s,p) => p.ticker===selfKey ? s : s + (p.targetAlloc||0), 0);
+    if (othersTarget + target > 100.01) { // +0.01 กัน floating point
+      const remain = Math.max(0, 100 - othersTarget);
+      setFormError(`สัดส่วนเป้าหมายรวมเกิน 100% — หุ้นอื่นใช้ไปแล้ว ${othersTarget.toFixed(1)}% เหลือตั้งได้สูงสุด ${remain.toFixed(1)}%`);
+      return;
+    }
+
     if (editingTicker) {
       syncPositions(cur.map(p =>
         p.ticker===editingTicker ? {...p, ticker:sym, name:formName||p.name, shares:qty, avgCost:tradePrice, targetAlloc:target} : p
@@ -1009,8 +1019,41 @@ export default function PortfolioClient() {
                 </div>
                 <div>
                   <label className="text-xs text-zinc-400 mb-1 block">สัดส่วนเป้าหมาย (%)</label>
-                  <input className="w-full bg-[#111113] border border-zinc-700 focus:border-purple-400 rounded-lg px-3 py-2.5 text-sm outline-none"
-                    placeholder="เช่น 10" type="number" step="0.1" value={formTarget} onChange={e=>setFormTarget(e.target.value)}/>
+                  {(() => {
+                    const selfKey = editingTicker || formTicker.toUpperCase().trim();
+                    const othersTarget = positions.reduce((s,p) => p.ticker===selfKey ? s : s + (p.targetAlloc||0), 0);
+                    const remain = Math.max(0, 100 - othersTarget);
+                    const cur = parseFloat(formTarget) || 0;
+                    const willTotal = othersTarget + cur;
+                    const over = willTotal > 100.01;
+                    return (
+                      <>
+                        <input
+                          className={`w-full bg-[#111113] border rounded-lg px-3 py-2.5 text-sm outline-none ${over?"border-red-500 focus:border-red-400":"border-zinc-700 focus:border-purple-400"}`}
+                          placeholder={`สูงสุด ${remain.toFixed(1)}%`} type="number" step="0.1" min="0" max={remain}
+                          value={formTarget}
+                          onChange={e=>{
+                            const v = e.target.value;
+                            // clamp ไม่ให้พิมพ์เกินที่เหลือ (ปล่อยว่างได้)
+                            const n = parseFloat(v);
+                            if (v==="" || isNaN(n)) { setFormTarget(v); return; }
+                            if (n > remain) setFormTarget(remain.toFixed(1));
+                            else setFormTarget(v);
+                          }}/>
+                        <div className="flex items-center justify-between mt-1 text-[10px]">
+                          <span className="text-zinc-500">หุ้นอื่นใช้ไป {othersTarget.toFixed(1)}% · เหลือ <span className="text-purple-400 font-bold">{remain.toFixed(1)}%</span></span>
+                          <span className={`font-bold ${over?"text-red-400":willTotal>=99.5&&willTotal<=100.5?"text-emerald-400":"text-zinc-500"}`}>
+                            {over ? "⚠️ เกิน 100%" : `รวม ${willTotal.toFixed(1)}%`}
+                          </span>
+                        </div>
+                        {/* mini progress bar */}
+                        <div className="mt-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden flex">
+                          <div className="h-full bg-zinc-600" style={{width:`${Math.min(othersTarget,100)}%`}}/>
+                          <div className={`h-full ${over?"bg-red-500":"bg-purple-400"}`} style={{width:`${Math.min(cur,Math.max(0,100-othersTarget))}%`}}/>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
                 <div>
                   <label className="text-xs text-zinc-400 mb-1 block">จำนวนหุ้น</label>
