@@ -1,111 +1,56 @@
-@import "tailwindcss";
+/* ─────────────────────────────────────────────────────────────
+   THEME TOKENS — Dark/Light mode
+   เอาบล็อกนี้ไปวางใน app/globals.css (ต่อจาก @import "tailwindcss";)
+   ค่า default = ธีมมืด (เหมือนเดิมเป๊ะ) · .light = ธีมสว่าง
+   ───────────────────────────────────────────────────────────── */
 
-/* ── Count-up animation ── */
-@keyframes countUp {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
+:root {
+  /* พื้นหลัง / พื้นผิว */
+  --bg: #0d0d0f;          /* พื้นหน้าจอ */
+  --surface: #18181b;     /* การ์ด / modal / ตาราง */
+  --surface-2: #111113;   /* ช่องกรอก / หัวตาราง (พื้นลึกกว่า) */
+
+  /* เส้นขอบ */
+  --border: #27272a;      /* zinc-800 */
+  --border-2: #3f3f46;    /* zinc-700 */
+
+  /* พื้นกล่องย่อย / ปุ่ม tab */
+  --fill: #27272a;        /* zinc-800 */
+  --fill-strong: #3f3f46; /* zinc-700 (active) */
+  --hover: rgba(255,255,255,0.04);
+
+  /* ตัวอักษร (เข้ม → จาง) */
+  --tx: #ffffff;          /* หลัก */
+  --tx-2: #d4d4d8;        /* zinc-300 */
+  --tx-3: #a1a1aa;        /* zinc-400 */
+  --tx-4: #71717a;        /* zinc-500 */
+  --tx-5: #52525b;        /* zinc-600 */
+  --tx-6: #3f3f46;        /* zinc-700 (จางสุด เช่นตัวคั่น |) */
 }
 
-/* ── Stagger fade-in ── */
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(16px); }
-  to   { opacity: 1; transform: translateY(0); }
+.light {
+  --bg: #f4f4f5;          /* zinc-100 */
+  --surface: #ffffff;
+  --surface-2: #f4f4f5;   /* zinc-100 */
+
+  --border: #e4e4e7;      /* zinc-200 */
+  --border-2: #d4d4d8;    /* zinc-300 */
+
+  --fill: #f4f4f5;        /* zinc-100 */
+  --fill-strong: #e4e4e7; /* zinc-200 */
+  --hover: rgba(0,0,0,0.04);
+
+  --tx: #18181b;          /* zinc-900 */
+  --tx-2: #3f3f46;        /* zinc-700 */
+  --tx-3: #52525b;        /* zinc-600 */
+  --tx-4: #71717a;        /* zinc-500 */
+  --tx-5: #a1a1aa;        /* zinc-400 */
+  --tx-6: #d4d4d8;        /* zinc-300 */
 }
 
-/* ── Shimmer skeleton ── */
-@keyframes shimmer {
-  0%   { background-position: -400px 0; }
-  100% { background-position: 400px 0; }
+/* ให้พื้น body เปลี่ยนตามธีม + เปลี่ยนนุ่มๆ ตอนสลับ */
+body {
+  background: var(--bg);
+  color: var(--tx);
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
-
-/* ── Glow pulse for profit ── */
-@keyframes glowGreen {
-  0%, 100% { text-shadow: 0 0 0px #10b981; }
-  50%       { text-shadow: 0 0 12px #10b98188; }
-}
-@keyframes glowRed {
-  0%, 100% { text-shadow: 0 0 0px #ef4444; }
-  50%       { text-shadow: 0 0 12px #ef444488; }
-}
-
-/* ── Progress bar fill ── */
-@keyframes fillBar {
-  from { width: 0%; }
-  to   { width: var(--bar-width); }
-}
-
-/* ── Equity curve draw ── */
-@keyframes drawLine {
-  from { stroke-dashoffset: 1000; }
-  to   { stroke-dashoffset: 0; }
-}
-
-/* ── Toast slide in ── */
-@keyframes toastIn {
-  from { opacity: 0; transform: translateY(20px) scale(0.95); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-@keyframes toastOut {
-  from { opacity: 1; transform: translateY(0) scale(1); }
-  to   { opacity: 0; transform: translateY(10px) scale(0.95); }
-}
-
-/* ── Button press ── */
-@keyframes btnPress {
-  0%   { transform: scale(1); }
-  50%  { transform: scale(0.93); }
-  100% { transform: scale(1); }
-}
-
-/* ── Utility classes ── */
-.count-up  { animation: countUp 0.6s cubic-bezier(0.22,1,0.36,1) both; }
-.count-up-1 { animation: countUp 0.6s 0.1s cubic-bezier(0.22,1,0.36,1) both; }
-.count-up-2 { animation: countUp 0.6s 0.2s cubic-bezier(0.22,1,0.36,1) both; }
-.count-up-3 { animation: countUp 0.6s 0.3s cubic-bezier(0.22,1,0.36,1) both; }
-
-.fade-up   { animation: fadeInUp 0.5s cubic-bezier(0.22,1,0.36,1) both; }
-.fade-up-1 { animation: fadeInUp 0.5s 0.08s cubic-bezier(0.22,1,0.36,1) both; }
-.fade-up-2 { animation: fadeInUp 0.5s 0.16s cubic-bezier(0.22,1,0.36,1) both; }
-.fade-up-3 { animation: fadeInUp 0.5s 0.24s cubic-bezier(0.22,1,0.36,1) both; }
-.fade-up-4 { animation: fadeInUp 0.5s 0.32s cubic-bezier(0.22,1,0.36,1) both; }
-
-.shimmer {
-  background: linear-gradient(90deg, #1f1f23 25%, #2a2a30 50%, #1f1f23 75%);
-  background-size: 400px 100%;
-  animation: shimmer 1.4s infinite linear;
-}
-
-.glow-green { animation: glowGreen 2s ease-in-out infinite; }
-.glow-red   { animation: glowRed   2s ease-in-out infinite; }
-
-.btn-press:active { animation: btnPress 0.15s ease both; }
-
-.toast-in  { animation: toastIn  0.3s cubic-bezier(0.22,1,0.36,1) both; }
-.toast-out { animation: toastOut 0.25s ease both; }
-
-.equity-line {
-  stroke-dasharray: 1000;
-  stroke-dashoffset: 1000;
-  animation: drawLine 1.5s ease both;
-}
-
-/* ── Hover lift ── */
-.hover-lift {
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-.hover-lift:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-}
-
-/* ── Ripple ── */
-.ripple { position: relative; overflow: hidden; }
-.ripple::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-.ripple:active::after { opacity: 1; }
