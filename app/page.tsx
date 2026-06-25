@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import ThemeSwitcher from "@/components/ThemeSwitcher";
+import ThemeToggle from "@/components/ThemeToggle";
 import CurrencyToggle from "@/components/CurrencyToggle";
 import { useCurrency } from "@/hooks/useCurrency";
 
@@ -75,7 +75,7 @@ function BreadthBar({ up, down }: { up: number; down: number }) {
   return (
     <div className="flex items-center gap-2 text-xs">
       <span className="text-emerald-400 w-8 text-right font-bold">{up}</span>
-      <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden flex">
+      <div className="flex-1 h-2 bg-[var(--fill)] rounded-full overflow-hidden flex">
         <div className="h-full bg-emerald-500 transition-all" style={{ width: `${upPct}%` }} />
         <div className="h-full bg-red-500 transition-all" style={{ width: `${100 - upPct}%` }} />
       </div>
@@ -107,7 +107,7 @@ function LiveClock() {
   return (
     <div className="text-center sm:text-right">
       <p className="text-lg sm:text-2xl font-mono font-bold tracking-widest leading-tight">{time}</p>
-      <p className="text-[10px] sm:text-xs text-zinc-400">{session}</p>
+      <p className="text-[10px] sm:text-xs text-[var(--tx-3)]">{session}</p>
     </div>
   );
 }
@@ -568,10 +568,10 @@ export default function Home() {
   .ripple:after { content:''; position:absolute; inset:0; background:radial-gradient(circle,#ffffff22 0%,transparent 70%); opacity:0; transition:opacity 0.3s; }
   .ripple:active:after { opacity:1; }
 `}</style>
-<main className="min-h-screen bg-[#0a0a0c] text-white" style={{ fontFamily: "'Inter','Noto Sans Thai',sans-serif" }}>
+<main className="min-h-screen bg-[var(--bg)] text-[var(--tx)]" style={{ fontFamily: "'Inter','Noto Sans Thai',sans-serif" }}>
 
       {/* ── Header ── */}
-      <header className="border-b border-zinc-800/60 px-3 py-2 flex items-center justify-between bg-[#0d0d0f]/90 backdrop-blur sticky top-0 z-30">
+      <header className="border-b border-[var(--border)] px-3 py-2 flex items-center justify-between bg-[var(--bg)]/90 backdrop-blur sticky top-0 z-30">
         {/* Logo */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-black font-black text-xs flex-shrink-0">T</div>
@@ -586,12 +586,12 @@ export default function Home() {
         {/* Actions */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <button onClick={fetchAll} disabled={loading}
-            className="w-8 h-8 flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 rounded-lg text-sm transition-colors disabled:opacity-40"
+            className="w-8 h-8 flex items-center justify-center bg-[var(--fill)] hover:bg-[var(--fill-strong)] rounded-lg text-sm transition-colors disabled:opacity-40"
             title="Refresh">
             <span className={loading ? "animate-spin inline-block" : ""}>{loading ? "⟳" : "⟳"}</span>
           </button>
           <CurrencyToggle currency={currency} rate={rate} lastUpdate={rateUpdate} onToggle={toggleCurrency} />
-          <ThemeSwitcher />
+          <ThemeToggle />
         </div>
       </header>
 
@@ -608,8 +608,8 @@ export default function Home() {
               className={`ripple glow-card relative flex flex-col items-center justify-center bg-gradient-to-br ${l.grad} border ${l.border} rounded-2xl p-3 transition-all group overflow-hidden min-h-[80px]`}>
               <div className="absolute -right-2 -top-2 text-5xl opacity-10 group-hover:opacity-20 transition-opacity select-none">{l.icon}</div>
               <span className="text-2xl mb-1">{l.icon}</span>
-              <p className="font-black text-xs text-white text-center leading-tight">{l.label}</p>
-              <p className="text-[10px] text-zinc-500 mt-0.5 text-center">{l.sub}</p>
+              <p className="font-black text-xs text-[var(--tx)] text-center leading-tight">{l.label}</p>
+              <p className="text-[10px] text-[var(--tx-4)] mt-0.5 text-center">{l.sub}</p>
             </Link>
           ))}
         </div>
@@ -618,7 +618,7 @@ export default function Home() {
         <div className="grid lg:grid-cols-[320px_1fr] gap-4">
 
           {/* Portfolio Card — Hero */}
-          <div className="relative bg-gradient-to-br from-[#141416] to-[#0d0d0f] border border-zinc-700/50 rounded-2xl p-5 overflow-hidden"
+          <div className="relative bg-gradient-to-br from-[#141416] to-[#0d0d0f] border border-[var(--border-2)] rounded-2xl p-5 overflow-hidden text-[#fff]"
             style={{ boxShadow: portfolio.pl>=0 ? "0 0 40px #10b98118, 0 0 80px #10b98108" : "0 0 40px #ef444418, 0 0 80px #ef444408" }}>
 
             {/* Background glow orb */}
@@ -629,7 +629,7 @@ export default function Home() {
 
             {/* Badge row */}
             <div className="flex items-center gap-2 mb-3">
-              <span className="text-[10px] text-zinc-500 uppercase tracking-widest">พอร์ตของฉัน</span>
+              <span className="text-[10px] text-[var(--tx-4)] uppercase tracking-widest">พอร์ตของฉัน</span>
               <div className="flex gap-1.5 ml-auto">
                 {portfolio.plPct >= 20 && (
                   <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-yellow-400/20 text-yellow-400 border border-yellow-400/30">
@@ -659,7 +659,7 @@ export default function Home() {
               {/* Progress arc — % กำไรเทียบเป้า 30% */}
               <div className="relative flex-shrink-0">
                 <svg width="52" height="52" viewBox="0 0 52 52">
-                  <circle cx="26" cy="26" r="22" fill="none" stroke="#27272a" strokeWidth="4"/>
+                  <circle cx="26" cy="26" r="22" fill="none" stroke="var(--border)" strokeWidth="4"/>
                   <circle cx="26" cy="26" r="22" fill="none"
                     stroke={portfolio.pl>=0?"#10b981":"#ef4444"}
                     strokeWidth="4" strokeLinecap="round"
@@ -695,13 +695,13 @@ export default function Home() {
 
             {/* Daily bar */}
             <div className="mb-3">
-              <div className="flex justify-between text-[10px] text-zinc-600 mb-1">
+              <div className="flex justify-between text-[10px] text-[var(--tx-5)] mb-1">
                 <span>วันนี้</span>
                 <span className={portfolio.dailyPL>=0?"text-sky-400":"text-orange-400"}>
                   {portfolio.dailyPL>=0?"+":""}{portfolio.dailyPct.toFixed(2)}%
                 </span>
               </div>
-              <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
+              <div className="h-1 bg-[var(--fill)] rounded-full overflow-hidden">
                 <div className="h-full rounded-full transition-all duration-1000"
                   style={{
                     width: `${Math.min(Math.abs(portfolio.dailyPct)*10, 100)}%`,
@@ -714,14 +714,14 @@ export default function Home() {
 
             {/* P/L stats */}
             <div className="grid grid-cols-2 gap-2">
-              <div className="bg-black/20 rounded-xl p-3 border border-zinc-800/50">
-                <p className="text-[10px] text-zinc-500 mb-0.5">กำไร/ขาดทุนรวม</p>
+              <div className="bg-black/20 rounded-xl p-3 border border-[var(--border)]">
+                <p className="text-[10px] text-[var(--tx-4)] mb-0.5">กำไร/ขาดทุนรวม</p>
                 <p className={`text-sm font-black ${portfolio.pl>=0?"text-emerald-400":"text-red-400"}`}>
                   {portfolio.pl>=0?"+":""}{fmtMoney(portfolio.pl)}
                 </p>
               </div>
-              <div className="bg-black/20 rounded-xl p-3 border border-zinc-800/50">
-                <p className="text-[10px] text-zinc-500 mb-0.5">วันนี้</p>
+              <div className="bg-black/20 rounded-xl p-3 border border-[var(--border)]">
+                <p className="text-[10px] text-[var(--tx-4)] mb-0.5">วันนี้</p>
                 <p className={`text-sm font-black ${portfolio.dailyPL>=0?"text-sky-400":"text-orange-400"}`}>
                   {portfolio.dailyPL>=0?"+":""}{fmtMoney(portfolio.dailyPL)}
                 </p>
@@ -738,19 +738,19 @@ export default function Home() {
               </div>
             </div>
 
-            <p className="text-[10px] text-zinc-700 mt-2">{portfolio.count} หลักทรัพย์ · {lastRefresh}</p>
+            <p className="text-[10px] text-[var(--tx-6)] mt-2">{portfolio.count} หลักทรัพย์ · {lastRefresh}</p>
           </div>
 
           {/* Indices compact 6 chips */}
           <div className="grid grid-cols-3 md:grid-cols-6 gap-2 content-start">
             {(loading ? Array(6).fill(null) : indices).map((idx,i)=>{
-              if(!idx) return <div key={i} className="bg-[#111113] border border-zinc-800 rounded-xl p-3 animate-pulse h-20"/>;
+              if(!idx) return <div key={i} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-3 animate-pulse h-20"/>;
               const pos=idx.changePct>=0;
               const extPos=idx.extPct>=0;
               const hasExt=idx.extType!=="none"&&idx.extPrice>0;
               return (
-                <div key={idx.symbol} className="glow-card bg-[#111113] border border-zinc-800 rounded-xl p-3 hover:border-zinc-600 transition-all cursor-default">
-                  <p className="text-[10px] text-zinc-500 uppercase tracking-wider">{idx.label}</p>
+                <div key={idx.symbol} className="glow-card bg-[var(--surface)] border border-[var(--border)] rounded-xl p-3 hover:border-[var(--border-2)] transition-all cursor-default">
+                  <p className="text-[10px] text-[var(--tx-4)] uppercase tracking-wider">{idx.label}</p>
                   <p className="text-xs font-mono font-black mt-0.5">{money(idx.value)}</p>
                   <p className={`text-[10px] font-bold mt-0.5 ${pos?"text-emerald-400":"text-red-400"}`}>
                     {pos?"▲":"▼"} {Math.abs(idx.changePct).toFixed(2)}%
@@ -781,19 +781,19 @@ export default function Home() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
 
           {/* Fear & Greed */}
-          <div className="bg-[#111113] border border-zinc-800 rounded-xl p-3">
-            <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2">Fear & Greed Index</p>
+          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-3">
+            <p className="text-[10px] text-[var(--tx-4)] uppercase tracking-wider mb-2">Fear & Greed Index</p>
             <div className="flex items-center justify-center mb-2">
               <svg viewBox="0 0 100 60" className="w-20 sm:w-28">
-                <path d="M 10 55 A 40 40 0 0 1 90 55" fill="none" stroke="#27272a" strokeWidth="8" strokeLinecap="round"/>
+                <path d="M 10 55 A 40 40 0 0 1 90 55" fill="none" stroke="var(--border)" strokeWidth="8" strokeLinecap="round"/>
                 <path d="M 10 55 A 40 40 0 0 1 90 55" fill="none" stroke={fearColor}
                   strokeWidth="8" strokeLinecap="round"
                   strokeDasharray={`${fearGreed * 1.257} 200`} opacity="0.9"/>
                 <line x1="50" y1="55"
                   x2={50 + 28 * Math.cos(((fearGreed / 100) * 180 - 180) * (Math.PI / 180))}
                   y2={55 + 28 * Math.sin(((fearGreed / 100) * 180 - 180) * (Math.PI / 180))}
-                  stroke="white" strokeWidth="1.5" strokeLinecap="round"/>
-                <circle cx="50" cy="55" r="3" fill="white"/>
+                  stroke="var(--tx)" strokeWidth="1.5" strokeLinecap="round"/>
+                <circle cx="50" cy="55" r="3" fill="var(--tx)"/>
               </svg>
             </div>
             <p className="text-xl font-black text-center" style={{ color: fearColor }}>{fearGreed}</p>
@@ -801,31 +801,31 @@ export default function Home() {
           </div>
 
           {/* Market Breadth */}
-          <div className="bg-[#111113] border border-zinc-800 rounded-xl p-3">
-            <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2">Market Breadth</p>
+          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-3">
+            <p className="text-[10px] text-[var(--tx-4)] uppercase tracking-wider mb-2">Market Breadth</p>
             <BreadthBar up={312} down={188} />
             <div className="mt-3 grid grid-cols-2 gap-2 text-center">
               <div className="bg-emerald-400/10 rounded-lg py-2">
                 <p className="text-emerald-400 font-black text-lg">312</p>
-                <p className="text-zinc-500 text-xs">ขึ้น</p>
+                <p className="text-[var(--tx-4)] text-xs">ขึ้น</p>
               </div>
               <div className="bg-red-400/10 rounded-lg py-1.5">
                 <p className="text-red-400 font-black text-base">188</p>
-                <p className="text-zinc-500 text-xs">ลง</p>
+                <p className="text-[var(--tx-4)] text-xs">ลง</p>
               </div>
             </div>
           </div>
 
           {/* TOP GAINERS / LOSERS */}
-          <div className="bg-[#111113] border border-zinc-800 rounded-xl overflow-hidden col-span-2">
+          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl overflow-hidden col-span-2">
             {/* Tab bar */}
-            <div className="flex border-b border-zinc-800">
+            <div className="flex border-b border-[var(--border)]">
               <button
                 onClick={() => setMoversTab("gainers")}
                 className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-colors ${
                   moversTab === "gainers"
                     ? "text-emerald-400 border-b-2 border-emerald-400 bg-emerald-400/5"
-                    : "text-zinc-500 hover:text-zinc-300"
+                    : "text-[var(--tx-4)] hover:text-[var(--tx-2)]"
                 }`}>
                 🚀 Top 5 Gainers
               </button>
@@ -834,28 +834,28 @@ export default function Home() {
                 className={`flex-1 py-3 text-xs font-bold uppercase tracking-wider transition-colors ${
                   moversTab === "losers"
                     ? "text-red-400 border-b-2 border-red-400 bg-red-400/5"
-                    : "text-zinc-500 hover:text-zinc-300"
+                    : "text-[var(--tx-4)] hover:text-[var(--tx-2)]"
                 }`}>
                 📉 Top 5 Losers
               </button>
             </div>
-            <p className="text-[10px] text-zinc-600 px-4 pt-2">S&P 500 + NASDAQ · วันนี้</p>
-            <div className="divide-y divide-zinc-800/60">
+            <p className="text-[10px] text-[var(--tx-5)] px-4 pt-2">S&P 500 + NASDAQ · วันนี้</p>
+            <div className="divide-y divide-[var(--border)]">
               {(loading ? Array(5).fill(null) : displayMovers).map((m, i) => {
                 if (!m) return (
                   <div key={i} className="flex items-center gap-3 px-4 py-2.5 animate-pulse">
-                    <div className="w-5 h-3 bg-zinc-800 rounded" />
-                    <div className="w-12 h-3 bg-zinc-800 rounded" />
-                    <div className="flex-1 h-3 bg-zinc-800 rounded" />
-                    <div className="w-14 h-3 bg-zinc-800 rounded" />
+                    <div className="w-5 h-3 bg-[var(--fill)] rounded" />
+                    <div className="w-12 h-3 bg-[var(--fill)] rounded" />
+                    <div className="flex-1 h-3 bg-[var(--fill)] rounded" />
+                    <div className="w-14 h-3 bg-[var(--fill)] rounded" />
                   </div>
                 );
                 const pos = m.changePct >= 0;
                 return (
-                  <div key={m.symbol} className="flex items-center gap-3 px-4 py-2.5 hover:bg-zinc-800/30 transition-colors">
-                    <span className="text-xs text-zinc-600 w-4 font-mono">{i + 1}</span>
+                  <div key={m.symbol} className="flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--hover)] transition-colors">
+                    <span className="text-xs text-[var(--tx-5)] w-4 font-mono">{i + 1}</span>
                     <span className="font-black text-sm w-14">{m.symbol}</span>
-                    <span className="text-xs text-zinc-400 flex-1 font-mono">${money(m.price)}</span>
+                    <span className="text-xs text-[var(--tx-3)] flex-1 font-mono">${money(m.price)}</span>
                     <span className={`text-xs font-bold w-16 text-right ${pos ? "text-emerald-400" : "text-red-400"}`}>
                       {pos ? "+" : ""}{money(m.change)}
                     </span>
@@ -876,7 +876,7 @@ export default function Home() {
 
           <div className="flex flex-col gap-4">
           {/* AI Analysis Box */}
-          <div className="bg-gradient-to-br from-[#0f0f1a] to-[#0a0a0c] border border-purple-900/40 rounded-xl overflow-hidden">
+          <div className="bg-[var(--surface)] border border-purple-900/40 rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b border-purple-900/30 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="text-base">🤖</span>
@@ -891,7 +891,7 @@ export default function Home() {
             <div className="px-4 py-3">
               {aiAnalysis ? (
                 <>
-                  <p className={`text-sm text-zinc-300 leading-relaxed whitespace-pre-line ${!aiExpanded ? "line-clamp-3" : ""}`}>
+                  <p className={`text-sm text-[var(--tx-2)] leading-relaxed whitespace-pre-line ${!aiExpanded ? "line-clamp-3" : ""}`}>
                     {aiAnalysis}
                   </p>
                   {aiAnalysis.length > 150 && (
@@ -902,33 +902,33 @@ export default function Home() {
                   )}
                 </>
               ) : (
-                <p className="text-xs text-zinc-600 py-1">กด "✨ วิเคราะห์" เพื่อให้ AI ดูพอร์ตและแนะนำครับ</p>
+                <p className="text-xs text-[var(--tx-5)] py-1">กด "✨ วิเคราะห์" เพื่อให้ AI ดูพอร์ตและแนะนำครับ</p>
               )}
             </div>
           </div>
 
           {/* News ภาษาไทย */}
-          <div className="bg-[#111113] border border-zinc-800 rounded-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-zinc-800 flex items-center justify-between">
+          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <p className="text-sm font-bold">ข่าวหุ้นในพอร์ต</p>
                 <span className="text-[10px] bg-blue-400/10 text-blue-400 px-2 py-0.5 rounded-full font-bold">Portfolio News</span>
               </div>
-              <span className="text-xs text-zinc-600">{lastRefresh}</span>
+              <span className="text-xs text-[var(--tx-5)]">{lastRefresh}</span>
             </div>
-            <div className="divide-y divide-zinc-800/60">
+            <div className="divide-y divide-[var(--border)]">
               {(news.length === 0 ? DEMO_NEWS : news).slice(0, 4).map((n, i) => (
                 <a key={i} href={n.url} target="_blank" rel="noopener noreferrer"
-                  className="block px-5 py-3.5 hover:bg-zinc-800/30 transition-colors group">
+                  className="block px-5 py-3.5 hover:bg-[var(--hover)] transition-colors group">
                   <div className="flex items-center gap-2 mb-1">
                     {n.ticker && (
-                      <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-zinc-700 text-zinc-300 flex-shrink-0">
+                      <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-[var(--fill-strong)] text-[var(--tx-2)] flex-shrink-0">
                         {n.ticker}
                       </span>
                     )}
-                    <p className="text-xs text-zinc-500 truncate">{n.source} · {n.time}</p>
+                    <p className="text-xs text-[var(--tx-4)] truncate">{n.source} · {n.time}</p>
                   </div>
-                  <p className="text-sm text-zinc-100 font-medium leading-snug line-clamp-2 group-hover:text-white">
+                  <p className="text-sm text-[var(--tx)] font-medium leading-snug line-clamp-2 group-hover:text-[var(--tx)]">
                     {n.headline}
                   </p>
                 </a>
@@ -941,8 +941,8 @@ export default function Home() {
           <div className="flex flex-col gap-4">
 
             {/* Sector Performance */}
-            <div className="bg-[#111113] border border-zinc-800 rounded-xl p-5">
-              <p className="text-xs text-zinc-500 uppercase tracking-wider mb-3">Sector Performance</p>
+            <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5">
+              <p className="text-xs text-[var(--tx-4)] uppercase tracking-wider mb-3">Sector Performance</p>
               <div className="space-y-1.5">
                 {(sectorData.length ? sectorData : [
                   { name: "Technology", pct: 0 },
@@ -952,14 +952,14 @@ export default function Home() {
                   { name: "Consumer",   pct: 0 },
                 ]).map(s => (
                   <div key={s.name} className="flex items-center gap-2">
-                    <p className="text-xs text-zinc-400 w-20 truncate">{s.name}</p>
-                    <div className="flex-1 h-4 bg-zinc-800 rounded overflow-hidden">
+                    <p className="text-xs text-[var(--tx-3)] w-20 truncate">{s.name}</p>
+                    <div className="flex-1 h-4 bg-[var(--fill)] rounded overflow-hidden">
                       <div className="h-full rounded flex items-center justify-end pr-1"
                         style={{
                           width: `${Math.min(Math.abs(s.pct) * 40 + 20, 100)}%`,
                           background: s.pct >= 0 ? "rgba(16,185,129,0.5)" : "rgba(239,68,68,0.5)",
                         }}>
-                        <span className="text-[10px] font-bold text-white">{s.pct > 0 ? "+" : ""}{s.pct.toFixed(2)}%</span>
+                        <span className="text-[10px] font-bold text-[var(--tx)]">{s.pct > 0 ? "+" : ""}{s.pct.toFixed(2)}%</span>
                       </div>
                     </div>
                   </div>
@@ -968,15 +968,15 @@ export default function Home() {
             </div>
 
             {/* Economic Calendar */}
-            <div className="bg-[#111113] border border-zinc-800 rounded-xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-zinc-800">
-                <p className="text-xs font-bold text-zinc-300">📅 Economic Calendar</p>
+            <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl overflow-hidden">
+              <div className="px-5 py-3 border-b border-[var(--border)]">
+                <p className="text-xs font-bold text-[var(--tx-2)]">📅 Economic Calendar</p>
               </div>
-              <div className="divide-y divide-zinc-800/60">
+              <div className="divide-y divide-[var(--border)]">
                 {getEconomicEvents().map((e, i) => (
                   <div key={i} className="flex items-center gap-3 px-5 py-2.5">
-                    <span className="text-xs text-zinc-600 w-14">{fmtEventDate(e.date)}</span>
-                    <span className="text-xs text-zinc-300 flex-1">{e.event}</span>
+                    <span className="text-xs text-[var(--tx-5)] w-14">{fmtEventDate(e.date)}</span>
+                    <span className="text-xs text-[var(--tx-2)] flex-1">{e.event}</span>
                     <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
                       e.impact === "high" ? "bg-red-400" : e.impact === "med" ? "bg-yellow-400" : "bg-zinc-600"
                     }`} />
@@ -989,7 +989,7 @@ export default function Home() {
           </div>
         </div>
 
-        <footer className="text-center text-xs text-zinc-700 pb-4">
+        <footer className="text-center text-xs text-[var(--tx-6)] pb-4">
           TRUSH YOUR OWN · ข้อมูลจาก Finnhub · ไม่ใช่คำแนะนำการลงทุน
         </footer>
       </div>
