@@ -623,6 +623,9 @@ export default function Home() {
   .fade-up-4 { animation: fadeInUp 0.5s 0.20s ease both; }
   .fade-up-5 { animation: fadeInUp 0.5s 0.25s ease both; }
   .glow-card:hover { box-shadow: 0 0 24px #ffffff0a, 0 0 1px #ffffff22; transform: translateY(-1px); transition: all 0.2s; }
+  .quick-card { transition: transform .3s cubic-bezier(.22,1,.36,1), box-shadow .3s ease, border-color .3s ease; }
+  .quick-card:hover { transform: translateY(-3px); box-shadow: 0 16px 32px -16px var(--qc, #ffffff55); }
+  .quick-card:active { transform: translateY(-1px) scale(.98); }
   .ripple { position:relative; overflow:hidden; }
   .ripple:after { content:''; position:absolute; inset:0; background:radial-gradient(circle,#ffffff22 0%,transparent 70%); opacity:0; transition:opacity 0.3s; }
   .ripple:active:after { opacity:1; }
@@ -657,18 +660,34 @@ export default function Home() {
       <div className="px-6 py-5 max-w-screen-2xl mx-auto space-y-4">
 
         {/* ── Quick Nav ── */}
-        <div className="grid grid-cols-3 gap-2 fade-up">
+        <div className="grid grid-cols-3 gap-2.5 fade-up">
           {[
-            { href:"/portfolio", label:"พอร์ต", sub:"หุ้นของฉัน",   icon:"📊", grad:"from-yellow-400/20 to-yellow-400/5", border:"border-yellow-400/20 hover:border-yellow-400/50" },
-            { href:"/chart",     label:"กราฟ",  sub:"TradingView",  icon:"📈", grad:"from-purple-400/20 to-purple-400/5", border:"border-purple-400/20 hover:border-purple-400/50" },
-            { href:"/journal",   label:"Journal",sub:"XAUUSD",      icon:"📓", grad:"from-sky-400/20 to-sky-400/5",     border:"border-sky-400/20 hover:border-sky-400/50" },
+            { href:"/portfolio", label:"พอร์ต",  sub:"หุ้นของฉัน",  icon:"📊", accent:"#f59e0b" },
+            { href:"/chart",     label:"กราฟ",   sub:"TradingView", icon:"📈", accent:"#a78bfa" },
+            { href:"/journal",   label:"Journal", sub:"XAUUSD",      icon:"📓", accent:"#38bdf8" },
           ].map(l=>(
             <Link key={l.label} href={l.href}
-              className={`ripple glow-card relative flex flex-col items-center justify-center bg-gradient-to-br ${l.grad} border ${l.border} rounded-2xl p-3 transition-all group overflow-hidden min-h-[80px]`}>
-              <div className="absolute -right-2 -top-2 text-5xl opacity-10 group-hover:opacity-20 transition-opacity select-none">{l.icon}</div>
-              <span className="text-2xl mb-1">{l.icon}</span>
-              <p className="font-black text-xs text-[var(--tx)] text-center leading-tight">{l.label}</p>
-              <p className="text-[10px] text-[var(--tx-4)] mt-0.5 text-center">{l.sub}</p>
+              className="quick-card group relative flex flex-col items-center justify-center rounded-2xl p-3.5 min-h-[104px] overflow-hidden border transition-all"
+              style={{
+                ["--qc" as any]: `${l.accent}66`,
+                borderColor: `${l.accent}33`,
+                background: `linear-gradient(160deg, ${l.accent}22, ${l.accent}0a 45%, transparent)`,
+              }}>
+              {/* corner glow */}
+              <div className="absolute -right-6 -top-6 w-20 h-20 rounded-full blur-2xl opacity-40 group-hover:opacity-75 transition-opacity duration-300 pointer-events-none"
+                style={{ background: l.accent }}/>
+              {/* big faint icon */}
+              <div className="absolute -right-1 -bottom-2 text-4xl opacity-[0.08] group-hover:opacity-[0.14] transition-opacity duration-300 select-none -rotate-12 pointer-events-none">{l.icon}</div>
+              {/* icon chip */}
+              <div className="relative mb-2 w-11 h-11 rounded-xl flex items-center justify-center text-xl transition-transform duration-300 group-hover:scale-110 group-hover:-translate-y-0.5"
+                style={{ background: `${l.accent}26`, boxShadow: `inset 0 0 0 1px ${l.accent}44` }}>
+                {l.icon}
+              </div>
+              <p className="font-black text-xs text-[var(--tx)] text-center leading-tight relative">{l.label}</p>
+              <p className="text-[10px] text-[var(--tx-4)] mt-0.5 text-center relative">{l.sub}</p>
+              {/* arrow hint */}
+              <span className="absolute top-2.5 right-3 text-xs font-black opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300"
+                style={{ color: l.accent }}>→</span>
             </Link>
           ))}
         </div>
