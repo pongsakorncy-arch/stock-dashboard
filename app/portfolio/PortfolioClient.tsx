@@ -90,6 +90,13 @@ export default function PortfolioClient() {
   const [isTrading, setIsTrading]       = useState(false);
   const tradeTimeoutRef                 = useRef<NodeJS.Timeout|null>(null);
 
+  // ── NEW: Alerts & Rebalance ────────────────────────────────────────────────
+  const [showAlerts, setShowAlerts]           = useState(false);
+  const [showRebalance, setShowRebalance]     = useState(false);
+  const [rebalanceInvest, setRebalanceInvest] = useState("");
+  const alertFiredRef                          = useRef<Set<string>>(new Set());
+  const [notifPermission, setNotifPermission] = useState<"default"|"denied"|"granted">("default");
+
   const { currency, rate, lastUpdate: rateUpdate, toggleCurrency, format: fmtMoney } = useCurrency();
 
   // Keep positionsRef in sync with the latest positions (prevents stale closure in interval/refresh)
@@ -98,6 +105,19 @@ export default function PortfolioClient() {
   const showToast = (msg: string, type: "success"|"error" = "success") => {
     setToast({msg,type});
     setTimeout(() => setToast(null), 2500);
+  };
+
+  // ── NEW: Sync notification permission on mount ────────────────────────────
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      setNotifPermission(Notification.permission as "default"|"denied"|"granted");
+    }
+  }, []);
+
+  const requestNotification = async () => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    const perm = await Notification.requestPermission();
+    setNotifPermission(perm as "default"|"denied"|"granted");
   };
 
   // ── Load from Supabase ───────────────────────────────────────────────────────
@@ -150,13 +170,13 @@ export default function PortfolioClient() {
     });
   };
 
-const syncPositions = async (newPos: Position[]) => {
+  const syncPositions = async (newPos: Position[]) => {
     console.log("syncPositions called, positions:", newPos.length);
     setPositions(newPos);
     const { data: { user } } = await supabase.auth.getUser();
     console.log("user:", user?.id);
     if (user) {
-      const result = await saveToSupabase(user.id, newPos);
+      await saveToSupabase(user.id, newPos);
       console.log("saveToSupabase done");
     }
   };
@@ -184,6 +204,7 @@ const syncPositions = async (newPos: Position[]) => {
     } catch { return { c:0, pc:0, o:0 }; }
   }
 
+  // ── MODIFIED: refreshPrices + S/R Alert check ─────────────────────────────────
   const refreshPrices = async () => {
     const cur = positionsRef.current;
     if (!cur.length) return;
@@ -197,6 +218,41 @@ const syncPositions = async (newPos: Position[]) => {
       return { ...p, currentPrice: c||p.currentPrice, prevClose: pc||p.prevClose, extPrice, extPct, extType, targetAlloc: p.targetAlloc };
     }));
     await syncPositions(updated);
+
+    // ── NEW: Check S/R Alerts ────────────────────────────────────────────────
+    const ALERT_PCT = 1.0; // แจ้งเตือนเมื่อราคาห่างจากแนวรับ/ต้าน ≤ 1%
+    for (const pos of updated) {
+      if (!pos.currentPrice) continue;
+      try {
+        const srRaw = localStorage.getItem(`sr_${pos.ticker}`);
+        if (!srRaw) continue;
+        const srData = JSON.parse(srRaw);
+        const supports: number[] = (srData.s || []).map(Number).filter((n: number) => n > 0);
+        const resists:  number[] = (srData.r || []).map(Number).filter((n: number) => n > 0);
+        const levels = [
+          ...supports.map((lv, i) => ({ lv, type: "S" as const, n: i + 1 })),
+          ...resists.map((lv, i)  => ({ lv, type: "R" as const, n: i + 1 })),
+        ];
+        for (const { lv, type, n } of levels) {
+          const dist = Math.abs((pos.currentPrice - lv) / lv) * 100;
+          const key  = `${pos.ticker}_${type}${n}_${lv}`;
+          if (dist <= ALERT_PCT && !alertFiredRef.current.has(key)) {
+            alertFiredRef.current.add(key);
+            if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+              new Notification(
+                `🎯 ${pos.ticker} ใกล้แนว${type === "S" ? "รับ" : "ต้าน"} ${type}${n}`,
+                {
+                  body: `ราคา $${pos.currentPrice.toFixed(2)} ห่าง $${lv.toFixed(2)} แค่ ${dist.toFixed(2)}%`,
+                  icon: "/icon.svg",
+                }
+              );
+            }
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     setLastUpdated(new Date().toLocaleTimeString("th-TH"));
     setIsRefreshing(false);
   };
@@ -399,6 +455,60 @@ const syncPositions = async (newPos: Position[]) => {
     );
   }
 
+  // ── NEW: Get all S/R data for Alerts section ──────────────────────────────────
+  function getAllSRData() {
+    if (typeof window === "undefined") return [];
+    type SRRow = {
+      ticker: string; currentPrice: number; level: number;
+      type: "S"|"R"; n: number; dist: number; crossed: boolean;
+    };
+    const results: SRRow[] = [];
+    positions.forEach(pos => {
+      if (!pos.currentPrice) return;
+      try {
+        const srRaw = localStorage.getItem(`sr_${pos.ticker}`);
+        if (!srRaw) return;
+        const srData = JSON.parse(srRaw);
+        const supports: number[] = (srData.s || []).map(Number).filter((v: number) => v > 0);
+        const resists:  number[] = (srData.r || []).map(Number).filter((v: number) => v > 0);
+        supports.forEach((lv, i) => {
+          const dist = ((pos.currentPrice - lv) / lv) * 100;
+          // Support: dist > 0 = price above support (normal) | dist < 0 = price broke through support
+          results.push({ ticker: pos.ticker, currentPrice: pos.currentPrice, level: lv, type: "S", n: i+1, dist, crossed: pos.currentPrice < lv });
+        });
+        resists.forEach((lv, i) => {
+          const dist = ((pos.currentPrice - lv) / lv) * 100;
+          // Resistance: dist < 0 = price below resistance (normal) | dist > 0 = price broke through resistance
+          results.push({ ticker: pos.ticker, currentPrice: pos.currentPrice, level: lv, type: "R", n: i+1, dist, crossed: pos.currentPrice > lv });
+        });
+      } catch { /* ignore */ }
+    });
+    // Sort by distance ascending (closest alerts first)
+    return results.sort((a, b) => Math.abs(a.dist) - Math.abs(b.dist));
+  }
+
+  // ── NEW: Calculate Rebalance ──────────────────────────────────────────────────
+  function calcRebalance() {
+    const addInvest = parseFloat(rebalanceInvest) || 0;
+    const newTotal  = marketValue + addInvest;
+    if (newTotal <= 0) return [];
+    return positions
+      .filter(p => p.targetAlloc > 0 && p.currentPrice > 0)
+      .map(p => {
+        const curValue   = p.shares * p.currentPrice;
+        const tgtValue   = (p.targetAlloc / 100) * newTotal;
+        const diffValue  = tgtValue - curValue;
+        const diffShares = p.currentPrice > 0 ? diffValue / p.currentPrice : 0;
+        const allocNow   = marketValue > 0 ? (curValue / marketValue) * 100 : 0;
+        return {
+          ticker: p.ticker, name: p.name, price: p.currentPrice,
+          targetPct: p.targetAlloc, allocNow, diffValue, diffShares,
+          action: (diffValue >= 0 ? "buy" : "sell") as "buy"|"sell",
+        };
+      })
+      .sort((a, b) => Math.abs(b.diffValue) - Math.abs(a.diffValue));
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <>
@@ -422,12 +532,14 @@ const syncPositions = async (newPos: Position[]) => {
       .glow-red { animation: glowR 2s ease-in-out infinite; }
       .shimmer { background: linear-gradient(90deg,#1f1f23 25%,#2a2a30 50%,#1f1f23 75%); background-size:400px 100%; animation: shimmer 1.4s infinite linear; }
       .toast-in { animation: toastIn 0.3s cubic-bezier(0.22,1,0.36,1) both; }
+      .pulse-alert { animation: pulseAlert 1.5s ease-in-out infinite; }
       @keyframes fadeInUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
       @keyframes countUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
       @keyframes glowG { 0%,100%{text-shadow:0 0 0 #10b981} 50%{text-shadow:0 0 12px #10b98188} }
       @keyframes glowR { 0%,100%{text-shadow:0 0 0 #ef4444} 50%{text-shadow:0 0 12px #ef444488} }
       @keyframes shimmer { 0%{background-position:-400px 0} 100%{background-position:400px 0} }
       @keyframes toastIn { from{opacity:0;transform:translateY(20px) scale(0.95)} to{opacity:1;transform:translateY(0) scale(1)} }
+      @keyframes pulseAlert { 0%,100%{opacity:1} 50%{opacity:0.5} }
     `}</style>
     <main className="min-h-screen bg-[#0d0d0f] text-white font-sans">
 
@@ -659,8 +771,8 @@ const syncPositions = async (newPos: Position[]) => {
                             {/* Info line */}
                             <div className="flex items-center justify-between text-[8px]">
                               <span className="text-zinc-400">{allocNow.toFixed(1)}% / {targetPct.toFixed(1)}%</span>
-                              <span className={`font-bold ${allocDiff>0?"text-orange-400":"text-emerald-400"}`}>
-                                {allocDiff>0?"+":""}{allocDiff!==null?allocDiff.toFixed(1):0}% = {allocDiff!==null?fmtMoney(Math.abs(marketValue*(allocDiff/100))):""}
+                              <span className={`font-bold ${allocDiff!==null&&allocDiff>0?"text-orange-400":"text-emerald-400"}`}>
+                                {allocDiff!==null&&allocDiff>0?"+":""}{allocDiff!==null?allocDiff.toFixed(1):0}% = {allocDiff!==null?fmtMoney(Math.abs(marketValue*(allocDiff/100))):""}
                               </span>
                             </div>
                           </div>
@@ -928,7 +1040,6 @@ const syncPositions = async (newPos: Position[]) => {
                   <div className="space-y-2 max-h-64 overflow-y-auto">
                     {tradeHistory.filter(t => !formTicker || t.ticker === formTicker).map((trade, idx) => {
                       const date = new Date(trade.created_at);
-                      const isPos = trade.type === "buy" || trade.pl > 0;
                       return (
                         <div key={idx} className="bg-zinc-800/50 rounded-lg p-2.5 text-xs border border-zinc-700/50">
                           <div className="flex items-center justify-between mb-1.5">
@@ -960,67 +1071,373 @@ const syncPositions = async (newPos: Position[]) => {
         </div>
       )}
 
-
-
-        {/* ── Trade History ── */}
-        <div className="bg-[#18181b] border border-zinc-800 rounded-xl overflow-hidden fade-up">
-          <button onClick={() => setShowHistory(!showHistory)} className="w-full p-4 border-b border-zinc-800 hover:bg-zinc-800/30 transition-colors flex items-center justify-between">
-            <h2 className="text-sm font-bold text-white">📜 ประวัติการซื้อขาย ({tradeHistory.length})</h2>
-            <span className={`text-xs transition-transform ${showHistory?"rotate-180":""}`}>▼</span>
-          </button>
-          {showHistory && (
-            tradeHistory.length === 0 ? (
-              <div className="p-6 text-center">
-                <p className="text-zinc-600 text-sm">ยังไม่มีประวัติการซื้อขาย</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-[#111113]">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">วันที่</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">หุ้น</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">ประเภท</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">จำนวน</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">ราคา</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">เงินทั้งหมด</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">Avg Cost</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-zinc-400 uppercase">P/L</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tradeHistory.slice(0, 50).map((trade, idx) => {
-                    const date = new Date(trade.created_at);
-                    const isPos = trade.pl > 0;
-                    return (
-                      <tr key={idx} className="border-t border-zinc-800 hover:bg-zinc-800/30">
-                        <td className="px-4 py-2.5 text-xs text-zinc-500">{date.toLocaleDateString("th-TH")} {date.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"})}</td>
-                        <td className="px-4 py-2.5 font-bold text-white">{trade.ticker}</td>
-                        <td className="px-4 py-2.5">
-                          <span className={`px-2 py-0.5 rounded text-xs font-bold ${trade.type==="buy"?"bg-emerald-400/20 text-emerald-400":"bg-blue-400/20 text-blue-400"}`}>
-                            {trade.type==="buy"?"ซื้อ":"ขาย"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-2.5 text-sm font-mono text-yellow-300">{trade.shares.toFixed(4)}</td>
-                        <td className="px-4 py-2.5 text-sm">${trade.price.toFixed(2)}</td>
-                        <td className="px-4 py-2.5 text-sm">${trade.amount.toFixed(2)}</td>
-                        <td className="px-4 py-2.5 text-sm text-zinc-400">${trade.avg_cost_before ? trade.avg_cost_before.toFixed(2) : "-"}</td>
-                        <td className="px-4 py-2.5 text-sm text-right font-bold">
-                          {trade.type==="sell" && trade.pl !== null ? (
-                            <span className={isPos?"text-emerald-400":"text-red-400"}>
-                              {isPos?"+":""}{fmtMoney(trade.pl)}
-                            </span>
-                          ) : "-"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+      {/* ── Trade History ── */}
+      <div className="bg-[#18181b] border border-zinc-800 rounded-xl overflow-hidden fade-up mt-4 mx-4">
+        <button onClick={() => setShowHistory(!showHistory)} className="w-full p-4 border-b border-zinc-800 hover:bg-zinc-800/30 transition-colors flex items-center justify-between">
+          <h2 className="text-sm font-bold text-white">📜 ประวัติการซื้อขาย ({tradeHistory.length})</h2>
+          <span className={`text-xs transition-transform ${showHistory?"rotate-180":""}`}>▼</span>
+        </button>
+        {showHistory && (
+          tradeHistory.length === 0 ? (
+            <div className="p-6 text-center">
+              <p className="text-zinc-600 text-sm">ยังไม่มีประวัติการซื้อขาย</p>
             </div>
-            )
-          )}
-        </div>
+          ) : (
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-[#111113]">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">วันที่</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">หุ้น</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">ประเภท</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">จำนวน</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">ราคา</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">เงินทั้งหมด</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">Avg Cost</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-zinc-400 uppercase">P/L</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tradeHistory.slice(0, 50).map((trade, idx) => {
+                  const date = new Date(trade.created_at);
+                  const isPos = trade.pl > 0;
+                  return (
+                    <tr key={idx} className="border-t border-zinc-800 hover:bg-zinc-800/30">
+                      <td className="px-4 py-2.5 text-xs text-zinc-500">{date.toLocaleDateString("th-TH")} {date.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"})}</td>
+                      <td className="px-4 py-2.5 font-bold text-white">{trade.ticker}</td>
+                      <td className="px-4 py-2.5">
+                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${trade.type==="buy"?"bg-emerald-400/20 text-emerald-400":"bg-blue-400/20 text-blue-400"}`}>
+                          {trade.type==="buy"?"ซื้อ":"ขาย"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-sm font-mono text-yellow-300">{trade.shares.toFixed(4)}</td>
+                      <td className="px-4 py-2.5 text-sm">${trade.price.toFixed(2)}</td>
+                      <td className="px-4 py-2.5 text-sm">${trade.amount.toFixed(2)}</td>
+                      <td className="px-4 py-2.5 text-sm text-zinc-400">${trade.avg_cost_before ? trade.avg_cost_before.toFixed(2) : "-"}</td>
+                      <td className="px-4 py-2.5 text-sm text-right font-bold">
+                        {trade.type==="sell" && trade.pl !== null ? (
+                          <span className={isPos?"text-emerald-400":"text-red-400"}>
+                            {isPos?"+":""}{fmtMoney(trade.pl)}
+                          </span>
+                        ) : "-"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          )
+        )}
+      </div>
+
+      {/* ── NEW: Price Alerts (S/R) ───────────────────────────────────────────────── */}
+      {(() => {
+        const allSR = showAlerts ? getAllSRData() : [];
+        // Count close alerts for badge (always compute)
+        const closeSRCount = (() => {
+          if (typeof window === "undefined") return 0;
+          let count = 0;
+          positions.forEach(pos => {
+            if (!pos.currentPrice) return;
+            try {
+              const srRaw = localStorage.getItem(`sr_${pos.ticker}`);
+              if (!srRaw) return;
+              const srData = JSON.parse(srRaw);
+              const all: number[] = [
+                ...(srData.s || []).map(Number).filter((v: number) => v > 0),
+                ...(srData.r || []).map(Number).filter((v: number) => v > 0),
+              ];
+              all.forEach(lv => {
+                if (Math.abs((pos.currentPrice - lv) / lv) * 100 <= 2) count++;
+              });
+            } catch { /* ignore */ }
+          });
+          return count;
+        })();
+
+        return (
+          <div className="bg-[#18181b] border border-zinc-800 rounded-xl overflow-hidden fade-up mt-4 mx-4">
+            <button
+              onClick={() => setShowAlerts(!showAlerts)}
+              className="w-full p-4 hover:bg-zinc-800/30 transition-colors flex items-center justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-white">🔔 Price Alerts — แนวรับ/ต้าน</h2>
+                {closeSRCount > 0 && (
+                  <span className="pulse-alert bg-orange-500 text-black text-[10px] font-black px-1.5 py-0.5 rounded-full">
+                    {closeSRCount} ใกล้!
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {notifPermission === "granted" ? (
+                  <span className="text-[10px] text-emerald-400 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>แจ้งเตือนเปิด
+                  </span>
+                ) : notifPermission === "denied" ? (
+                  <span className="text-[10px] text-red-400">🔕 ปิดอยู่</span>
+                ) : (
+                  <button
+                    onClick={e => { e.stopPropagation(); requestNotification(); }}
+                    className="text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-1 rounded-lg hover:bg-blue-500/30 transition-colors"
+                  >
+                    เปิดรับแจ้งเตือน 🔔
+                  </button>
+                )}
+                <span className={`text-xs transition-transform duration-200 ${showAlerts ? "rotate-180" : ""}`}>▼</span>
+              </div>
+            </button>
+
+            {showAlerts && (
+              <div className="border-t border-zinc-800">
+                {allSR.length === 0 ? (
+                  <div className="p-8 text-center space-y-2">
+                    <p className="text-2xl">🎯</p>
+                    <p className="text-zinc-400 text-sm font-bold">ยังไม่มี S/R levels ที่ตั้งไว้</p>
+                    <p className="text-zinc-600 text-xs">ตั้งได้ที่ปุ่ม "ซื้อ" แล้วเลือกแท็บ 🎯 S/R</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-[#111113]">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">หุ้น</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">Level</th>
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-zinc-400 uppercase">ราคา Level</th>
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-zinc-400 uppercase">ราคาตอนนี้</th>
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-zinc-400 uppercase">ห่าง%</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase hidden sm:table-cell">ทิศทาง</th>
+                          <th className="px-4 py-3 text-center text-xs font-semibold text-zinc-400 uppercase">สถานะ</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allSR.map((row, idx) => {
+                          const absDist = Math.abs(row.dist);
+                          const isHit   = absDist <= 0.5;
+                          const isClose = absDist <= 2;
+                          const isNear  = absDist <= 4;
+                          const rowBg   = isHit ? "bg-red-400/5" : isClose ? "bg-orange-400/5" : "";
+                          const statusLabel = isHit ? "🎯 แตะแล้ว!" : isClose ? "🔥 ใกล้มาก" : isNear ? "⚠️ ใกล้" : "⚪ ปกติ";
+                          const statusColor = isHit
+                            ? "bg-red-400/20 text-red-400"
+                            : isClose
+                            ? "bg-orange-400/20 text-orange-400"
+                            : isNear
+                            ? "bg-yellow-400/20 text-yellow-400"
+                            : "bg-zinc-800 text-zinc-500";
+                          // Direction text
+                          let dirText = "";
+                          if (row.type === "S") {
+                            dirText = row.crossed ? "⚠️ ทะลุแนวรับลงมา" : "✅ ราคาเหนือแนวรับ";
+                          } else {
+                            dirText = row.crossed ? "🚀 ทะลุแนวต้านขึ้นไป" : "⏳ ราคาใต้แนวต้าน";
+                          }
+                          return (
+                            <tr key={idx} className={`border-t border-zinc-800 row-hover ${rowBg}`}>
+                              <td className="px-4 py-3">
+                                <span className="font-black text-white">{row.ticker}</span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`text-xs font-black px-2 py-1 rounded ${row.type === "S" ? "bg-emerald-400/20 text-emerald-400" : "bg-red-400/20 text-red-400"}`}>
+                                  {row.type}{row.n}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right font-mono font-bold text-white">
+                                ${row.level.toFixed(2)}
+                              </td>
+                              <td className="px-4 py-3 text-right font-mono text-zinc-300">
+                                ${row.currentPrice.toFixed(2)}
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <span className={`font-black text-sm ${isHit ? "text-red-400 pulse-alert" : isClose ? "text-orange-400" : isNear ? "text-yellow-400" : "text-zinc-400"}`}>
+                                  {absDist.toFixed(2)}%
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 hidden sm:table-cell">
+                                <span className="text-[11px] text-zinc-500">{dirText}</span>
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <span className={`text-[10px] font-bold px-2 py-1 rounded-full whitespace-nowrap ${statusColor}`}>
+                                  {statusLabel}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    <div className="px-4 py-2 border-t border-zinc-800 flex items-center justify-between">
+                      <p className="text-[10px] text-zinc-600">{allSR.length} levels · แจ้งเตือนเมื่อราคาห่างจาก level ≤ 1% (ทุก 60 วินาที)</p>
+                      {notifPermission !== "granted" && (
+                        <button
+                          onClick={requestNotification}
+                          className="text-[10px] text-blue-400 hover:text-blue-300 underline"
+                        >
+                          เปิด Browser Notification
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ── NEW: Rebalance Calculator ──────────────────────────────────────────────── */}
+      {(() => {
+        const rebalData  = showRebalance ? calcRebalance() : [];
+        const totalBuy   = rebalData.filter(r => r.action === "buy").reduce((s, r) => s + r.diffValue, 0);
+        const totalSell  = rebalData.filter(r => r.action === "sell").reduce((s, r) => s + Math.abs(r.diffValue), 0);
+        const sumTargets = positions.reduce((s, p) => s + (p.targetAlloc || 0), 0);
+        const hasTargets = positions.some(p => p.targetAlloc > 0);
+
+        return (
+          <div className="bg-[#18181b] border border-zinc-800 rounded-xl overflow-hidden fade-up mt-4 mx-4 mb-4">
+            <button
+              onClick={() => setShowRebalance(!showRebalance)}
+              className="w-full p-4 hover:bg-zinc-800/30 transition-colors flex items-center justify-between"
+            >
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-white">⚖️ Rebalance Calculator</h2>
+                {hasTargets && (
+                  <span className="text-[10px] text-zinc-500">
+                    {positions.filter(p => p.targetAlloc > 0).length} หุ้นมีเป้า · รวม {sumTargets.toFixed(1)}%
+                  </span>
+                )}
+              </div>
+              <span className={`text-xs transition-transform duration-200 ${showRebalance ? "rotate-180" : ""}`}>▼</span>
+            </button>
+
+            {showRebalance && (
+              <div className="border-t border-zinc-800 p-4 space-y-4">
+                {/* Input + Warning */}
+                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                  <div>
+                    <label className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1 block font-bold">
+                      💰 เงินเพิ่มเข้าพอร์ต ($) — ใส่ 0 = rebalance ไม่เพิ่มเงิน
+                    </label>
+                    <input
+                      type="number" step="100" value={rebalanceInvest} placeholder="0"
+                      onChange={e => setRebalanceInvest(e.target.value)}
+                      className="w-full sm:w-44 bg-[#111113] border border-yellow-400/40 focus:border-yellow-400 rounded-lg px-3 py-2 text-sm outline-none font-mono text-yellow-400 font-bold"
+                    />
+                  </div>
+                  {sumTargets > 0 && Math.abs(sumTargets - 100) > 0.5 && (
+                    <div className="text-xs text-orange-400 bg-orange-400/10 border border-orange-400/20 px-3 py-2 rounded-lg">
+                      ⚠️ เป้าหมายรวม <span className="font-black">{sumTargets.toFixed(1)}%</span>
+                      {sumTargets < 100 ? ` (ขาด ${(100-sumTargets).toFixed(1)}%)` : ` (เกิน ${(sumTargets-100).toFixed(1)}%)`}
+                    </div>
+                  )}
+                </div>
+
+                {!hasTargets ? (
+                  <div className="py-8 text-center space-y-2">
+                    <p className="text-2xl">⚖️</p>
+                    <p className="text-zinc-400 text-sm font-bold">ยังไม่มีหุ้นที่ตั้งสัดส่วนเป้าหมาย</p>
+                    <p className="text-zinc-600 text-xs">ตั้งได้ที่ปุ่ม "แก้" หรือ "ซื้อ" แล้วกรอก "สัดส่วนเป้าหมาย (%)"</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Summary Cards */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="bg-emerald-400/10 border border-emerald-400/20 rounded-xl p-3 text-center">
+                        <p className="text-[10px] text-emerald-400 font-black uppercase mb-1">ซื้อเพิ่ม</p>
+                        <p className="text-base font-black text-emerald-400">{fmtMoney(totalBuy)}</p>
+                        <p className="text-[10px] text-emerald-600 mt-0.5">
+                          {rebalData.filter(r => r.action === "buy").length} หุ้น
+                        </p>
+                      </div>
+                      <div className="bg-blue-400/10 border border-blue-400/20 rounded-xl p-3 text-center">
+                        <p className="text-[10px] text-blue-400 font-black uppercase mb-1">ขายออก</p>
+                        <p className="text-base font-black text-blue-400">{fmtMoney(totalSell)}</p>
+                        <p className="text-[10px] text-blue-600 mt-0.5">
+                          {rebalData.filter(r => r.action === "sell").length} หุ้น
+                        </p>
+                      </div>
+                      <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-center">
+                        <p className="text-[10px] text-zinc-400 font-black uppercase mb-1">สุทธิ</p>
+                        <p className={`text-base font-black ${totalBuy - totalSell >= 0 ? "text-yellow-400" : "text-purple-400"}`}>
+                          {fmtMoney(Math.abs(totalBuy - totalSell))}
+                        </p>
+                        <p className="text-[10px] text-zinc-600 mt-0.5">
+                          {totalBuy - totalSell >= 0 ? "ต้องใช้เงินเพิ่ม" : "ได้เงินคืน"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Rebalance Table */}
+                    <div className="overflow-x-auto rounded-xl border border-zinc-800">
+                      <table className="w-full text-sm">
+                        <thead className="bg-[#111113]">
+                          <tr>
+                            <th className="px-3 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">หุ้น</th>
+                            <th className="px-3 py-3 text-right text-xs font-semibold text-zinc-400 uppercase hidden sm:table-cell">ราคา</th>
+                            <th className="px-3 py-3 text-right text-xs font-semibold text-zinc-400 uppercase">เป้า%</th>
+                            <th className="px-3 py-3 text-right text-xs font-semibold text-zinc-400 uppercase">ตอนนี้%</th>
+                            <th className="px-3 py-3 text-right text-xs font-semibold text-zinc-400 uppercase">ต่าง</th>
+                            <th className="px-3 py-3 text-center text-xs font-semibold text-zinc-400 uppercase">Action</th>
+                            <th className="px-3 py-3 text-right text-xs font-semibold text-zinc-400 uppercase">หุ้น</th>
+                            <th className="px-3 py-3 text-right text-xs font-semibold text-zinc-400 uppercase">มูลค่า</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rebalData.map((r) => {
+                            const isBuy = r.action === "buy";
+                            const diffPct = r.targetPct - r.allocNow;
+                            return (
+                              <tr key={r.ticker} className="border-t border-zinc-800 row-hover">
+                                <td className="px-3 py-3">
+                                  <p className="font-black text-white">{r.ticker}</p>
+                                  <p className="text-[10px] text-zinc-500 truncate max-w-[80px]">{r.name}</p>
+                                </td>
+                                <td className="px-3 py-3 text-right font-mono text-zinc-400 text-xs hidden sm:table-cell">
+                                  ${r.price.toFixed(2)}
+                                </td>
+                                <td className="px-3 py-3 text-right">
+                                  <span className="text-purple-400 font-bold">{r.targetPct.toFixed(1)}%</span>
+                                </td>
+                                <td className="px-3 py-3 text-right">
+                                  <span className="text-zinc-300">{r.allocNow.toFixed(1)}%</span>
+                                </td>
+                                <td className="px-3 py-3 text-right">
+                                  <span className={`font-black text-sm ${isBuy ? "text-emerald-400" : "text-blue-400"}`}>
+                                    {isBuy ? "+" : ""}{diffPct.toFixed(1)}%
+                                  </span>
+                                </td>
+                                <td className="px-3 py-3 text-center">
+                                  <span className={`text-xs font-black px-2 py-1 rounded whitespace-nowrap ${isBuy ? "bg-emerald-400/20 text-emerald-400" : "bg-blue-400/20 text-blue-400"}`}>
+                                    {isBuy ? "↑ ซื้อ" : "↓ ขาย"}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-3 text-right font-mono">
+                                  <span className={`font-bold ${isBuy ? "text-emerald-400" : "text-blue-400"}`}>
+                                    {isBuy ? "+" : ""}{r.diffShares.toFixed(4)}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-3 text-right">
+                                  <span className={`font-bold ${isBuy ? "text-emerald-400" : "text-blue-400"}`}>
+                                    {isBuy ? "+" : "-"}{fmtMoney(Math.abs(r.diffValue))}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="text-[10px] text-zinc-600 text-center">
+                      คำนวณจาก targetAlloc% × มูลค่าพอร์ตใหม่ (${(marketValue + (parseFloat(rebalanceInvest)||0)).toFixed(0)}) · ราคาจาก Finnhub ล่าสุด
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Toast */}
       {toast && (
