@@ -131,17 +131,40 @@ function BreadthBar({ up, down }: { up: number; down: number }) {
 function LiveClock() {
   const [time, setTime] = useState("");
   const [session, setSession] = useState("");
+  const [countdown, setCountdown] = useState("");
   useEffect(() => {
+    // เวลาเปิด-ปิดตลาดสหรัฐฯ (ใช้ EDT = UTC-4 แบบประมาณ)
+    const OPEN = 9.5 * 3600, CLOSE = 16 * 3600; // วินาทีในวัน (ET)
+    const fmt = (s: number) => {
+      s = Math.max(0, Math.floor(s));
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+      return `${h}:${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
+    };
+    const secsToNextOpen = (day: number, sod: number) => {
+      if (day >= 1 && day <= 5 && sod < OPEN) return OPEN - sod;
+      for (let i = 1; i <= 4; i++) {
+        const nd = (day + i) % 7;
+        if (nd >= 1 && nd <= 5) return (OPEN - sod) + i * 86400;
+      }
+      return (OPEN - sod) + 86400;
+    };
     const tick = () => {
       const now = new Date();
       setTime(now.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
-      const edtMin = now.getUTCHours() * 60 + now.getUTCMinutes() - 240;
-      const day = now.getUTCDay();
-      if (day === 0 || day === 6) { setSession("ตลาดปิด (Weekend)"); return; }
-      if (edtMin >= 570 && edtMin < 960) setSession("🟢 ตลาด US เปิด");
-      else if (edtMin >= 540 && edtMin < 570) setSession("🟡 Pre-Market");
-      else if (edtMin >= 960 && edtMin < 1080) setSession("🟡 After-Hours");
+      // เวลา ET (เลื่อน UTC -4 ชม.)
+      const et = new Date(now.getTime() - 4 * 3600 * 1000);
+      const day = et.getUTCDay();
+      const sod = et.getUTCHours() * 3600 + et.getUTCMinutes() * 60 + et.getUTCSeconds();
+      const edtMin = sod / 60;
+      const isOpen = day >= 1 && day <= 5 && sod >= OPEN && sod < CLOSE;
+      if (day === 0 || day === 6) setSession("ตลาดปิด (Weekend)");
+      else if (isOpen) setSession("🟢 ตลาด US เปิด");
+      else if (edtMin >= 240 && edtMin < 570) setSession("🟡 Pre-Market");
+      else if (edtMin >= 960 && edtMin < 1200) setSession("🟡 After-Hours");
       else setSession("🔴 ตลาด US ปิด");
+      // นับถอยหลัง
+      if (isOpen) setCountdown(`ปิดใน ${fmt(CLOSE - sod)}`);
+      else setCountdown(`เปิดใน ${fmt(secsToNextOpen(day, sod))}`);
     };
     tick();
     const id = setInterval(tick, 1000);
@@ -150,7 +173,14 @@ function LiveClock() {
   return (
     <div className="text-center sm:text-right">
       <p className="text-lg sm:text-2xl font-mono font-bold tracking-widest leading-tight">{time}</p>
-      <p className="text-[10px] sm:text-xs text-[var(--tx-3)]">{session}</p>
+      <div className="flex items-center gap-1.5 justify-center sm:justify-end leading-tight">
+        <span className="text-[10px] sm:text-xs text-[var(--tx-3)]">{session}</span>
+        {countdown && (
+          <span className="text-[9px] sm:text-[10px] font-mono font-bold text-[var(--tx-4)] bg-[var(--fill)] px-1.5 py-0.5 rounded tabular-nums">
+            {countdown}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -514,8 +544,8 @@ export default function Home() {
     setAiLoading(false);
   };
 
-  const fetchAll = async () => {
-    setLoading(true);
+  const fetchAll = async (silent = false) => {
+    if (!silent) setLoading(true);
     const apiKey = process.env.NEXT_PUBLIC_FINNHUB_API_KEY ?? "";
 
     if (!apiKey) {
@@ -585,7 +615,11 @@ export default function Home() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => {
+    fetchAll();
+    const id = setInterval(() => fetchAll(true), 60000);
+    return () => clearInterval(id);
+  }, []);
 
   const fearGreed = fearGreedData.value;
   const fearLabel = fearGreedData.label;
@@ -811,16 +845,6 @@ export default function Home() {
                 <p className={`text-sm font-black ${portfolio.dailyPL>=0?"text-sky-400":"text-orange-400"}`}>
                   {portfolio.dailyPL>=0?"+":""}{fmtMoney(portfolio.dailyPL)}
                 </p>
-                {portfolio.extType!=="none" && portfolio.extPL!==0 && (
-                  <div className="flex items-center gap-1 mt-1">
-                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${portfolio.extType==="pre"?"bg-yellow-400/20 text-yellow-400":"bg-purple-400/20 text-purple-400"}`}>
-                      {portfolio.extType==="pre"?"PRE":"AH"}
-                    </span>
-                    <span className={`text-[9px] font-bold ${portfolio.extPL>=0?"text-emerald-400":"text-red-400"}`}>
-                      {portfolio.extPL>=0?"+":""}{fmtMoney(portfolio.extPL)} ({portfolio.extPct>=0?"+":""}{portfolio.extPct.toFixed(2)}%)
-                    </span>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -832,8 +856,6 @@ export default function Home() {
             {(loading ? Array(6).fill(null) : indices).map((idx,i)=>{
               if(!idx) return <div key={i} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-3 animate-pulse h-20"/>;
               const pos=idx.changePct>=0;
-              const extPos=idx.extPct>=0;
-              const hasExt=idx.extType!=="none"&&idx.extPrice>0;
               return (
                 <div key={idx.symbol} className="glow-card relative overflow-hidden bg-gradient-to-b from-[var(--surface)] to-[var(--surface-2)] border border-[var(--border)] rounded-xl p-3 hover:border-[var(--border-2)] transition-all cursor-default">
                   <div className="flex items-center justify-between gap-1">
@@ -844,16 +866,6 @@ export default function Home() {
                   <p className={`text-[10px] font-bold mt-0.5 ${pos?"text-emerald-400":"text-red-400"}`}>
                     {pos?"▲":"▼"} {Math.abs(idx.changePct).toFixed(2)}%
                   </p>
-                  {hasExt && (
-                    <div className="flex items-center gap-1 mt-1">
-                      <span className={`text-[9px] font-black px-1 rounded ${idx.extType==="pre"?"bg-yellow-400/20 text-yellow-400":"bg-purple-400/20 text-purple-400"}`}>
-                        {idx.extType==="pre"?"PRE":"AH"}
-                      </span>
-                      <span className={`text-[9px] font-bold ${extPos?"text-emerald-400":"text-red-400"}`}>
-                        {extPos?"+":""}{idx.extPct.toFixed(2)}%
-                      </span>
-                    </div>
-                  )}
                   {/* Mini sparkline */}
                   {idx.sparkline.length > 1 && (
                     <div className="mt-1.5">
