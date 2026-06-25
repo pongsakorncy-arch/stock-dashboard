@@ -4,6 +4,7 @@ import Link from "next/link";
 import React, { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import CurrencyToggle from "@/components/CurrencyToggle";
+import ThemeToggle from "@/components/ThemeToggle";
 import { useCurrency } from "@/hooks/useCurrency";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -458,7 +459,7 @@ export default function PortfolioClient() {
   }
   function Th({ k, label, className="" }: { k:SortKey; label:string; className?:string }) {
     return (
-      <th className={`px-3 py-3 text-left text-xs font-semibold text-zinc-400 uppercase tracking-wider cursor-pointer select-none hover:text-white transition-colors whitespace-nowrap ${className}`}
+      <th className={`px-3 py-3 text-left text-xs font-semibold text-[var(--tx-3)] uppercase tracking-wider cursor-pointer select-none hover:text-[var(--tx)] transition-colors whitespace-nowrap ${className}`}
         onClick={()=>handleSort(k)}>
         {label}<SortIcon k={k}/>
       </th>
@@ -551,17 +552,18 @@ export default function PortfolioClient() {
       @keyframes toastIn { from{opacity:0;transform:translateY(20px) scale(0.95)} to{opacity:1;transform:translateY(0) scale(1)} }
       @keyframes pulseAlert { 0%,100%{opacity:1} 50%{opacity:0.5} }
     `}</style>
-    <main className="min-h-screen bg-[#0d0d0f] text-white font-sans">
+    <main className="min-h-screen bg-[var(--bg)] text-[var(--tx)] font-sans">
 
       {/* ── Header ── */}
-      <div className="border-b border-zinc-800 px-3 py-2.5 flex items-center justify-between bg-[#0d0d0f]/90 backdrop-blur sticky top-0 z-30">
+      <div className="border-b border-[var(--border)] px-3 py-2.5 flex items-center justify-between bg-[var(--bg)]/90 backdrop-blur sticky top-0 z-30">
         <div className="flex items-center gap-2">
-          <Link href="/" className="text-zinc-500 hover:text-white text-xs transition-colors">← หน้าแรก</Link>
-          <span className="text-zinc-700 hidden sm:block">|</span>
+          <Link href="/" className="text-[var(--tx-4)] hover:text-[var(--tx)] text-xs transition-colors">← หน้าแรก</Link>
+          <span className="text-[var(--tx-6)] hidden sm:block">|</span>
           <h1 className="text-xs font-bold tracking-tight hidden sm:block">TRUSH YOUR OWN · พอร์ต</h1>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-zinc-600 hidden sm:block">อัปเดต: {lastUpdated}</span>
+          <span className="text-[10px] text-[var(--tx-5)] hidden sm:block">อัปเดต: {lastUpdated}</span>
+          <ThemeToggle/>
           <CurrencyToggle currency={currency} rate={rate} lastUpdate={rateUpdate} onToggle={toggleCurrency}/>
           <button onClick={refreshPrices} disabled={isRefreshing}
             className="px-3 py-2 bg-yellow-400 hover:bg-yellow-300 text-black text-xs font-bold rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1">
@@ -569,7 +571,7 @@ export default function PortfolioClient() {
             <span className="hidden sm:block">{isRefreshing?"กำลังโหลด...":"อัปเดตราคา"}</span>
           </button>
           <button onClick={async()=>{await supabase.auth.signOut();window.location.href="/login";}}
-            className="px-2.5 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-xs rounded-lg transition-colors">
+            className="px-2.5 py-2 bg-[var(--fill)] hover:bg-[var(--fill-strong)] text-[var(--tx-3)] text-xs rounded-lg transition-colors">
             <span className="hidden sm:block">ออกจากระบบ</span>
             <span className="sm:hidden">ออก</span>
           </button>
@@ -584,7 +586,7 @@ export default function PortfolioClient() {
           <div className="relative bg-gradient-to-br from-[#111827] to-[#0f172a] border border-blue-900/40 rounded-xl p-3 overflow-hidden hover-lift">
             <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full opacity-20" style={{background:"radial-gradient(circle,#3b82f6,transparent)"}}/>
             <p className="text-[10px] text-blue-400/80 uppercase tracking-wider mb-1 font-bold">มูลค่าหุ้น</p>
-            <p className="text-lg font-black text-white count-up">{fmtMoney(marketValue)}</p>
+            <p className="text-lg font-black text-[var(--tx)] count-up">{fmtMoney(marketValue)}</p>
             <div className="flex items-center gap-1.5 mt-1.5">
               <div className="flex-1 h-1 bg-blue-900/40 rounded-full overflow-hidden">
                 <div className="h-full bg-gradient-to-r from-blue-500 to-blue-400 rounded-full" style={{width:`${stockPct}%`}}/>
@@ -603,7 +605,7 @@ export default function PortfolioClient() {
                   onKeyDown={e=>{if(e.key==="Enter")saveCash(parseFloat(cashInput)||0);}}
                   className="flex-1 min-w-0 bg-black/40 border border-emerald-700 rounded px-2 py-1 text-xs outline-none font-mono text-emerald-400"/>
                 <button onClick={()=>saveCash(parseFloat(cashInput)||0)} className="text-[10px] bg-emerald-500 text-black px-2 rounded font-black">✓</button>
-                <button onClick={()=>setShowCashEdit(false)} className="text-[10px] text-zinc-500 px-1">✕</button>
+                <button onClick={()=>setShowCashEdit(false)} className="text-[10px] text-[var(--tx-4)] px-1">✕</button>
               </div>
             ) : (
               <button onClick={()=>{setCashInput(String(cash));setShowCashEdit(true);}} className="text-left w-full group">
@@ -638,30 +640,30 @@ export default function PortfolioClient() {
         </div>
 
         {/* ── Donut ── */}
-        <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-4 flex items-center gap-4 fade-up-1">
+        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 flex items-center gap-4 fade-up-1">
           {/* Donut circle */}
           <div className="relative flex-shrink-0 w-28 h-28">
             <div className="w-28 h-28 rounded-full transition-all duration-300"
               style={{background:`conic-gradient(${donutGradient})`, transform:"rotate(-90deg)"}}/>
             {/* Inner circle */}
-            <div className="absolute inset-3 bg-[#18181b] rounded-full flex flex-col items-center justify-center">
+            <div className="absolute inset-3 bg-[var(--surface)] rounded-full flex flex-col items-center justify-center">
               {hoveredIdx!==null && sorted[hoveredIdx] ? (
                 <>
                   <span className="text-[9px] font-black leading-none" style={{color:COLORS[hoveredIdx%COLORS.length]}}>
                     {sorted[hoveredIdx].ticker}
                   </span>
-                  <span className="text-sm font-black text-white leading-none mt-0.5">
+                  <span className="text-sm font-black text-[var(--tx)] leading-none mt-0.5">
                     {marketValue>0?((sorted[hoveredIdx].shares*(sorted[hoveredIdx].currentPrice||sorted[hoveredIdx].avgCost)/marketValue)*100).toFixed(1):0}%
                   </span>
-                  <span className="text-[8px] text-zinc-500 leading-none mt-0.5">
+                  <span className="text-[8px] text-[var(--tx-4)] leading-none mt-0.5">
                     {fmtMoney(sorted[hoveredIdx].shares*(sorted[hoveredIdx].currentPrice||sorted[hoveredIdx].avgCost))}
                   </span>
                 </>
               ) : (
                 <>
-                  <span className="text-[9px] text-zinc-500 leading-none">พอร์ต</span>
-                  <span className="text-xs font-black text-white leading-none mt-0.5">{positions.length} หุ้น</span>
-                  <span className="text-[8px] text-zinc-500 leading-none mt-0.5">{fmtMoney(marketValue)}</span>
+                  <span className="text-[9px] text-[var(--tx-4)] leading-none">พอร์ต</span>
+                  <span className="text-xs font-black text-[var(--tx)] leading-none mt-0.5">{positions.length} หุ้น</span>
+                  <span className="text-[8px] text-[var(--tx-4)] leading-none mt-0.5">{fmtMoney(marketValue)}</span>
                 </>
               )}
             </div>
@@ -681,8 +683,8 @@ export default function PortfolioClient() {
                     onMouseEnter={()=>setHoveredIdx(i)} onMouseLeave={()=>setHoveredIdx(null)}>
                     <span className="w-2 h-2 rounded-sm flex-shrink-0 transition-transform"
                       style={{background:COLORS[i%COLORS.length],transform:isHov?"scale(1.4)":"scale(1)"}}/>
-                    <span className={`text-[10px] font-bold transition-colors ${isHov?"text-white":"text-zinc-400"}`}>{p.ticker}</span>
-                    <span className="text-[9px] text-zinc-600 ml-auto">{pv.toFixed(1)}%</span>
+                    <span className={`text-[10px] font-bold transition-colors ${isHov?"text-[var(--tx)]":"text-[var(--tx-3)]"}`}>{p.ticker}</span>
+                    <span className="text-[9px] text-[var(--tx-5)] ml-auto">{pv.toFixed(1)}%</span>
                   </div>
                 );
               })}
@@ -691,33 +693,33 @@ export default function PortfolioClient() {
         </div>
 
         {/* ── Table ── */}
-        <div className="bg-[#18181b] border border-zinc-800 rounded-xl overflow-hidden fade-up-2">
+        <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl overflow-hidden fade-up-2">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-[#111113]">
+              <thead className="bg-[var(--surface-2)]">
                 <tr>
                   <Th k="ticker" label="หุ้น"/>
                   <Th k="shares" label="จำนวน" className="hidden lg:table-cell"/>
                   <Th k="avgCost" label="ต้นทุน" className="hidden lg:table-cell"/>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-zinc-400 uppercase tracking-wider hidden lg:table-cell">ราคา</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-[var(--tx-3)] uppercase tracking-wider hidden lg:table-cell">ราคา</th>
                   <Th k="value" label="มูลค่า"/>
                   <th className="px-3 py-3 text-left whitespace-nowrap">
                     <div className="flex items-center gap-1">
                       <button onClick={()=>{setPlMode("total");if(sortKey==="dailyPL"||sortKey==="dailyPct")setSortKey("pl");}}
-                        className={`text-xs px-2 py-0.5 rounded font-bold transition-colors ${plMode==="total"?"bg-emerald-400/20 text-emerald-400":"text-zinc-600 hover:text-zinc-400"}`}>รวม</button>
-                      <span className="text-zinc-700 text-xs">|</span>
+                        className={`text-xs px-2 py-0.5 rounded font-bold transition-colors ${plMode==="total"?"bg-emerald-400/20 text-emerald-400":"text-[var(--tx-5)] hover:text-[var(--tx-3)]"}`}>รวม</button>
+                      <span className="text-[var(--tx-6)] text-xs">|</span>
                       <button onClick={()=>{setPlMode("daily");if(sortKey==="pl"||sortKey==="plPct")setSortKey("dailyPL");}}
-                        className={`text-xs px-2 py-0.5 rounded font-bold transition-colors ${plMode==="daily"?"bg-sky-400/20 text-sky-400":"text-zinc-600 hover:text-zinc-400"}`}>วันนี้</button>
+                        className={`text-xs px-2 py-0.5 rounded font-bold transition-colors ${plMode==="daily"?"bg-sky-400/20 text-sky-400":"text-[var(--tx-5)] hover:text-[var(--tx-3)]"}`}>วันนี้</button>
                     </div>
                     <div className="flex items-center gap-1 mt-0.5">
                       {plMode==="total"
-                        ? <button onClick={()=>handleSort("plPct")} className="text-[10px] text-zinc-600 hover:text-zinc-400">% <SortIcon k="plPct"/></button>
-                        : <button onClick={()=>handleSort("dailyPct")} className="text-[10px] text-zinc-600 hover:text-zinc-400">% <SortIcon k="dailyPct"/></button>
+                        ? <button onClick={()=>handleSort("plPct")} className="text-[10px] text-[var(--tx-5)] hover:text-[var(--tx-3)]">% <SortIcon k="plPct"/></button>
+                        : <button onClick={()=>handleSort("dailyPct")} className="text-[10px] text-[var(--tx-5)] hover:text-[var(--tx-3)]">% <SortIcon k="dailyPct"/></button>
                       }
                     </div>
                   </th>
                   <Th k="allocation" label="สัดส่วน" className="hidden md:table-cell"/>
-                  <th className="px-3 py-3 text-center text-xs font-semibold text-zinc-400 uppercase">จัดการ</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold text-[var(--tx-3)] uppercase">จัดการ</th>
                 </tr>
               </thead>
               <tbody>
@@ -735,19 +737,19 @@ export default function PortfolioClient() {
                   const isDailyPos = dailyPL !== null ? dailyPL >= 0 : null;
                   const allocDiff = targetPct > 0 ? allocNow - targetPct : null;
                   return (
-                    <tr key={p.ticker} className="row-hover border-t border-zinc-800">
+                    <tr key={p.ticker} className="row-hover border-t border-[var(--border)]">
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2">
                           <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{background:COLORS[idx%COLORS.length]}}/>
                           <div>
                             <p className="font-bold text-sm">{p.ticker}</p>
-                            <p className="text-xs text-zinc-500 truncate max-w-[100px]">{p.name}</p>
+                            <p className="text-xs text-[var(--tx-4)] truncate max-w-[100px]">{p.name}</p>
                           </div>
                         </div>
                       </td>
                       <td className="px-3 py-3 text-sm text-yellow-300 font-mono hidden lg:table-cell">{p.shares.toFixed(4)}</td>
                       <td className="px-3 py-3 text-sm hidden lg:table-cell">{fmtMoney(p.avgCost)}</td>
-                      <td className="px-3 py-3 text-sm text-zinc-300 hidden lg:table-cell">{fmtMoney(price)}</td>
+                      <td className="px-3 py-3 text-sm text-[var(--tx-2)] hidden lg:table-cell">{fmtMoney(price)}</td>
                       <td className="px-3 py-3 text-sm font-bold">{fmtMoney(val)}</td>
                       <td className="px-3 py-3 min-w-[130px]">
                         {plMode==="total" ? (
@@ -767,27 +769,27 @@ export default function PortfolioClient() {
                               <p className={`text-sm font-bold ${isDailyPos?"text-sky-400":"text-orange-400"}`}>{isDailyPos?"+":""}{fmtMoney(dailyPL)}</p>
                               <p className={`text-xs ${isDailyPos?"text-sky-400":"text-orange-400"}`}>{isDailyPos?"▲":"▼"} {Math.abs(dailyPct!).toFixed(2)}%</p>
                             </>
-                          ) : <p className="text-xs text-zinc-600">— ไม่มีข้อมูล</p>
+                          ) : <p className="text-xs text-[var(--tx-5)]">— ไม่มีข้อมูล</p>
                         )}
                       </td>
                       <td className="px-3 py-3 min-w-[140px] hidden md:table-cell">
                         {targetPct>0 ? (
                           <div className="space-y-0.5">
                             {/* Bar */}
-                            <div className="h-3 bg-zinc-800 rounded-md overflow-hidden flex relative border border-zinc-700">
+                            <div className="h-3 bg-[var(--fill)] rounded-md overflow-hidden flex relative border border-[var(--border-2)]">
                               <div className="h-full rounded-md z-10" style={{width:`${Math.min((allocNow/targetPct)*100,100)}%`,background:allocNow<targetPct?COLORS[idx%COLORS.length]:"#f97316",opacity:0.85}}/>
                               {allocNow<targetPct && <div className="h-full" style={{width:`${Math.max(0,100-((allocNow/targetPct)*100))}%`,background:"#10b98111"}}/>}
                             </div>
                             {/* Info line */}
                             <div className="flex items-center justify-between text-[8px]">
-                              <span className="text-zinc-400">{allocNow.toFixed(1)}% / {targetPct.toFixed(1)}%</span>
+                              <span className="text-[var(--tx-3)]">{allocNow.toFixed(1)}% / {targetPct.toFixed(1)}%</span>
                               <span className={`font-bold ${allocDiff!==null&&allocDiff>0?"text-orange-400":"text-emerald-400"}`}>
                                 {allocDiff!==null&&allocDiff>0?"+":""}{allocDiff!==null?allocDiff.toFixed(1):0}% = {allocDiff!==null?fmtMoney(Math.abs(marketValue*(allocDiff/100))):""}
                               </span>
                             </div>
                           </div>
                         ) : (
-                          <div className="text-[8px] text-zinc-600">ยังไม่ตั้งเป้า</div>
+                          <div className="text-[8px] text-[var(--tx-5)]">ยังไม่ตั้งเป้า</div>
                         )}
                       </td>
                       <td className="px-2 py-3">
@@ -812,9 +814,9 @@ export default function PortfolioClient() {
               </tbody>
             </table>
           </div>
-          <div className="border-t border-zinc-800 p-4">
+          <div className="border-t border-[var(--border)] p-4">
             <button onClick={()=>{setMode("buy");setFormTicker("");setFormShares("");setFormPrice("");setFormName("");setFormAlloc("");setFormTarget("");setEditingTicker(null);setFormError("");setModalTab("trade");setModal({type:"buy",ticker:""}); }}
-              className="w-full py-2.5 border border-dashed border-zinc-700 hover:border-zinc-500 text-zinc-500 hover:text-zinc-300 rounded-lg text-sm">
+              className="w-full py-2.5 border border-dashed border-[var(--border-2)] hover:border-zinc-500 text-[var(--tx-4)] hover:text-[var(--tx-2)] rounded-lg text-sm">
               + เพิ่มหุ้นใหม่
             </button>
           </div>
@@ -825,24 +827,24 @@ export default function PortfolioClient() {
       {modal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
           onClick={e=>{if(e.target===e.currentTarget)closeModal();}}>
-          <div className="bg-[#18181b] border border-zinc-700 rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto"
+          <div className="bg-[var(--surface)] border border-[var(--border-2)] rounded-2xl p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto"
             onClick={e=>e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold">{editingTicker?`แก้ไข ${editingTicker}`:mode==="buy"?"ซื้อหุ้น":"ขายหุ้น"}</h2>
-              <button onClick={closeModal} className="text-zinc-500 hover:text-white text-xl">✕</button>
+              <button onClick={closeModal} className="text-[var(--tx-4)] hover:text-[var(--tx)] text-xl">✕</button>
             </div>
 
             {!editingTicker && (
               <>
-                <div className="flex gap-1 mb-4 bg-zinc-800/50 p-1 rounded-xl">
-                  <button type="button" onClick={()=>setModalTab("trade")} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${modalTab==="trade"?"bg-zinc-700 text-white":"text-zinc-500"}`}>💹 ซื้อ/ขาย</button>
-                  <button type="button" onClick={()=>setModalTab("dca")} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${modalTab==="dca"?"bg-yellow-400/20 text-yellow-400":"text-zinc-500"}`}>📊 DCA</button>
-                  <button type="button" onClick={()=>setModalTab("sr")} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${modalTab==="sr"?"bg-purple-400/20 text-purple-400":"text-zinc-500"}`}>🎯 S/R</button>
+                <div className="flex gap-1 mb-4 bg-[var(--fill)] p-1 rounded-xl">
+                  <button type="button" onClick={()=>setModalTab("trade")} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${modalTab==="trade"?"bg-[var(--fill-strong)] text-[var(--tx)]":"text-[var(--tx-4)]"}`}>💹 ซื้อ/ขาย</button>
+                  <button type="button" onClick={()=>setModalTab("dca")} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${modalTab==="dca"?"bg-yellow-400/20 text-yellow-400":"text-[var(--tx-4)]"}`}>📊 DCA</button>
+                  <button type="button" onClick={()=>setModalTab("sr")} className={`flex-1 py-1.5 rounded-lg text-xs font-bold ${modalTab==="sr"?"bg-purple-400/20 text-purple-400":"text-[var(--tx-4)]"}`}>🎯 S/R</button>
                 </div>
                 {modalTab==="trade" && (
                   <div className="flex gap-2 mb-4">
-                    <button type="button" onClick={()=>setMode("buy")} className={`flex-1 py-2 rounded-lg text-sm font-bold ${mode==="buy"?"bg-emerald-500 text-black":"bg-zinc-800 text-zinc-400"}`}>ซื้อ</button>
-                    <button type="button" onClick={()=>setMode("sell")} className={`flex-1 py-2 rounded-lg text-sm font-bold ${mode==="sell"?"bg-blue-500 text-white":"bg-zinc-800 text-zinc-400"}`}>ขาย</button>
+                    <button type="button" onClick={()=>setMode("buy")} className={`flex-1 py-2 rounded-lg text-sm font-bold ${mode==="buy"?"bg-emerald-500 text-black":"bg-[var(--fill)] text-[var(--tx-3)]"}`}>ซื้อ</button>
+                    <button type="button" onClick={()=>setMode("sell")} className={`flex-1 py-2 rounded-lg text-sm font-bold ${mode==="sell"?"bg-blue-500 text-[var(--tx)]":"bg-[var(--fill)] text-[var(--tx-3)]"}`}>ขาย</button>
                   </div>
                 )}
               </>
@@ -851,7 +853,7 @@ export default function PortfolioClient() {
             {/* DCA Tab */}
             {modalTab==="dca" && !editingTicker && (()=>{
               const p = positions.find(x=>x.ticker===formTicker);
-              if (!p) return <p className="text-zinc-500 text-sm text-center py-4">เลือกหุ้นก่อนครับ</p>;
+              if (!p) return <p className="text-[var(--tx-4)] text-sm text-center py-4">เลือกหุ้นก่อนครับ</p>;
               const cp = p.currentPrice||p.avgCost;
               const addAmt = parseFloat(dcaAmount)||0;
               const buyPx  = parseFloat(dcaPrice)||cp;
@@ -861,45 +863,45 @@ export default function PortfolioClient() {
               const newAlloc= marketValue>0?newSh*cp/(marketValue+(dcaMode==="amount"?addAmt:addSh*buyPx))*100:0;
               return (
                 <div className="space-y-4">
-                  <div className="bg-zinc-800/40 rounded-xl p-3 text-xs">
-                    <p className="text-zinc-400 font-bold mb-2">{p.ticker} — ปัจจุบัน</p>
+                  <div className="bg-[var(--fill)] rounded-xl p-3 text-xs">
+                    <p className="text-[var(--tx-3)] font-bold mb-2">{p.ticker} — ปัจจุบัน</p>
                     <div className="grid grid-cols-3 gap-2 text-center">
-                      <div><p className="text-zinc-600">ถือ</p><p className="font-bold">{p.shares.toFixed(4)}</p></div>
-                      <div><p className="text-zinc-600">Avg Cost</p><p className="font-bold text-yellow-400">${p.avgCost.toFixed(2)}</p></div>
-                      <div><p className="text-zinc-600">ราคาตอนนี้</p><p className="font-bold">${cp.toFixed(2)}</p></div>
+                      <div><p className="text-[var(--tx-5)]">ถือ</p><p className="font-bold">{p.shares.toFixed(4)}</p></div>
+                      <div><p className="text-[var(--tx-5)]">Avg Cost</p><p className="font-bold text-yellow-400">${p.avgCost.toFixed(2)}</p></div>
+                      <div><p className="text-[var(--tx-5)]">ราคาตอนนี้</p><p className="font-bold">${cp.toFixed(2)}</p></div>
                     </div>
                   </div>
-                  <div className="flex gap-1 bg-zinc-800/50 p-1 rounded-lg">
-                    <button type="button" onClick={()=>setDcaMode("amount")} className={`flex-1 py-1.5 rounded-md text-xs font-bold ${dcaMode==="amount"?"bg-zinc-700 text-white":"text-zinc-500"}`}>ใส่เป็น $</button>
-                    <button type="button" onClick={()=>setDcaMode("shares")} className={`flex-1 py-1.5 rounded-md text-xs font-bold ${dcaMode==="shares"?"bg-zinc-700 text-white":"text-zinc-500"}`}>ใส่เป็นหุ้น</button>
+                  <div className="flex gap-1 bg-[var(--fill)] p-1 rounded-lg">
+                    <button type="button" onClick={()=>setDcaMode("amount")} className={`flex-1 py-1.5 rounded-md text-xs font-bold ${dcaMode==="amount"?"bg-[var(--fill-strong)] text-[var(--tx)]":"text-[var(--tx-4)]"}`}>ใส่เป็น $</button>
+                    <button type="button" onClick={()=>setDcaMode("shares")} className={`flex-1 py-1.5 rounded-md text-xs font-bold ${dcaMode==="shares"?"bg-[var(--fill-strong)] text-[var(--tx)]":"text-[var(--tx-4)]"}`}>ใส่เป็นหุ้น</button>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs text-zinc-400 mb-1 block">{dcaMode==="amount"?"เงินที่ซื้อเพิ่ม ($)":"จำนวนหุ้น"}</label>
+                      <label className="text-xs text-[var(--tx-3)] mb-1 block">{dcaMode==="amount"?"เงินที่ซื้อเพิ่ม ($)":"จำนวนหุ้น"}</label>
                       <input type="number" inputMode="decimal" step="any" value={dcaAmount} placeholder={dcaMode==="amount"?"100":"5"}
                         onChange={e=>setDcaAmount(e.target.value)}
-                        className="w-full bg-[#111113] border border-yellow-400/40 focus:border-yellow-400 rounded-lg px-3 py-2.5 text-sm outline-none font-mono text-yellow-400 font-bold"/>
+                        className="w-full bg-[var(--surface-2)] border border-yellow-400/40 focus:border-yellow-400 rounded-lg px-3 py-2.5 text-sm outline-none font-mono text-yellow-400 font-bold"/>
                     </div>
                     <div>
-                      <label className="text-xs text-zinc-400 mb-1 block">ราคาที่ซื้อ ($)</label>
+                      <label className="text-xs text-[var(--tx-3)] mb-1 block">ราคาที่ซื้อ ($)</label>
                       <input type="number" inputMode="decimal" step="any" value={dcaPrice}
                         onChange={e=>setDcaPrice(e.target.value)}
-                        className="w-full bg-[#111113] border border-zinc-700 focus:border-blue-400 rounded-lg px-3 py-2.5 text-sm outline-none font-mono"/>
+                        className="w-full bg-[var(--surface-2)] border border-[var(--border-2)] focus:border-blue-400 rounded-lg px-3 py-2.5 text-sm outline-none font-mono"/>
                     </div>
                   </div>
                   {addAmt>0 ? (
-                    <div className="bg-zinc-800/60 border border-zinc-700/50 rounded-xl p-4 space-y-2.5">
-                      <p className="text-xs font-black text-zinc-400 uppercase tracking-wider mb-3">ผลลัพธ์หลัง DCA</p>
-                      <div className="flex justify-between"><span className="text-xs text-zinc-500">ต้นทุนเฉลี่ยใหม่</span><span className="font-black text-base text-yellow-400">${newCost.toFixed(2)}</span></div>
-                      <div className="flex justify-between"><span className="text-xs text-zinc-500">จำนวนหุ้นทั้งหมด</span><span className="font-bold text-sm">{newSh.toFixed(4)}</span></div>
-                      <div className="flex justify-between"><span className="text-xs text-zinc-500">ต้นทุนรวมใหม่</span><span className="font-bold text-sm text-zinc-300">${(newSh*newCost).toFixed(2)}</span></div>
-                      <div className="flex justify-between"><span className="text-xs text-zinc-500">สัดส่วนในพอร์ต</span><span className="font-bold text-sm text-purple-400">{newAlloc.toFixed(1)}%</span></div>
-                      <div className={`flex items-center gap-2 pt-2 border-t border-zinc-700/50 text-xs font-bold ${newCost<p.avgCost?"text-emerald-400":"text-red-400"}`}>
+                    <div className="bg-[var(--fill)] border border-[var(--border-2)] rounded-xl p-4 space-y-2.5">
+                      <p className="text-xs font-black text-[var(--tx-3)] uppercase tracking-wider mb-3">ผลลัพธ์หลัง DCA</p>
+                      <div className="flex justify-between"><span className="text-xs text-[var(--tx-4)]">ต้นทุนเฉลี่ยใหม่</span><span className="font-black text-base text-yellow-400">${newCost.toFixed(2)}</span></div>
+                      <div className="flex justify-between"><span className="text-xs text-[var(--tx-4)]">จำนวนหุ้นทั้งหมด</span><span className="font-bold text-sm">{newSh.toFixed(4)}</span></div>
+                      <div className="flex justify-between"><span className="text-xs text-[var(--tx-4)]">ต้นทุนรวมใหม่</span><span className="font-bold text-sm text-[var(--tx-2)]">${(newSh*newCost).toFixed(2)}</span></div>
+                      <div className="flex justify-between"><span className="text-xs text-[var(--tx-4)]">สัดส่วนในพอร์ต</span><span className="font-bold text-sm text-purple-400">{newAlloc.toFixed(1)}%</span></div>
+                      <div className={`flex items-center gap-2 pt-2 border-t border-[var(--border-2)] text-xs font-bold ${newCost<p.avgCost?"text-emerald-400":"text-red-400"}`}>
                         <span>{newCost<p.avgCost?"▼ ต้นทุนลดลง":"▲ ต้นทุนเพิ่มขึ้น"}</span>
                         <span>${Math.abs(newCost-p.avgCost).toFixed(2)} ({Math.abs((newCost-p.avgCost)/p.avgCost*100).toFixed(2)}%)</span>
                       </div>
                     </div>
-                  ) : <p className="text-center text-zinc-600 text-xs py-2">ใส่จำนวนเงินหรือหุ้นที่จะซื้อเพิ่มครับ</p>}
+                  ) : <p className="text-center text-[var(--tx-5)] text-xs py-2">ใส่จำนวนเงินหรือหุ้นที่จะซื้อเพิ่มครับ</p>}
                 </div>
               );
             })()}
@@ -914,20 +916,20 @@ export default function PortfolioClient() {
               return (
                 <div className="space-y-3">
                   {p && (
-                    <div className="bg-zinc-800/40 rounded-xl p-3 text-xs">
-                      <p className="text-zinc-400 font-bold mb-2">{p.ticker} — ปัจจุบัน</p>
+                    <div className="bg-[var(--fill)] rounded-xl p-3 text-xs">
+                      <p className="text-[var(--tx-3)] font-bold mb-2">{p.ticker} — ปัจจุบัน</p>
                       <div className="grid grid-cols-3 gap-2 text-center">
-                        <div><p className="text-zinc-600">ถือ</p><p className="font-bold">{p.shares.toFixed(4)}</p></div>
-                        <div><p className="text-zinc-600">Avg Cost</p><p className="font-bold text-yellow-400">${p.avgCost.toFixed(2)}</p></div>
-                        <div><p className="text-zinc-600">ราคาตอนนี้</p><p className="font-bold">${cp.toFixed(2)}</p></div>
+                        <div><p className="text-[var(--tx-5)]">ถือ</p><p className="font-bold">{p.shares.toFixed(4)}</p></div>
+                        <div><p className="text-[var(--tx-5)]">Avg Cost</p><p className="font-bold text-yellow-400">${p.avgCost.toFixed(2)}</p></div>
+                        <div><p className="text-[var(--tx-5)]">ราคาตอนนี้</p><p className="font-bold">${cp.toFixed(2)}</p></div>
                       </div>
                     </div>
                   )}
                   <div>
-                    <label className="text-xs text-zinc-400 mb-1 block">💰 เงินลงทุน ($)</label>
+                    <label className="text-xs text-[var(--tx-3)] mb-1 block">💰 เงินลงทุน ($)</label>
                     <input type="number" inputMode="decimal" step="any" value={srInvest} placeholder="1000"
                       onChange={e=>{setSrInvest(e.target.value);saveSR(e.target.value,srS,srR);}}
-                      className="w-full bg-[#111113] border border-yellow-400/40 focus:border-yellow-400 rounded-lg px-3 py-2 text-sm outline-none font-mono text-yellow-400 font-black"/>
+                      className="w-full bg-[var(--surface-2)] border border-yellow-400/40 focus:border-yellow-400 rounded-lg px-3 py-2 text-sm outline-none font-mono text-yellow-400 font-black"/>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
@@ -937,7 +939,7 @@ export default function PortfolioClient() {
                           <span className="text-[10px] font-black text-emerald-400 w-5">{label}</span>
                           <input type="number" inputMode="decimal" step="any" value={srS[i]} placeholder="ราคา"
                             onChange={e=>{const n=[...srS];n[i]=e.target.value;setSrS(n);saveSR(srInvest,n,srR);}}
-                            className="flex-1 bg-[#111113] border border-emerald-900/50 focus:border-emerald-400 rounded-lg px-2 py-1.5 text-xs outline-none font-mono"/>
+                            className="flex-1 bg-[var(--surface-2)] border border-emerald-900/50 focus:border-emerald-400 rounded-lg px-2 py-1.5 text-xs outline-none font-mono"/>
                         </div>
                       ))}
                     </div>
@@ -948,37 +950,37 @@ export default function PortfolioClient() {
                           <span className="text-[10px] font-black text-red-400 w-5">{label}</span>
                           <input type="number" inputMode="decimal" step="any" value={srR[i]} placeholder="ราคา"
                             onChange={e=>{const n=[...srR];n[i]=e.target.value;setSrR(n);saveSR(srInvest,srS,n);}}
-                            className="flex-1 bg-[#111113] border border-red-900/50 focus:border-red-400 rounded-lg px-2 py-1.5 text-xs outline-none font-mono"/>
+                            className="flex-1 bg-[var(--surface-2)] border border-red-900/50 focus:border-red-400 rounded-lg px-2 py-1.5 text-xs outline-none font-mono"/>
                         </div>
                       ))}
                     </div>
                   </div>
                   {(srInvest||srS.some(s=>s)||srR.some(r=>r)) && (
                     <button type="button" onClick={()=>{setSrInvest("");setSrS(["","",""]);setSrR(["","",""]);if(formTicker)localStorage.removeItem(`sr_${formTicker}`);}}
-                      className="w-full py-1.5 text-xs text-zinc-600 hover:text-red-400 border border-zinc-800 hover:border-red-400/30 rounded-lg">
+                      className="w-full py-1.5 text-xs text-[var(--tx-5)] hover:text-red-400 border border-[var(--border)] hover:border-red-400/30 rounded-lg">
                       🗑 ล้างข้อมูล S/R
                     </button>
                   )}
                   {inv>0&&supports.length>0&&resists.length>0&&(
-                    <div className="overflow-x-auto rounded-xl border border-zinc-800">
+                    <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
                       <table className="w-full text-[10px]">
                         <thead>
-                          <tr className="bg-[#111113]">
+                          <tr className="bg-[var(--surface-2)]">
                             <th className="px-2 py-2 text-yellow-400 font-black text-left">ซื้อ\ขาย</th>
                             {resists.map((r,i)=>(
                               <th key={i} className="px-2 py-2 text-center">
                                 <p className="text-red-400 font-black">R{i+1}</p>
-                                <p className="text-zinc-400">${r.toFixed(2)}</p>
+                                <p className="text-[var(--tx-3)]">${r.toFixed(2)}</p>
                               </th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
                           {supports.map((s,si)=>(
-                            <tr key={si} className="border-t border-zinc-800">
-                              <td className="px-2 py-2 bg-[#111113]">
+                            <tr key={si} className="border-t border-[var(--border)]">
+                              <td className="px-2 py-2 bg-[var(--surface-2)]">
                                 <p className="text-emerald-400 font-black">S{si+1}</p>
-                                <p className="text-zinc-400">${s.toFixed(2)}</p>
+                                <p className="text-[var(--tx-3)]">${s.toFixed(2)}</p>
                               </td>
                               {resists.map((r,ri)=>{
                                 const sh = inv/s;
@@ -986,7 +988,7 @@ export default function PortfolioClient() {
                                 const pv = ((r-s)/s)*100;
                                 const pos = pl>=0;
                                 return (
-                                  <td key={ri} className={`px-2 py-2 text-center border-l border-zinc-800 ${pos?"bg-emerald-400/5":"bg-red-400/5"}`}>
+                                  <td key={ri} className={`px-2 py-2 text-center border-l border-[var(--border)] ${pos?"bg-emerald-400/5":"bg-red-400/5"}`}>
                                     <p className={`font-black ${pos?"text-emerald-400":"text-red-400"}`}>{pos?"+":"-"}${Math.abs(pl).toFixed(0)}</p>
                                     <p className={pos?"text-emerald-600":"text-red-600"}>({pos?"+":""}{pv.toFixed(1)}%)</p>
                                   </td>
@@ -1006,19 +1008,19 @@ export default function PortfolioClient() {
             {(modalTab==="trade"||editingTicker) && (
               <div className="flex flex-col gap-3">
                 <div>
-                  <label className="text-xs text-zinc-400 mb-1 block">Ticker</label>
-                  <input className="w-full bg-[#111113] border border-zinc-700 focus:border-yellow-400 rounded-lg px-3 py-2.5 text-sm outline-none uppercase"
+                  <label className="text-xs text-[var(--tx-3)] mb-1 block">Ticker</label>
+                  <input className="w-full bg-[var(--surface-2)] border border-[var(--border-2)] focus:border-yellow-400 rounded-lg px-3 py-2.5 text-sm outline-none uppercase"
                     placeholder="เช่น NVDA, GOOGL" value={formTicker}
                     readOnly={!!editingTicker||modal.ticker!==""}
                     onChange={e=>setFormTicker(e.target.value.toUpperCase())}/>
                 </div>
                 <div>
-                  <label className="text-xs text-zinc-400 mb-1 block">ชื่อบริษัท</label>
-                  <input className="w-full bg-[#111113] border border-zinc-700 focus:border-yellow-400 rounded-lg px-3 py-2.5 text-sm outline-none"
+                  <label className="text-xs text-[var(--tx-3)] mb-1 block">ชื่อบริษัท</label>
+                  <input className="w-full bg-[var(--surface-2)] border border-[var(--border-2)] focus:border-yellow-400 rounded-lg px-3 py-2.5 text-sm outline-none"
                     placeholder="เช่น เอ็นวิเดีย" value={formName} onChange={e=>setFormName(e.target.value)}/>
                 </div>
                 <div>
-                  <label className="text-xs text-zinc-400 mb-1 block">สัดส่วนเป้าหมาย (%)</label>
+                  <label className="text-xs text-[var(--tx-3)] mb-1 block">สัดส่วนเป้าหมาย (%)</label>
                   {(() => {
                     const selfKey = editingTicker || formTicker.toUpperCase().trim();
                     const othersTarget = positions.reduce((s,p) => p.ticker===selfKey ? s : s + (p.targetAlloc||0), 0);
@@ -1029,7 +1031,7 @@ export default function PortfolioClient() {
                     return (
                       <>
                         <input
-                          className={`w-full bg-[#111113] border rounded-lg px-3 py-2.5 text-sm outline-none ${over?"border-red-500 focus:border-red-400":"border-zinc-700 focus:border-purple-400"}`}
+                          className={`w-full bg-[var(--surface-2)] border rounded-lg px-3 py-2.5 text-sm outline-none ${over?"border-red-500 focus:border-red-400":"border-[var(--border-2)] focus:border-purple-400"}`}
                           placeholder={`สูงสุด ${remain.toFixed(1)}%`} type="number" step="0.1" min="0" max={remain}
                           value={formTarget}
                           onChange={e=>{
@@ -1041,13 +1043,13 @@ export default function PortfolioClient() {
                             else setFormTarget(v);
                           }}/>
                         <div className="flex items-center justify-between mt-1 text-[10px]">
-                          <span className="text-zinc-500">หุ้นอื่นใช้ไป {othersTarget.toFixed(1)}% · เหลือ <span className="text-purple-400 font-bold">{remain.toFixed(1)}%</span></span>
-                          <span className={`font-bold ${over?"text-red-400":willTotal>=99.5&&willTotal<=100.5?"text-emerald-400":"text-zinc-500"}`}>
+                          <span className="text-[var(--tx-4)]">หุ้นอื่นใช้ไป {othersTarget.toFixed(1)}% · เหลือ <span className="text-purple-400 font-bold">{remain.toFixed(1)}%</span></span>
+                          <span className={`font-bold ${over?"text-red-400":willTotal>=99.5&&willTotal<=100.5?"text-emerald-400":"text-[var(--tx-4)]"}`}>
                             {over ? "⚠️ เกิน 100%" : `รวม ${willTotal.toFixed(1)}%`}
                           </span>
                         </div>
                         {/* mini progress bar */}
-                        <div className="mt-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden flex">
+                        <div className="mt-1 h-1.5 bg-[var(--fill)] rounded-full overflow-hidden flex">
                           <div className="h-full bg-zinc-600" style={{width:`${Math.min(othersTarget,100)}%`}}/>
                           <div className={`h-full ${over?"bg-red-500":"bg-purple-400"}`} style={{width:`${Math.min(cur,Math.max(0,100-othersTarget))}%`}}/>
                         </div>
@@ -1056,18 +1058,18 @@ export default function PortfolioClient() {
                   })()}
                 </div>
                 <div>
-                  <label className="text-xs text-zinc-400 mb-1 block">จำนวนหุ้น</label>
-                  <input className="w-full bg-[#111113] border border-zinc-700 focus:border-yellow-400 rounded-lg px-3 py-2.5 text-sm outline-none"
+                  <label className="text-xs text-[var(--tx-3)] mb-1 block">จำนวนหุ้น</label>
+                  <input className="w-full bg-[var(--surface-2)] border border-[var(--border-2)] focus:border-yellow-400 rounded-lg px-3 py-2.5 text-sm outline-none"
                     placeholder="เช่น 5.5" type="number" step="any" value={formShares} onChange={e=>setFormShares(e.target.value)}/>
                 </div>
                 <div>
-                  <label className="text-xs text-zinc-400 mb-1 block">{editingTicker?"ราคาเฉลี่ย (Avg Cost)":"ราคาที่ซื้อ/ขาย ($)"}</label>
-                  <input className="w-full bg-[#111113] border border-zinc-700 focus:border-yellow-400 rounded-lg px-3 py-2.5 text-sm outline-none"
+                  <label className="text-xs text-[var(--tx-3)] mb-1 block">{editingTicker?"ราคาเฉลี่ย (Avg Cost)":"ราคาที่ซื้อ/ขาย ($)"}</label>
+                  <input className="w-full bg-[var(--surface-2)] border border-[var(--border-2)] focus:border-yellow-400 rounded-lg px-3 py-2.5 text-sm outline-none"
                     placeholder="เช่น 199.32" type="number" step="any" value={formPrice} onChange={e=>setFormPrice(e.target.value)}/>
                 </div>
                 {formError && <p className="text-red-400 text-sm bg-red-400/10 rounded-lg px-3 py-2">{formError}</p>}
                 <button onClick={saveTrade}
-                  className={`w-full py-3 rounded-xl font-bold text-sm mt-1 ${editingTicker?"bg-yellow-400 hover:bg-yellow-300 text-black":mode==="buy"?"bg-emerald-500 hover:bg-emerald-400 text-black":"bg-blue-500 hover:bg-blue-400 text-white"}`}>
+                  className={`w-full py-3 rounded-xl font-bold text-sm mt-1 ${editingTicker?"bg-yellow-400 hover:bg-yellow-300 text-black":mode==="buy"?"bg-emerald-500 hover:bg-emerald-400 text-black":"bg-blue-500 hover:bg-blue-400 text-[var(--tx)]"}`}>
                   {editingTicker?"✓ บันทึกการแก้ไข":mode==="buy"?"✓ บันทึกการซื้อ":"✓ บันทึกการขาย"}
                 </button>
               </div>
@@ -1076,26 +1078,26 @@ export default function PortfolioClient() {
             {/* History Tab */}
             {modalTab==="history" && !editingTicker && (
               <div className="space-y-3">
-                <p className="text-xs text-zinc-400 mb-2">ประวัติการซื้อขาย {formTicker || "ทั้งหมด"}</p>
+                <p className="text-xs text-[var(--tx-3)] mb-2">ประวัติการซื้อขาย {formTicker || "ทั้งหมด"}</p>
                 {tradeHistory.length === 0 ? (
-                  <p className="text-center text-zinc-600 text-sm py-4">ยังไม่มีประวัติการซื้อขาย</p>
+                  <p className="text-center text-[var(--tx-5)] text-sm py-4">ยังไม่มีประวัติการซื้อขาย</p>
                 ) : (
                   <div className="space-y-2 max-h-64 overflow-y-auto">
                     {tradeHistory.filter(t => !formTicker || t.ticker === formTicker).map((trade, idx) => {
                       const date = new Date(trade.created_at);
                       return (
-                        <div key={idx} className="bg-zinc-800/50 rounded-lg p-2.5 text-xs border border-zinc-700/50">
+                        <div key={idx} className="bg-[var(--fill)] rounded-lg p-2.5 text-xs border border-[var(--border-2)]">
                           <div className="flex items-center justify-between mb-1.5">
                             <span className={`font-bold ${trade.type==="buy"?"text-emerald-400":"text-blue-400"}`}>
                               {trade.type==="buy"?"🟢 ซื้อ":"🔵 ขาย"} {trade.ticker}
                             </span>
-                            <span className="text-zinc-500">{date.toLocaleDateString("th-TH")} {date.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"})}</span>
+                            <span className="text-[var(--tx-4)]">{date.toLocaleDateString("th-TH")} {date.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"})}</span>
                           </div>
-                          <div className="grid grid-cols-2 gap-2 text-zinc-400 mb-1">
-                            <div><span className="text-zinc-600">จำนวน:</span> {trade.shares.toFixed(4)}</div>
-                            <div><span className="text-zinc-600">ราคา:</span> ${trade.price.toFixed(2)}</div>
+                          <div className="grid grid-cols-2 gap-2 text-[var(--tx-3)] mb-1">
+                            <div><span className="text-[var(--tx-5)]">จำนวน:</span> {trade.shares.toFixed(4)}</div>
+                            <div><span className="text-[var(--tx-5)]">ราคา:</span> ${trade.price.toFixed(2)}</div>
                           </div>
-                          <div className="flex justify-between text-zinc-400">
+                          <div className="flex justify-between text-[var(--tx-3)]">
                             <span>เงิน: ${trade.amount.toFixed(2)}</span>
                             {trade.type==="sell" && trade.pl !== null && (
                               <span className={`font-bold ${trade.pl>0?"text-emerald-400":"text-red-400"}`}>
@@ -1115,29 +1117,29 @@ export default function PortfolioClient() {
       )}
 
       {/* ── Trade History ── */}
-      <div className="bg-[#18181b] border border-zinc-800 rounded-xl overflow-hidden fade-up mt-4 mx-4">
-        <button onClick={() => setShowHistory(!showHistory)} className="w-full p-4 border-b border-zinc-800 hover:bg-zinc-800/30 transition-colors flex items-center justify-between">
-          <h2 className="text-sm font-bold text-white">📜 ประวัติการซื้อขาย ({tradeHistory.length})</h2>
+      <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl overflow-hidden fade-up mt-4 mx-4">
+        <button onClick={() => setShowHistory(!showHistory)} className="w-full p-4 border-b border-[var(--border)] hover:bg-[var(--hover)] transition-colors flex items-center justify-between">
+          <h2 className="text-sm font-bold text-[var(--tx)]">📜 ประวัติการซื้อขาย ({tradeHistory.length})</h2>
           <span className={`text-xs transition-transform ${showHistory?"rotate-180":""}`}>▼</span>
         </button>
         {showHistory && (
           tradeHistory.length === 0 ? (
             <div className="p-6 text-center">
-              <p className="text-zinc-600 text-sm">ยังไม่มีประวัติการซื้อขาย</p>
+              <p className="text-[var(--tx-5)] text-sm">ยังไม่มีประวัติการซื้อขาย</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-[#111113]">
+              <thead className="bg-[var(--surface-2)]">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">วันที่</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">หุ้น</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">ประเภท</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">จำนวน</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">ราคา</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">เงินทั้งหมด</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">Avg Cost</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-zinc-400 uppercase">P/L</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--tx-3)] uppercase">วันที่</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--tx-3)] uppercase">หุ้น</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--tx-3)] uppercase">ประเภท</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--tx-3)] uppercase">จำนวน</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--tx-3)] uppercase">ราคา</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--tx-3)] uppercase">เงินทั้งหมด</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--tx-3)] uppercase">Avg Cost</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-[var(--tx-3)] uppercase">P/L</th>
                 </tr>
               </thead>
               <tbody>
@@ -1145,9 +1147,9 @@ export default function PortfolioClient() {
                   const date = new Date(trade.created_at);
                   const isPos = trade.pl > 0;
                   return (
-                    <tr key={idx} className="border-t border-zinc-800 hover:bg-zinc-800/30">
-                      <td className="px-4 py-2.5 text-xs text-zinc-500">{date.toLocaleDateString("th-TH")} {date.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"})}</td>
-                      <td className="px-4 py-2.5 font-bold text-white">{trade.ticker}</td>
+                    <tr key={idx} className="border-t border-[var(--border)] hover:bg-[var(--hover)]">
+                      <td className="px-4 py-2.5 text-xs text-[var(--tx-4)]">{date.toLocaleDateString("th-TH")} {date.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"})}</td>
+                      <td className="px-4 py-2.5 font-bold text-[var(--tx)]">{trade.ticker}</td>
                       <td className="px-4 py-2.5">
                         <span className={`px-2 py-0.5 rounded text-xs font-bold ${trade.type==="buy"?"bg-emerald-400/20 text-emerald-400":"bg-blue-400/20 text-blue-400"}`}>
                           {trade.type==="buy"?"ซื้อ":"ขาย"}
@@ -1156,7 +1158,7 @@ export default function PortfolioClient() {
                       <td className="px-4 py-2.5 text-sm font-mono text-yellow-300">{trade.shares.toFixed(4)}</td>
                       <td className="px-4 py-2.5 text-sm">${trade.price.toFixed(2)}</td>
                       <td className="px-4 py-2.5 text-sm">${trade.amount.toFixed(2)}</td>
-                      <td className="px-4 py-2.5 text-sm text-zinc-400">${trade.avg_cost_before ? trade.avg_cost_before.toFixed(2) : "-"}</td>
+                      <td className="px-4 py-2.5 text-sm text-[var(--tx-3)]">${trade.avg_cost_before ? trade.avg_cost_before.toFixed(2) : "-"}</td>
                       <td className="px-4 py-2.5 text-sm text-right font-bold">
                         {trade.type==="sell" && trade.pl !== null ? (
                           <span className={isPos?"text-emerald-400":"text-red-400"}>
@@ -1200,13 +1202,13 @@ export default function PortfolioClient() {
         })();
 
         return (
-          <div className="bg-[#18181b] border border-zinc-800 rounded-xl overflow-hidden fade-up mt-4 mx-4">
+          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl overflow-hidden fade-up mt-4 mx-4">
             <button
               onClick={() => setShowAlerts(!showAlerts)}
-              className="w-full p-4 hover:bg-zinc-800/30 transition-colors flex items-center justify-between"
+              className="w-full p-4 hover:bg-[var(--hover)] transition-colors flex items-center justify-between"
             >
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-white">🔔 Price Alerts — แนวรับ/ต้าน</h2>
+                <h2 className="text-sm font-bold text-[var(--tx)]">🔔 Price Alerts — แนวรับ/ต้าน</h2>
                 {closeSRCount > 0 && (
                   <span className="pulse-alert bg-orange-500 text-black text-[10px] font-black px-1.5 py-0.5 rounded-full">
                     {closeSRCount} ใกล้!
@@ -1233,25 +1235,25 @@ export default function PortfolioClient() {
             </button>
 
             {showAlerts && (
-              <div className="border-t border-zinc-800">
+              <div className="border-t border-[var(--border)]">
                 {allSR.length === 0 ? (
                   <div className="p-8 text-center space-y-2">
                     <p className="text-2xl">🎯</p>
-                    <p className="text-zinc-400 text-sm font-bold">ยังไม่มี S/R levels ที่ตั้งไว้</p>
-                    <p className="text-zinc-600 text-xs">ตั้งได้ที่ปุ่ม "ซื้อ" แล้วเลือกแท็บ 🎯 S/R</p>
+                    <p className="text-[var(--tx-3)] text-sm font-bold">ยังไม่มี S/R levels ที่ตั้งไว้</p>
+                    <p className="text-[var(--tx-5)] text-xs">ตั้งได้ที่ปุ่ม "ซื้อ" แล้วเลือกแท็บ 🎯 S/R</p>
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead className="bg-[#111113]">
+                      <thead className="bg-[var(--surface-2)]">
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">หุ้น</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">Level</th>
-                          <th className="px-4 py-3 text-right text-xs font-semibold text-zinc-400 uppercase">ราคา Level</th>
-                          <th className="px-4 py-3 text-right text-xs font-semibold text-zinc-400 uppercase">ราคาตอนนี้</th>
-                          <th className="px-4 py-3 text-right text-xs font-semibold text-zinc-400 uppercase">ห่าง%</th>
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-zinc-400 uppercase hidden sm:table-cell">ทิศทาง</th>
-                          <th className="px-4 py-3 text-center text-xs font-semibold text-zinc-400 uppercase">สถานะ</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--tx-3)] uppercase">หุ้น</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--tx-3)] uppercase">Level</th>
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-[var(--tx-3)] uppercase">ราคา Level</th>
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-[var(--tx-3)] uppercase">ราคาตอนนี้</th>
+                          <th className="px-4 py-3 text-right text-xs font-semibold text-[var(--tx-3)] uppercase">ห่าง%</th>
+                          <th className="px-4 py-3 text-left text-xs font-semibold text-[var(--tx-3)] uppercase hidden sm:table-cell">ทิศทาง</th>
+                          <th className="px-4 py-3 text-center text-xs font-semibold text-[var(--tx-3)] uppercase">สถานะ</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1268,7 +1270,7 @@ export default function PortfolioClient() {
                             ? "bg-orange-400/20 text-orange-400"
                             : isNear
                             ? "bg-yellow-400/20 text-yellow-400"
-                            : "bg-zinc-800 text-zinc-500";
+                            : "bg-[var(--fill)] text-[var(--tx-4)]";
                           // Direction text
                           let dirText = "";
                           if (row.type === "S") {
@@ -1277,28 +1279,28 @@ export default function PortfolioClient() {
                             dirText = row.crossed ? "🚀 ทะลุแนวต้านขึ้นไป" : "⏳ ราคาใต้แนวต้าน";
                           }
                           return (
-                            <tr key={idx} className={`border-t border-zinc-800 row-hover ${rowBg}`}>
+                            <tr key={idx} className={`border-t border-[var(--border)] row-hover ${rowBg}`}>
                               <td className="px-4 py-3">
-                                <span className="font-black text-white">{row.ticker}</span>
+                                <span className="font-black text-[var(--tx)]">{row.ticker}</span>
                               </td>
                               <td className="px-4 py-3">
                                 <span className={`text-xs font-black px-2 py-1 rounded ${row.type === "S" ? "bg-emerald-400/20 text-emerald-400" : "bg-red-400/20 text-red-400"}`}>
                                   {row.type}{row.n}
                                 </span>
                               </td>
-                              <td className="px-4 py-3 text-right font-mono font-bold text-white">
+                              <td className="px-4 py-3 text-right font-mono font-bold text-[var(--tx)]">
                                 ${row.level.toFixed(2)}
                               </td>
-                              <td className="px-4 py-3 text-right font-mono text-zinc-300">
+                              <td className="px-4 py-3 text-right font-mono text-[var(--tx-2)]">
                                 ${row.currentPrice.toFixed(2)}
                               </td>
                               <td className="px-4 py-3 text-right">
-                                <span className={`font-black text-sm ${isHit ? "text-red-400 pulse-alert" : isClose ? "text-orange-400" : isNear ? "text-yellow-400" : "text-zinc-400"}`}>
+                                <span className={`font-black text-sm ${isHit ? "text-red-400 pulse-alert" : isClose ? "text-orange-400" : isNear ? "text-yellow-400" : "text-[var(--tx-3)]"}`}>
                                   {absDist.toFixed(2)}%
                                 </span>
                               </td>
                               <td className="px-4 py-3 hidden sm:table-cell">
-                                <span className="text-[11px] text-zinc-500">{dirText}</span>
+                                <span className="text-[11px] text-[var(--tx-4)]">{dirText}</span>
                               </td>
                               <td className="px-4 py-3 text-center">
                                 <span className={`text-[10px] font-bold px-2 py-1 rounded-full whitespace-nowrap ${statusColor}`}>
@@ -1310,8 +1312,8 @@ export default function PortfolioClient() {
                         })}
                       </tbody>
                     </table>
-                    <div className="px-4 py-2 border-t border-zinc-800 flex items-center justify-between">
-                      <p className="text-[10px] text-zinc-600">{allSR.length} levels · แจ้งเตือนเมื่อราคาห่างจาก level ≤ 1% (ทุก 60 วินาที)</p>
+                    <div className="px-4 py-2 border-t border-[var(--border)] flex items-center justify-between">
+                      <p className="text-[10px] text-[var(--tx-5)]">{allSR.length} levels · แจ้งเตือนเมื่อราคาห่างจาก level ≤ 1% (ทุก 60 วินาที)</p>
                       {notifPermission !== "granted" && (
                         <button
                           onClick={requestNotification}
@@ -1338,15 +1340,15 @@ export default function PortfolioClient() {
         const hasTargets = positions.some(p => p.targetAlloc > 0);
 
         return (
-          <div className="bg-[#18181b] border border-zinc-800 rounded-xl overflow-hidden fade-up mt-4 mx-4 mb-4">
+          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl overflow-hidden fade-up mt-4 mx-4 mb-4">
             <button
               onClick={() => setShowRebalance(!showRebalance)}
-              className="w-full p-4 hover:bg-zinc-800/30 transition-colors flex items-center justify-between"
+              className="w-full p-4 hover:bg-[var(--hover)] transition-colors flex items-center justify-between"
             >
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold text-white">⚖️ Rebalance Calculator</h2>
+                <h2 className="text-sm font-bold text-[var(--tx)]">⚖️ Rebalance Calculator</h2>
                 {hasTargets && (
-                  <span className="text-[10px] text-zinc-500">
+                  <span className="text-[10px] text-[var(--tx-4)]">
                     {positions.filter(p => p.targetAlloc > 0).length} หุ้นมีเป้า · รวม {sumTargets.toFixed(1)}%
                   </span>
                 )}
@@ -1355,17 +1357,17 @@ export default function PortfolioClient() {
             </button>
 
             {showRebalance && (
-              <div className="border-t border-zinc-800 p-4 space-y-4">
+              <div className="border-t border-[var(--border)] p-4 space-y-4">
                 {/* Input + Warning */}
                 <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
                   <div>
-                    <label className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1 block font-bold">
+                    <label className="text-[10px] text-[var(--tx-4)] uppercase tracking-wider mb-1 block font-bold">
                       💰 เงินเพิ่มเข้าพอร์ต ($) — ใส่ 0 = rebalance ไม่เพิ่มเงิน
                     </label>
                     <input
                       type="number" step="100" value={rebalanceInvest} placeholder="0"
                       onChange={e => setRebalanceInvest(e.target.value)}
-                      className="w-full sm:w-44 bg-[#111113] border border-yellow-400/40 focus:border-yellow-400 rounded-lg px-3 py-2 text-sm outline-none font-mono text-yellow-400 font-bold"
+                      className="w-full sm:w-44 bg-[var(--surface-2)] border border-yellow-400/40 focus:border-yellow-400 rounded-lg px-3 py-2 text-sm outline-none font-mono text-yellow-400 font-bold"
                     />
                   </div>
                   {sumTargets > 0 && Math.abs(sumTargets - 100) > 0.5 && (
@@ -1379,8 +1381,8 @@ export default function PortfolioClient() {
                 {!hasTargets ? (
                   <div className="py-8 text-center space-y-2">
                     <p className="text-2xl">⚖️</p>
-                    <p className="text-zinc-400 text-sm font-bold">ยังไม่มีหุ้นที่ตั้งสัดส่วนเป้าหมาย</p>
-                    <p className="text-zinc-600 text-xs">ตั้งได้ที่ปุ่ม "แก้" หรือ "ซื้อ" แล้วกรอก "สัดส่วนเป้าหมาย (%)"</p>
+                    <p className="text-[var(--tx-3)] text-sm font-bold">ยังไม่มีหุ้นที่ตั้งสัดส่วนเป้าหมาย</p>
+                    <p className="text-[var(--tx-5)] text-xs">ตั้งได้ที่ปุ่ม "แก้" หรือ "ซื้อ" แล้วกรอก "สัดส่วนเป้าหมาย (%)"</p>
                   </div>
                 ) : (
                   <>
@@ -1400,30 +1402,30 @@ export default function PortfolioClient() {
                           {rebalData.filter(r => r.action === "sell").length} หุ้น
                         </p>
                       </div>
-                      <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-3 text-center">
-                        <p className="text-[10px] text-zinc-400 font-black uppercase mb-1">สุทธิ</p>
+                      <div className="bg-[var(--fill)] border border-[var(--border-2)] rounded-xl p-3 text-center">
+                        <p className="text-[10px] text-[var(--tx-3)] font-black uppercase mb-1">สุทธิ</p>
                         <p className={`text-base font-black ${totalBuy - totalSell >= 0 ? "text-yellow-400" : "text-purple-400"}`}>
                           {fmtMoney(Math.abs(totalBuy - totalSell))}
                         </p>
-                        <p className="text-[10px] text-zinc-600 mt-0.5">
+                        <p className="text-[10px] text-[var(--tx-5)] mt-0.5">
                           {totalBuy - totalSell >= 0 ? "ต้องใช้เงินเพิ่ม" : "ได้เงินคืน"}
                         </p>
                       </div>
                     </div>
 
                     {/* Rebalance Table */}
-                    <div className="overflow-x-auto rounded-xl border border-zinc-800">
+                    <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
                       <table className="w-full text-sm">
-                        <thead className="bg-[#111113]">
+                        <thead className="bg-[var(--surface-2)]">
                           <tr>
-                            <th className="px-3 py-3 text-left text-xs font-semibold text-zinc-400 uppercase">หุ้น</th>
-                            <th className="px-3 py-3 text-right text-xs font-semibold text-zinc-400 uppercase hidden sm:table-cell">ราคา</th>
-                            <th className="px-3 py-3 text-right text-xs font-semibold text-zinc-400 uppercase">เป้า%</th>
-                            <th className="px-3 py-3 text-right text-xs font-semibold text-zinc-400 uppercase">ตอนนี้%</th>
-                            <th className="px-3 py-3 text-right text-xs font-semibold text-zinc-400 uppercase">ต่าง</th>
-                            <th className="px-3 py-3 text-center text-xs font-semibold text-zinc-400 uppercase">Action</th>
-                            <th className="px-3 py-3 text-right text-xs font-semibold text-zinc-400 uppercase">หุ้น</th>
-                            <th className="px-3 py-3 text-right text-xs font-semibold text-zinc-400 uppercase">มูลค่า</th>
+                            <th className="px-3 py-3 text-left text-xs font-semibold text-[var(--tx-3)] uppercase">หุ้น</th>
+                            <th className="px-3 py-3 text-right text-xs font-semibold text-[var(--tx-3)] uppercase hidden sm:table-cell">ราคา</th>
+                            <th className="px-3 py-3 text-right text-xs font-semibold text-[var(--tx-3)] uppercase">เป้า%</th>
+                            <th className="px-3 py-3 text-right text-xs font-semibold text-[var(--tx-3)] uppercase">ตอนนี้%</th>
+                            <th className="px-3 py-3 text-right text-xs font-semibold text-[var(--tx-3)] uppercase">ต่าง</th>
+                            <th className="px-3 py-3 text-center text-xs font-semibold text-[var(--tx-3)] uppercase">Action</th>
+                            <th className="px-3 py-3 text-right text-xs font-semibold text-[var(--tx-3)] uppercase">หุ้น</th>
+                            <th className="px-3 py-3 text-right text-xs font-semibold text-[var(--tx-3)] uppercase">มูลค่า</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1431,19 +1433,19 @@ export default function PortfolioClient() {
                             const isBuy = r.action === "buy";
                             const diffPct = r.targetPct - r.allocNow;
                             return (
-                              <tr key={r.ticker} className="border-t border-zinc-800 row-hover">
+                              <tr key={r.ticker} className="border-t border-[var(--border)] row-hover">
                                 <td className="px-3 py-3">
-                                  <p className="font-black text-white">{r.ticker}</p>
-                                  <p className="text-[10px] text-zinc-500 truncate max-w-[80px]">{r.name}</p>
+                                  <p className="font-black text-[var(--tx)]">{r.ticker}</p>
+                                  <p className="text-[10px] text-[var(--tx-4)] truncate max-w-[80px]">{r.name}</p>
                                 </td>
-                                <td className="px-3 py-3 text-right font-mono text-zinc-400 text-xs hidden sm:table-cell">
+                                <td className="px-3 py-3 text-right font-mono text-[var(--tx-3)] text-xs hidden sm:table-cell">
                                   ${r.price.toFixed(2)}
                                 </td>
                                 <td className="px-3 py-3 text-right">
                                   <span className="text-purple-400 font-bold">{r.targetPct.toFixed(1)}%</span>
                                 </td>
                                 <td className="px-3 py-3 text-right">
-                                  <span className="text-zinc-300">{r.allocNow.toFixed(1)}%</span>
+                                  <span className="text-[var(--tx-2)]">{r.allocNow.toFixed(1)}%</span>
                                 </td>
                                 <td className="px-3 py-3 text-right">
                                   <span className={`font-black text-sm ${isBuy ? "text-emerald-400" : "text-blue-400"}`}>
@@ -1471,7 +1473,7 @@ export default function PortfolioClient() {
                         </tbody>
                       </table>
                     </div>
-                    <p className="text-[10px] text-zinc-600 text-center">
+                    <p className="text-[10px] text-[var(--tx-5)] text-center">
                       คำนวณจาก targetAlloc% × มูลค่าพอร์ตใหม่ (${(marketValue + (parseFloat(rebalanceInvest)||0)).toFixed(0)}) · ราคาจาก Finnhub ล่าสุด
                     </p>
                   </>
@@ -1484,7 +1486,7 @@ export default function PortfolioClient() {
 
       {/* Toast */}
       {toast && (
-        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] px-5 py-3 rounded-2xl text-sm font-bold shadow-2xl toast-in ${toast.type==="success"?"bg-emerald-500 text-black":"bg-red-500 text-white"}`}>
+        <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] px-5 py-3 rounded-2xl text-sm font-bold shadow-2xl toast-in ${toast.type==="success"?"bg-emerald-500 text-black":"bg-red-500 text-[var(--tx)]"}`}>
           {toast.msg}
         </div>
       )}
