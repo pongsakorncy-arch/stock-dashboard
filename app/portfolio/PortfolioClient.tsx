@@ -586,7 +586,7 @@ export default function PortfolioClient() {
           <div className="relative bg-gradient-to-br from-[#111827] to-[#0f172a] border border-blue-900/40 rounded-xl p-3 overflow-hidden hover-lift">
             <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full opacity-20" style={{background:"radial-gradient(circle,#3b82f6,transparent)"}}/>
             <p className="text-[10px] text-blue-400/80 uppercase tracking-wider mb-1 font-bold">มูลค่าหุ้น</p>
-            <p className="text-lg font-black text-[var(--tx)] count-up">{fmtMoney(marketValue)}</p>
+            <p className="text-lg font-black text-[#fff] count-up">{fmtMoney(marketValue)}</p>
             <div className="flex items-center gap-1.5 mt-1.5">
               <div className="flex-1 h-1 bg-blue-900/40 rounded-full overflow-hidden">
                 <div className="h-full bg-gradient-to-r from-blue-500 to-blue-400 rounded-full" style={{width:`${stockPct}%`}}/>
