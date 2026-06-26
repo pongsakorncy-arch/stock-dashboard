@@ -20,7 +20,7 @@ type Trade = {
   direction: Direction;
   session: Session;
   entryPrice: number;
-  exitPrices: number[];   // ราคา exit แต่ละออเดอร์
+  exitPrices: number[];
   avgExit: number;
   lotPerOrder: number;
   orderCount: number;
@@ -36,6 +36,7 @@ type Trade = {
   entryModel: string;
   tf: TF;
   notes: string;
+  screenshotUrl: string;
   createdAt: string;
 };
 
@@ -52,11 +53,9 @@ const save = (t: Trade[]) => localStorage.setItem(KEY, JSON.stringify(t));
 const SMC_LIST: SMCConcept[] = ["OB","FVG","BOS","CHoCH","Liquidity","MSB","W-Pattern","M-Pattern","Other"];
 const SESSIONS: Session[]    = ["Tokyo","London","New York","Overlap"];
 
-// ─── P/L per order (XAUUSD: 1 lot = $100/point, 0.1 lot = $10/point) ────────
-// point = 0.001 for gold
+// ─── P/L per order (XAUUSD) ───────────────────────────────────────────────────
 function calcPL(direction: Direction, entry: number, exit: number, lot: number, isCent = true): number {
   const diff = direction === "LONG" ? exit - entry : entry - exit;
-  // XAUUSDc (Cent): $1/point/lot | XAUUSDm (Standard): $100/point/lot
   const multiplier = isCent ? 1 : 100;
   return Math.round(diff * lot * multiplier * 100) / 100;
 }
@@ -78,7 +77,7 @@ function calcStats(trades: Trade[]) {
 
 // ─── Equity Curve ─────────────────────────────────────────────────────────────
 function PLChart({ trades }: { trades: Trade[] }) {
-  if (trades.length < 2) return <p className="text-xs text-zinc-600 text-center py-6">ต้องการอย่างน้อย 2 session</p>;
+  if (trades.length < 2) return <p className="text-xs text-center py-6" style={{color:"var(--j-soft)",fontFamily:"'DM Mono',monospace"}}>need at least 2 sessions</p>;
   const sorted = [...trades].sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
   let cum=0;
   const pts = sorted.map(t=>{ cum+=t.totalPL; return cum; });
@@ -86,16 +85,16 @@ function PLChart({ trades }: { trades: Trade[] }) {
   const W=300,H=80;
   const svgPts = pts.map((v,i)=>`${(i/(pts.length-1))*W},${H-((v-mn)/range)*H}`).join(" ");
   const fillPts = pts.map((v,i)=>`${(i/(pts.length-1))*W},${H-((v-mn)/range)*H}`).join(" ");
-  const color = pts[pts.length-1]>=0?"#10b981":"#ef4444";
+  const color = pts[pts.length-1]>=0?"#5fae89":"#e08a82";
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none">
       <defs><linearGradient id="plg" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor={color} stopOpacity="0.3"/>
+        <stop offset="0%" stopColor={color} stopOpacity="0.35"/>
         <stop offset="100%" stopColor={color} stopOpacity="0"/>
       </linearGradient></defs>
-      <line x1="0" y1={H-((0-mn)/range)*H} x2={W} y2={H-((0-mn)/range)*H} stroke="#27272a" strokeWidth="1" strokeDasharray="4"/>
+      <line x1="0" y1={H-((0-mn)/range)*H} x2={W} y2={H-((0-mn)/range)*H} stroke="#bcae9d" strokeWidth="1" strokeDasharray="4"/>
       <polygon points={`0,${H} ${fillPts} ${W},${H}`} fill="url(#plg)"/>
-      <polyline points={svgPts} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round"/>
+      <polyline points={svgPts} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round"/>
     </svg>
   );
 }
@@ -121,42 +120,41 @@ const defaultForm = () => ({
   result: "WIN" as Result,
   entryModel: "",
   notes: "",
+  screenshotUrl: "",
 });
+
+// ─── pastel helpers for chips/tags ────────────────────────────────────────────
+const PASTELS: Record<string,string> = {
+  pink:"var(--j-pink)", mint:"var(--j-mint)", sky:"var(--j-sky)",
+  butter:"var(--j-butter)", lav:"var(--j-lav)", coral:"var(--j-coral)", peach:"var(--j-peach)",
+};
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function JournalPage() {
   const [trades,  setTrades]  = useState<Trade[]>([]);
-  const [view,    setView]    = useState<"dashboard"|"list"|"add">("dashboard");
+  const [view,    setView]    = useState<"dashboard"|"list"|"calendar"|"add">("dashboard");
   const [form,    setForm]    = useState(defaultForm());
   const [editId,  setEditId]  = useState<string|null>(null);
   const [filter,  setFilter]  = useState<"ALL"|Result>("ALL");
   const [accountType, setAccountType] = useState<AccountType>("cent");
 
-  // Exit price inputs
-  const [exitInput, setExitInput]   = useState(""); // single input
-  const [pasteInput, setPasteInput] = useState(""); // bulk paste
+  const [exitInput, setExitInput]   = useState("");
+  const [pasteInput, setPasteInput] = useState("");
+
+  // new feature states
+  const [uploading, setUploading]   = useState(false);
+  const [lightbox, setLightbox]     = useState<string|null>(null);
+  const [calRef, setCalRef]         = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  const [calSelected, setCalSelected] = useState<string|null>(null);
 
   useEffect(()=>{
     const loadData = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        // ไม่ได้ login — ใช้ localStorage
-        setTrades(load());
-        return;
-      }
-      // Login แล้ว — ดึงจาก Supabase เสมอ ไม่ง้อ localStorage
+      if (!user) { setTrades(load()); return; }
       const { data, error } = await supabase
-        .from("journal_trades")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("Supabase error:", error);
-        setTrades(load()); // fallback
-        return;
-      }
-
+        .from("journal_trades").select("*")
+        .eq("user_id", user.id).order("created_at", { ascending: false });
+      if (error) { console.error("Supabase error:", error); setTrades(load()); return; }
       if (data && data.length > 0) {
         const mapped = data.map((r:any) => ({
           id: r.id, date: r.date, time: r.time,
@@ -168,15 +166,11 @@ export default function JournalPage() {
           tpPrice: Number(r.tp_price)||0, rr: Number(r.rr),
           result: r.result, smcConcept: r.smc_concept||[],
           htfBias: r.htf_bias, entryModel: r.entry_model||"",
-          tf: r.tf||"M5", notes: r.notes||"", createdAt: r.created_at,
+          tf: r.tf||"M5", notes: r.notes||"", screenshotUrl: r.screenshot_url||"",
+          createdAt: r.created_at,
         }));
-        setTrades(mapped);
-        // sync localStorage ให้ตรงกับ Supabase
-        save(mapped);
-      } else {
-        // ยังไม่มีข้อมูลใน Supabase เลย
-        setTrades([]);
-      }
+        setTrades(mapped); save(mapped);
+      } else { setTrades([]); }
     };
     loadData();
   },[]);
@@ -184,7 +178,7 @@ export default function JournalPage() {
 
   const f = (k: keyof ReturnType<typeof defaultForm> | string, v: any) => setForm((p:any)=>({...p,[k]:v}));
 
-  // ── Computed from form ────────────────────────────────────────────────────
+  // ── Computed ──────────────────────────────────────────────────────────────
   const exits     = form.exitPrices;
   const avgExit   = exits.length ? exits.reduce((a,b)=>a+b,0)/exits.length : 0;
   const isCent = accountType === "cent";
@@ -193,46 +187,45 @@ export default function JournalPage() {
   const totalLot  = exits.length * form.lotPerOrder;
   const result: Result = totalPL > 0.01 ? "WIN" : totalPL < -0.01 ? "LOSS" : "BE";
 
-  // Auto-calc R:R จาก P/L ÷ Risk Amount
   const riskAmount = (form as any).riskAmount || 5;
   const autoRR = (() => {
-    // ถ้ามี TP/SL ใช้แบบเดิม
     const e = form.entryPrice, sl = form.slPrice, tp = form.tpPrice;
     if (e && sl && tp) {
       const risk   = Math.abs(e - sl);
       const reward = Math.abs(tp - e);
       return risk > 0 ? Math.round((reward / risk) * 100) / 100 : 0;
     }
-    // ไม่มี SL — ใช้ Risk Amount แทน
-    if (riskAmount > 0 && totalPL !== 0) {
-      return Math.round((totalPL / riskAmount) * 100) / 100;
-    }
+    if (riskAmount > 0 && totalPL !== 0) return Math.round((totalPL / riskAmount) * 100) / 100;
     return 0;
   })();
 
-  // ── Add one exit price ────────────────────────────────────────────────────
   const addExit = () => {
     const v = parseFloat(exitInput);
-    if (!isNaN(v) && v > 0) {
-      f("exitPrices", [...exits, v]);
-      setExitInput("");
-    }
+    if (!isNaN(v) && v > 0) { f("exitPrices", [...exits, v]); setExitInput(""); }
   };
-
-  // ── Paste multiple exits ──────────────────────────────────────────────────
   const parsePaste = () => {
-    const nums = pasteInput
-      .split(/[\n,\s]+/)
-      .map(s => parseFloat(s.replace(/,/g,"")))
-      .filter(n => !isNaN(n) && n > 0);
-    if (nums.length) {
-      f("exitPrices", [...exits, ...nums]);
-      setPasteInput("");
-    }
+    const nums = pasteInput.split(/[\n,\s]+/).map(s => parseFloat(s.replace(/,/g,""))).filter(n => !isNaN(n) && n > 0);
+    if (nums.length) { f("exitPrices", [...exits, ...nums]); setPasteInput(""); }
   };
+  const removeExit = (i: number) => f("exitPrices", exits.filter((_,j)=>j!==i));
 
-  const removeExit = (i: number) =>
-    f("exitPrices", exits.filter((_,j)=>j!==i));
+  // ── Screenshot upload → Supabase Storage ───────────────────────────────────
+  const uploadScreenshot = async (file: File) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { alert("Please log in to upload."); return; }
+    setUploading(true);
+    try {
+      const ext = (file.name.split(".").pop() || "png").toLowerCase();
+      const path = `${user.id}/${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from("journal-screenshots").upload(path, file, { upsert: true, contentType: file.type });
+      if (error) { console.error(error); alert("Upload failed: " + error.message); }
+      else {
+        const { data } = supabase.storage.from("journal-screenshots").getPublicUrl(path);
+        f("screenshotUrl", data.publicUrl);
+      }
+    } catch (e:any) { console.error(e); alert("Upload error"); }
+    setUploading(false);
+  };
 
   // ── Save ──────────────────────────────────────────────────────────────────
   const saveTrade = async () => {
@@ -251,10 +244,10 @@ export default function JournalPage() {
       smcConcept: form.smcConcept, htfBias: form.htfBias,
       entryModel: form.entryModel, tf: (form as any).tf ?? "M5",
       notes: form.notes, tpPrice: (form as any).tpPrice ?? 0,
+      screenshotUrl: (form as any).screenshotUrl || "",
     };
     const updated = editId ? trades.map(t=>t.id===editId?trade:t) : [trade,...trades];
     setTrades(updated); save(updated);
-    // Sync to Supabase
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const row = {
@@ -269,6 +262,7 @@ export default function JournalPage() {
         result: trade.result, smc_concept: trade.smcConcept,
         htf_bias: trade.htfBias, entry_model: trade.entryModel,
         tf: trade.tf||"M5", notes: trade.notes,
+        screenshot_url: trade.screenshotUrl || null,
         created_at: trade.createdAt,
       };
       await supabase.from("journal_trades").upsert(row, { onConflict: "id" });
@@ -278,7 +272,7 @@ export default function JournalPage() {
   };
 
   const deleteTrade = async (id: string) => {
-    if(!confirm("ลบ session นี้?")) return;
+    if(!confirm("Delete this session?")) return;
     const u=trades.filter(t=>t.id!==id); setTrades(u); save(u);
     const { data: { user } } = await supabase.auth.getUser();
     if (user) await supabase.from("journal_trades").delete().eq("id", id).eq("user_id", user.id);
@@ -293,470 +287,487 @@ export default function JournalPage() {
       tpPrice: (t as any).tpPrice ?? 0,
       rr: t.rr, result: t.result,
       htfBias: t.htfBias, smcConcept: t.smcConcept,
-      entryModel: t.entryModel,
-      tf: (t as any).tf ?? "M5",
-      notes: t.notes,
+      entryModel: t.entryModel, tf: (t as any).tf ?? "M5",
+      notes: t.notes, screenshotUrl: (t as any).screenshotUrl || "",
     });
     setEditId(t.id); setView("add");
   };
 
   const filtered = filter==="ALL" ? trades : trades.filter(t=>t.result===filter);
 
+  // ── small retro UI atoms ───────────────────────────────────────────────────
+  const Win = ({title, color, children, controls=true}:{title:string;color:string;children:any;controls?:boolean}) => (
+    <div className="j-win">
+      <div className="j-bar" style={{background:color}}>
+        <span className="j-t">{title}</span>
+        {controls && <span className="j-ctrl"><span>_</span><span>▢</span><span>✕</span></span>}
+      </div>
+      <div className="j-body">{children}</div>
+    </div>
+  );
+
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <main className="min-h-screen bg-[#0d0d0f] text-white pb-24"
-      style={{fontFamily:"'Inter','Noto Sans Thai',sans-serif"}}>
+    <main className="j-root">
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fredoka:wght@500;600;700&family=VT323&display=swap');
+        .j-root{
+          --j-paper:#f1e9da; --j-win:#fffdf8; --j-ink:#5a4d42; --j-soft:#9a8d80;
+          --j-pink:#f6cdd5; --j-mint:#c0e6d4; --j-butter:#f6e6ac; --j-lav:#ddccf0;
+          --j-sky:#c6def0; --j-peach:#f8d6ba; --j-coral:#f3b0a8;
+          min-height:100vh;color:var(--j-ink);font-family:'Fredoka',sans-serif;
+          background-color:var(--j-paper);
+          background-image:radial-gradient(var(--j-ink) 0.5px, transparent 0.6px);
+          background-size:14px 14px;background-position:-7px -7px;
+          padding-bottom:40px;
+        }
+        .j-win{background:var(--j-win);border:2.5px solid var(--j-ink);border-radius:9px;
+               box-shadow:4px 4px 0 var(--j-ink);overflow:hidden;}
+        .j-bar{display:flex;align-items:center;gap:7px;padding:7px 10px;border-bottom:2.5px solid var(--j-ink);}
+        .j-t{font-family:'DM Mono',monospace;font-size:12px;font-weight:500;letter-spacing:.5px;flex:1;
+             display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+        .j-ctrl{display:flex;gap:4px;flex-shrink:0;}
+        .j-ctrl span{width:15px;height:15px;border:2px solid var(--j-ink);border-radius:3px;background:var(--j-win);
+                     font-size:9px;line-height:11px;text-align:center;font-family:'DM Mono';}
+        .j-body{padding:13px;}
+        .j-lab{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;text-transform:uppercase;
+               color:var(--j-soft);margin-bottom:6px;display:block;}
+        .j-chip{font-size:13px;font-weight:500;padding:6px 12px;border:2px solid var(--j-ink);border-radius:7px;
+                background:var(--j-win);color:var(--j-ink);cursor:pointer;box-shadow:2px 2px 0 var(--j-ink);
+                transition:.1s;font-family:'Fredoka';}
+        .j-chip:active{transform:translate(2px,2px);box-shadow:0 0 0 var(--j-ink);}
+        .j-chip.off{box-shadow:none;border-style:dashed;color:var(--j-soft);background:transparent;}
+        .j-in{width:100%;background:#fbf6ea;border:2px solid var(--j-ink);border-radius:7px;padding:9px 11px;
+              font-family:'DM Mono',monospace;font-size:14px;color:var(--j-ink);outline:none;
+              box-shadow:inset 1px 1px 0 rgba(90,77,66,.08);}
+        .j-in:focus{box-shadow:2px 2px 0 var(--j-ink);}
+        .j-in::placeholder{color:#c3b8a8;}
+        .j-btn{border:2.5px solid var(--j-ink);border-radius:9px;cursor:pointer;font-family:'Fredoka';font-weight:700;
+               box-shadow:3px 3px 0 var(--j-ink);transition:.1s;color:var(--j-ink);}
+        .j-btn:active{transform:translate(3px,3px);box-shadow:0 0 0 var(--j-ink);}
+        .j-btn:disabled{opacity:.45;cursor:not-allowed;}
+        .j-stat{background:var(--j-win);border:2.5px solid var(--j-ink);border-radius:9px;box-shadow:3px 3px 0 var(--j-ink);
+                padding:10px;text-align:center;}
+        .j-num{font-family:'VT323',monospace;font-size:30px;line-height:.9;}
+        .j-statlab{font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1px;color:var(--j-soft);text-transform:uppercase;margin-top:2px;}
+        .j-mini{font-size:11px;font-weight:500;padding:3px 9px;border:1.5px solid var(--j-ink);border-radius:6px;}
+        .j-tab{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.5px;padding:9px 12px;cursor:pointer;
+               border:2px solid transparent;border-radius:7px 7px 0 0;background:transparent;color:var(--j-soft);font-weight:500;}
+        .j-tab.on{background:var(--j-win);border-color:var(--j-ink);border-bottom-color:var(--j-win);color:var(--j-ink);}
+        .j-cell{aspect-ratio:1;border:1.5px solid var(--j-ink);border-radius:6px;background:var(--j-win);
+                display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;
+                font-family:'DM Mono';font-size:12px;position:relative;transition:.1s;}
+        .j-cell.empty{border:none;background:transparent;cursor:default;}
+        .j-cell.sel{box-shadow:2px 2px 0 var(--j-ink);transform:translate(-1px,-1px);}
+        .j-dot{width:7px;height:7px;border-radius:50%;margin-top:2px;border:1px solid var(--j-ink);}
+      `}</style>
 
-      {/* Header */}
-      <header className="sticky top-0 z-30 border-b border-zinc-800 bg-[#0d0d0f]/95 backdrop-blur px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="text-zinc-500 hover:text-white text-sm">← หน้าแรก</Link>
-          <span className="text-zinc-700">|</span>
-          <h1 className="text-sm font-bold">📓 Trading Journal · XAUUSD</h1>
+      {/* ── Header window ── */}
+      <div style={{padding:"14px 12px 0"}}>
+        <div className="j-win" style={{maxWidth:780,margin:"0 auto"}}>
+          <div className="j-bar" style={{background:"var(--j-pink)"}}>
+            <span className="j-t">★ JOURNAL.EXE — XAUUSD</span>
+            <span className="j-ctrl"><span>_</span><span>▢</span>
+              <Link href="/" style={{textDecoration:"none",color:"var(--j-ink)"}} title="Home"><span>✕</span></Link>
+            </span>
+          </div>
+          <div className="j-body" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+            <div>
+              <div style={{fontFamily:"'VT323',monospace",fontSize:34,lineHeight:.8}}>TRADING JOURNAL</div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,letterSpacing:2,color:"var(--j-soft)",marginTop:4}}>✦ SMC · GOLD DIARY ✦</div>
+            </div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              {/* account toggle */}
+              <button onClick={()=>setAccountType(accountType==="cent"?"standard":"cent")}
+                className="j-chip" style={{fontSize:11,background:accountType==="cent"?"var(--j-butter)":"var(--j-lav)"}}>
+                {accountType==="cent"?"Cent $":"Std $"}
+              </button>
+              <button onClick={()=>{ setForm(defaultForm()); setExitInput(""); setPasteInput(""); setEditId(null); setView("add"); }}
+                className="j-btn" style={{padding:"9px 14px",background:"var(--j-mint)",fontSize:13}}>
+                ✎ New
+              </button>
+            </div>
+          </div>
         </div>
-        <button onClick={()=>{ setForm(defaultForm()); setExitInput(""); setPasteInput(""); setEditId(null); setView("add"); }}
-          className="px-4 py-2 bg-yellow-400 hover:bg-yellow-300 text-black text-sm font-black rounded-lg">
-          + บันทึก Session
-        </button>
-      </header>
 
-      {/* Tabs */}
-      <div className="flex items-center border-b border-zinc-800 bg-[#0a0a0c] px-4">
-        <div className="flex flex-1">
-          {(["dashboard","list"] as const).map(v=>(
-            <button key={v} onClick={()=>setView(v)}
-              className={`py-3 px-4 text-xs font-bold uppercase tracking-wider border-b-2 transition-colors ${view===v?"text-yellow-400 border-yellow-400":"text-zinc-500 border-transparent"}`}>
-              {v==="dashboard"?"📊 Dashboard":"📋 Sessions"}
-            </button>
+        {/* ── Tabs ── */}
+        <div style={{maxWidth:780,margin:"14px auto 0",display:"flex",gap:6,borderBottom:"2.5px solid var(--j-ink)"}}>
+          {([["dashboard","📊 Dashboard"],["list","📋 Sessions"],["calendar","📅 Calendar"]] as const).map(([v,label])=>(
+            <button key={v} onClick={()=>setView(v as any)} className={`j-tab ${view===v?"on":""}`}>{label}</button>
           ))}
-        </div>
-        {/* Account type toggle */}
-        <div className="flex items-center gap-1.5 mb-0.5">
-          <span className="text-[10px] text-zinc-600">บัญชี:</span>
-          <button onClick={()=>setAccountType(accountType==="cent"?"standard":"cent")}
-            className={`px-2.5 py-1 rounded-lg text-[10px] font-black border transition-colors ${
-              accountType==="cent"
-                ? "bg-yellow-400/10 border-yellow-400/40 text-yellow-400"
-                : "bg-purple-400/10 border-purple-400/40 text-purple-400"
-            }`}>
-            {accountType==="cent" ? "Cent $" : "Standard $"}
-          </button>
         </div>
       </div>
 
+      <div style={{maxWidth:780,margin:"0 auto",padding:"16px 12px 0"}}>
+
       {/* ── DASHBOARD ── */}
       {view==="dashboard" && (
-        <div className="px-4 py-5 max-w-3xl mx-auto space-y-4">
+        <div className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[
-              {label:"Win Rate",   value:`${stats.winRate.toFixed(1)}%`, color:stats.winRate>=50?"text-emerald-400":"text-red-400"},
-              {label:"Total P/L",  value:money(stats.totalPL), color:stats.totalPL>=0?"text-emerald-400":"text-red-400"},
-              {label:"Sessions",   value:String(stats.total), color:"text-white"},
-              {label:"Avg R:R",    value:`${stats.avgRR.toFixed(2)}R`, color:"text-purple-400"},
-            ].map(s=>(
-              <div key={s.label} className="bg-[#18181b] border border-zinc-800 rounded-xl p-4">
-                <p className="text-xs text-zinc-500 mb-1">{s.label}</p>
-                <p className={`text-2xl font-black ${s.color}`}>{s.value}</p>
-              </div>
-            ))}
+            <div className="j-stat" style={{background:"var(--j-mint)"}}><div className="j-num">{stats.winRate.toFixed(0)}%</div><div className="j-statlab">Win Rate</div></div>
+            <div className="j-stat" style={{background:stats.totalPL>=0?"var(--j-sky)":"var(--j-coral)"}}><div className="j-num">{money(stats.totalPL)}</div><div className="j-statlab">Total P/L</div></div>
+            <div className="j-stat" style={{background:"var(--j-butter)"}}><div className="j-num">{stats.total}</div><div className="j-statlab">Sessions</div></div>
+            <div className="j-stat" style={{background:"var(--j-lav)"}}><div className="j-num">{stats.avgRR.toFixed(1)}R</div><div className="j-statlab">Avg R:R</div></div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-4">
-              <p className="text-xs text-zinc-500 mb-3">Win / Loss / BE</p>
+            <Win title="WIN / LOSS / BE" color="var(--j-mint)" controls={false}>
               <div className="flex gap-4 mb-3">
-                <div className="text-center"><p className="text-2xl font-black text-emerald-400">{stats.wins}</p><p className="text-xs text-zinc-500">Win</p></div>
-                <div className="text-center"><p className="text-2xl font-black text-red-400">{stats.losses}</p><p className="text-xs text-zinc-500">Loss</p></div>
-                <div className="text-center"><p className="text-2xl font-black text-zinc-400">{stats.be}</p><p className="text-xs text-zinc-500">BE</p></div>
+                <div className="text-center"><div className="j-num" style={{color:"#5fae89"}}>{stats.wins}</div><div className="j-statlab">Win</div></div>
+                <div className="text-center"><div className="j-num" style={{color:"#e08a82"}}>{stats.losses}</div><div className="j-statlab">Loss</div></div>
+                <div className="text-center"><div className="j-num" style={{color:"var(--j-soft)"}}>{stats.be}</div><div className="j-statlab">BE</div></div>
               </div>
               {stats.total>0 && (
-                <div className="h-2 bg-zinc-800 rounded-full overflow-hidden flex">
-                  <div className="h-full bg-emerald-500" style={{width:`${stats.winRate}%`}}/>
-                  <div className="h-full bg-zinc-600" style={{width:`${stats.be/stats.total*100}%`}}/>
-                  <div className="h-full bg-red-500 flex-1"/>
+                <div style={{height:10,border:"2px solid var(--j-ink)",borderRadius:6,overflow:"hidden",display:"flex",background:"var(--j-win)"}}>
+                  <div style={{background:"#8fd3b4",width:`${stats.winRate}%`}}/>
+                  <div style={{background:"#d8cdbd",width:`${stats.be/stats.total*100}%`}}/>
+                  <div style={{background:"#eda9a1",flex:1}}/>
                 </div>
               )}
-            </div>
-            <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-4">
-              <p className="text-xs text-zinc-500 mb-1">Streak</p>
-              <p className={`text-3xl font-black ${stats.streakType==="WIN"?"text-emerald-400":stats.streakType==="LOSS"?"text-red-400":"text-zinc-400"}`}>
-                {stats.streakType==="WIN"?`🔥 ${stats.streak}W`:stats.streakType==="LOSS"?`❄️ ${stats.streak}L`:"-"}
-              </p>
-              <div className="mt-2 space-y-1 text-xs">
-                <div><span className="text-zinc-500">Best: </span><span className="text-emerald-400 font-bold">{money(stats.best)}</span></div>
-                <div><span className="text-zinc-500">Worst: </span><span className="text-red-400 font-bold">{money(stats.worst)}</span></div>
+            </Win>
+            <Win title="STREAK" color="var(--j-butter)" controls={false}>
+              <div className="j-num" style={{fontSize:38,color:stats.streakType==="WIN"?"#5fae89":stats.streakType==="LOSS"?"#e08a82":"var(--j-soft)"}}>
+                {stats.streakType==="WIN"?`🔥${stats.streak}W`:stats.streakType==="LOSS"?`❄️${stats.streak}L`:"-"}
               </div>
-            </div>
+              <div style={{marginTop:6,fontSize:12,fontFamily:"'DM Mono'"}}>
+                <div><span style={{color:"var(--j-soft)"}}>Best </span><b style={{color:"#5fae89"}}>{money(stats.best)}</b></div>
+                <div><span style={{color:"var(--j-soft)"}}>Worst </span><b style={{color:"#e08a82"}}>{money(stats.worst)}</b></div>
+              </div>
+            </Win>
           </div>
 
-          <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-4">
-            <p className="text-xs text-zinc-500 mb-3">Equity Curve</p>
+          <Win title="📈 EQUITY CURVE" color="var(--j-sky)">
             <PLChart trades={trades}/>
-          </div>
+          </Win>
 
-          <div className="bg-[#18181b] border border-zinc-800 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-zinc-800 flex justify-between items-center">
-              <p className="text-sm font-bold">Sessions ล่าสุด</p>
-              <button onClick={()=>setView("list")} className="text-xs text-yellow-400">ดูทั้งหมด →</button>
-            </div>
+          <Win title="🕘 RECENT SESSIONS" color="var(--j-peach)">
             {trades.slice(0,5).map(t=>(
-              <div key={t.id} className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800/40 hover:bg-zinc-800/20">
-                <span className={`text-xs font-black px-2 py-0.5 rounded ${t.direction==="LONG"?"bg-emerald-400/10 text-emerald-400":"bg-red-400/10 text-red-400"}`}>{t.direction}</span>
+              <div key={t.id} className="flex items-center gap-2 py-2" style={{borderBottom:"1.5px dashed #e3d9c4"}}>
+                <span className="j-mini" style={{background:t.direction==="LONG"?"var(--j-mint)":"var(--j-coral)"}}>{t.direction}</span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold">{t.date} · {t.session}</p>
-                  <p className="text-[10px] text-zinc-500">{t.orderCount} ออเดอร์ · Entry {t.entryPrice} → Avg {t.avgExit}</p>
+                  <div style={{fontSize:12,fontWeight:600}}>{t.date} · {t.session}</div>
+                  <div style={{fontSize:10,color:"var(--j-soft)",fontFamily:"'DM Mono'"}}>{t.orderCount} orders · {t.entryPrice}→{t.avgExit}</div>
                 </div>
-                <span className={`font-black text-sm ${t.totalPL>=0?"text-emerald-400":"text-red-400"}`}>{money(t.totalPL)}</span>
-                <span className={`text-xs px-2 py-0.5 rounded font-bold ${t.result==="WIN"?"bg-emerald-400/10 text-emerald-400":t.result==="LOSS"?"bg-red-400/10 text-red-400":"bg-zinc-600 text-zinc-300"}`}>{t.result}</span>
+                {t.screenshotUrl && <span title="has screenshot">🖼</span>}
+                <b style={{fontFamily:"'DM Mono'",color:t.totalPL>=0?"#5fae89":"#e08a82"}}>{money(t.totalPL)}</b>
               </div>
             ))}
-            {!trades.length && <p className="text-center text-zinc-600 text-sm py-8">ยังไม่มี session · กด + บันทึก Session</p>}
-          </div>
+            {!trades.length && <p className="text-center py-6" style={{color:"var(--j-soft)",fontSize:13}}>No sessions yet · tap ✎ New</p>}
+          </Win>
         </div>
       )}
 
       {/* ── LIST ── */}
       {view==="list" && (
-        <div className="px-4 py-5 max-w-3xl mx-auto space-y-3">
-          <div className="flex gap-2 items-center">
+        <div className="space-y-3">
+          <div className="flex gap-2 items-center flex-wrap">
             {(["ALL","WIN","LOSS","BE"] as const).map(r=>(
-              <button key={r} onClick={()=>setFilter(r)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${filter===r?r==="WIN"?"bg-emerald-500 text-black":r==="LOSS"?"bg-red-500 text-white":r==="BE"?"bg-zinc-500 text-white":"bg-yellow-400 text-black":"bg-zinc-800 text-zinc-400"}`}>
+              <button key={r} onClick={()=>setFilter(r)} className={`j-chip ${filter===r?"":"off"}`}
+                style={filter===r?{background:r==="WIN"?"var(--j-mint)":r==="LOSS"?"var(--j-coral)":r==="BE"?"var(--j-lav)":"var(--j-butter)"}:{}}>
                 {r}
               </button>
             ))}
-            <span className="ml-auto text-xs text-zinc-500">{filtered.length} sessions</span>
+            <span className="ml-auto" style={{fontSize:11,color:"var(--j-soft)",fontFamily:"'DM Mono'"}}>{filtered.length} sessions</span>
           </div>
 
           {filtered.map(t=>(
-            <div key={t.id} className="bg-[#18181b] border border-zinc-800 rounded-xl overflow-hidden">
-              {/* Header row */}
-              <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800/50">
-                <span className={`text-xs font-black px-2 py-0.5 rounded ${t.direction==="LONG"?"bg-emerald-400/10 text-emerald-400":"bg-red-400/10 text-red-400"}`}>{t.direction}</span>
-                <span className="font-bold text-sm">{t.symbol}</span>
-                <span className="text-xs text-zinc-500">{t.date} · {t.time} · {t.session}</span>
-                <span className="flex-1"/>
-                <span className={`font-black ${t.totalPL>=0?"text-emerald-400":"text-red-400"}`}>{money(t.totalPL)}</span>
-                <span className={`text-xs px-2 py-0.5 rounded font-bold ${t.result==="WIN"?"bg-emerald-400/10 text-emerald-400":t.result==="LOSS"?"bg-red-400/10 text-red-400":"bg-zinc-600 text-zinc-300"}`}>{t.result}</span>
-                <button onClick={()=>editTrade(t)} className="text-xs text-yellow-400 hover:underline ml-1">แก้</button>
-                <button onClick={()=>deleteTrade(t.id)} className="text-xs text-red-400 hover:underline">ลบ</button>
+            <div key={t.id} className="j-win">
+              <div className="j-bar" style={{background:t.result==="WIN"?"var(--j-mint)":t.result==="LOSS"?"var(--j-pink)":"var(--j-lav)"}}>
+                <span className="j-t">🥇 {t.symbol} · {t.direction}</span>
+                <span style={{fontFamily:"'DM Mono'",fontSize:10}}>{t.date}</span>
               </div>
-
-              {/* Stats */}
-              <div className="px-4 py-3 grid grid-cols-3 gap-2 text-xs border-b border-zinc-800/30">
-                <div><span className="text-zinc-500">Entry: </span><span className="font-mono font-bold">{t.entryPrice}</span></div>
-                <div><span className="text-zinc-500">Avg Exit: </span><span className="font-mono font-bold">{t.avgExit}</span></div>
-                <div><span className="text-zinc-500">SL: </span><span className="font-mono text-red-400">{t.slPrice||"-"}</span></div>
-                <div><span className="text-zinc-500">ออเดอร์: </span><span className="font-bold">{t.orderCount} × {t.lotPerOrder} lot</span></div>
-                <div><span className="text-zinc-500">Lot รวม: </span><span className="font-bold">{t.totalLot.toFixed(2)}</span></div>
-                <div><span className="text-zinc-500">R:R: </span><span className="text-purple-400 font-bold">{t.rr?`${t.rr.toFixed(1)}R`:"-"}</span></div>
-              </div>
-
-              {/* Exit prices */}
-              <div className="px-4 py-2 border-b border-zinc-800/30">
-                <p className="text-[10px] text-zinc-500 mb-1.5">Exit prices ({t.exitPrices.length} ออเดอร์)</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {t.exitPrices.map((ex,i)=>(
-                    <span key={i} className={`text-[10px] font-mono px-2 py-0.5 rounded ${t.direction==="SHORT"&&ex>t.entryPrice?"bg-emerald-400/10 text-emerald-400":t.direction==="LONG"&&ex>t.entryPrice?"bg-emerald-400/10 text-emerald-400":"bg-red-400/10 text-red-400"}`}>
-                      {ex}
-                    </span>
-                  ))}
+              <div className="j-body">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <span className="j-mini" style={{background:t.result==="WIN"?"var(--j-mint)":t.result==="LOSS"?"var(--j-coral)":"var(--j-lav)",boxShadow:"2px 2px 0 var(--j-ink)"}}>
+                    {t.result==="WIN"?"✓ WIN":t.result==="LOSS"?"✕ LOSS":"= BE"}
+                  </span>
+                  <span style={{fontFamily:"'DM Mono'",fontSize:11,color:"var(--j-soft)"}}>{t.time} · {t.session}</span>
+                  <b className="ml-auto" style={{fontFamily:"'DM Mono'",fontSize:15,color:t.totalPL>=0?"#5fae89":"#e08a82"}}>{money(t.totalPL)}</b>
                 </div>
-              </div>
 
-              {/* SMC + notes */}
-              <div className="px-4 py-2">
-                <div className="flex flex-wrap gap-1 mb-1">
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${t.htfBias==="Bullish"?"bg-emerald-400/10 text-emerald-400":t.htfBias==="Bearish"?"bg-red-400/10 text-red-400":"bg-zinc-700 text-zinc-400"}`}>{t.htfBias}</span>
-                  {t.tf && <span className="text-[10px] bg-zinc-700 text-zinc-300 px-2 py-0.5 rounded-full font-bold">{t.tf}</span>}
-                  {t.entryModel && <span className="text-[10px] bg-yellow-400/10 text-yellow-400 px-2 py-0.5 rounded-full font-bold">{t.entryModel}</span>}
-                  {t.smcConcept.map(c=><span key={c} className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full">{c}</span>)}
+                <div className="grid grid-cols-3 gap-2 mb-2" style={{fontSize:11,fontFamily:"'DM Mono'"}}>
+                  <div><span style={{color:"var(--j-soft)"}}>Entry </span><b>{t.entryPrice}</b></div>
+                  <div><span style={{color:"var(--j-soft)"}}>Avg </span><b>{t.avgExit}</b></div>
+                  <div><span style={{color:"var(--j-soft)"}}>R:R </span><b>{t.rr?`${t.rr.toFixed(1)}R`:"-"}</b></div>
+                  <div><span style={{color:"var(--j-soft)"}}>Orders </span><b>{t.orderCount}×{t.lotPerOrder}</b></div>
+                  <div><span style={{color:"var(--j-soft)"}}>Lot </span><b>{t.totalLot.toFixed(2)}</b></div>
+                  <div><span style={{color:"var(--j-soft)"}}>SL </span><b style={{color:"#e08a82"}}>{t.slPrice||"-"}</b></div>
                 </div>
-                {t.notes && <p className="text-xs text-zinc-500 italic">"{t.notes}"</p>}
+
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  <span className="j-mini" style={{background:t.htfBias==="Bullish"?"var(--j-mint)":t.htfBias==="Bearish"?"var(--j-pink)":"var(--j-win)"}}>{t.htfBias}</span>
+                  {t.tf && <span className="j-mini" style={{background:"var(--j-sky)"}}>{t.tf}</span>}
+                  {t.entryModel && <span className="j-mini" style={{background:"var(--j-butter)"}}>{t.entryModel}</span>}
+                  {t.smcConcept.map(c=><span key={c} className="j-mini" style={{background:"var(--j-lav)"}}>{c}</span>)}
+                </div>
+
+                {t.screenshotUrl && (
+                  <img src={t.screenshotUrl} alt="screenshot" onClick={()=>setLightbox(t.screenshotUrl)}
+                    style={{width:"100%",maxHeight:170,objectFit:"cover",border:"2px solid var(--j-ink)",borderRadius:7,cursor:"zoom-in",marginBottom:8,boxShadow:"2px 2px 0 var(--j-ink)"}}/>
+                )}
+
+                {t.notes && <p style={{fontFamily:"'DM Mono'",fontSize:12,color:"var(--j-ink)",borderTop:"1.5px dashed #d8cdbd",paddingTop:8,lineHeight:1.4}}>"{t.notes}"</p>}
+
+                <div className="flex gap-2 mt-2">
+                  <button onClick={()=>editTrade(t)} className="j-chip" style={{fontSize:11,background:"var(--j-butter)"}}>✎ Edit</button>
+                  <button onClick={()=>deleteTrade(t.id)} className="j-chip" style={{fontSize:11,background:"var(--j-coral)"}}>🗑 Delete</button>
+                </div>
               </div>
             </div>
           ))}
-          {!filtered.length && <p className="text-center text-zinc-600 py-12">ไม่มี session</p>}
+          {!filtered.length && <p className="text-center py-10" style={{color:"var(--j-soft)"}}>No sessions</p>}
         </div>
       )}
 
-      {/* ── ADD / EDIT FORM ── */}
+      {/* ── CALENDAR ── */}
+      {view==="calendar" && (()=>{
+        const y = calRef.getFullYear(), m = calRef.getMonth();
+        const startDow = new Date(y,m,1).getDay();
+        const daysInMonth = new Date(y,m+1,0).getDate();
+        const byDate: Record<string, Trade[]> = {};
+        trades.forEach(t=>{ (byDate[t.date] ||= []).push(t); });
+        const cells:(number|null)[] = [];
+        for(let i=0;i<startDow;i++) cells.push(null);
+        for(let d=1;d<=daysInMonth;d++) cells.push(d);
+        const pad = (n:number)=>String(n).padStart(2,"0");
+        const key = (d:number)=>`${y}-${pad(m+1)}-${pad(d)}`;
+        const monthName = new Date(y,m,1).toLocaleString("en-US",{month:"long",year:"numeric"});
+        const selTrades = calSelected ? (byDate[calSelected]||[]) : [];
+        return (
+          <div className="space-y-3">
+            <div className="j-win">
+              <div className="j-bar" style={{background:"var(--j-sky)"}}>
+                <button onClick={()=>setCalRef(new Date(y,m-1,1))} className="j-ctrl"><span>◀</span></button>
+                <span className="j-t" style={{justifyContent:"center",fontSize:13}}>📅 {monthName}</span>
+                <button onClick={()=>setCalRef(new Date(y,m+1,1))} className="j-ctrl"><span>▶</span></button>
+              </div>
+              <div className="j-body">
+                <div className="grid grid-cols-7 gap-1.5 mb-1.5" style={{textAlign:"center",fontFamily:"'DM Mono'",fontSize:9,color:"var(--j-soft)"}}>
+                  {["S","M","T","W","T","F","S"].map((d,i)=><div key={i}>{d}</div>)}
+                </div>
+                <div className="grid grid-cols-7 gap-1.5">
+                  {cells.map((d,i)=>{
+                    if(d===null) return <div key={i} className="j-cell empty"/>;
+                    const k=key(d);
+                    const dayTrades = byDate[k]||[];
+                    const net = dayTrades.reduce((s,t)=>s+t.totalPL,0);
+                    const has = dayTrades.length>0;
+                    const dotColor = !has?"":net>0?"#8fd3b4":net<0?"#eda9a1":"var(--j-soft)";
+                    return (
+                      <div key={i} className={`j-cell ${calSelected===k?"sel":""}`}
+                        onClick={()=>setCalSelected(k===calSelected?null:k)}
+                        style={has?{background:net>0?"var(--j-mint)":net<0?"var(--j-pink)":"var(--j-lav)"}:{}}>
+                        <span>{d}</span>
+                        {has && <span className="j-dot" style={{background:dotColor}}/>}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-3 justify-center mt-3" style={{fontSize:10,fontFamily:"'DM Mono'",color:"var(--j-soft)"}}>
+                  <span><span style={{display:"inline-block",width:8,height:8,borderRadius:4,background:"#8fd3b4",border:"1px solid var(--j-ink)",marginRight:4}}/>Win day</span>
+                  <span><span style={{display:"inline-block",width:8,height:8,borderRadius:4,background:"#eda9a1",border:"1px solid var(--j-ink)",marginRight:4}}/>Loss day</span>
+                </div>
+              </div>
+            </div>
+
+            {calSelected && (
+              <Win title={`📋 ${calSelected} (${selTrades.length})`} color="var(--j-peach)">
+                {selTrades.length===0 ? <p className="text-center py-4" style={{color:"var(--j-soft)",fontSize:13}}>No trades this day</p> :
+                  selTrades.map(t=>(
+                    <div key={t.id} className="flex items-center gap-2 py-2" style={{borderBottom:"1.5px dashed #e3d9c4"}}>
+                      <span className="j-mini" style={{background:t.direction==="LONG"?"var(--j-mint)":"var(--j-coral)"}}>{t.direction}</span>
+                      <div className="flex-1 min-w-0">
+                        <div style={{fontSize:12,fontWeight:600}}>{t.time} · {t.session}</div>
+                        <div style={{fontSize:10,color:"var(--j-soft)",fontFamily:"'DM Mono'"}}>{t.entryPrice}→{t.avgExit} · {t.orderCount} ord</div>
+                      </div>
+                      {t.screenshotUrl && <span onClick={()=>setLightbox(t.screenshotUrl)} style={{cursor:"zoom-in"}}>🖼</span>}
+                      <b style={{fontFamily:"'DM Mono'",color:t.totalPL>=0?"#5fae89":"#e08a82"}}>{money(t.totalPL)}</b>
+                      <button onClick={()=>editTrade(t)} className="j-chip off" style={{fontSize:10,padding:"3px 7px"}}>✎</button>
+                    </div>
+                  ))
+                }
+              </Win>
+            )}
+            {!calSelected && <p className="text-center py-2" style={{color:"var(--j-soft)",fontSize:12,fontFamily:"'DM Mono'"}}>tap a colored day to see trades</p>}
+          </div>
+        );
+      })()}
+
+      {/* ── ADD / EDIT ── */}
       {view==="add" && (
-        <div className="px-4 py-5 max-w-xl mx-auto space-y-4">
+        <div className="space-y-4" style={{maxWidth:560,margin:"0 auto"}}>
           <div className="flex items-center gap-3">
-            <button onClick={()=>{setView("dashboard");setEditId(null);}} className="text-zinc-500 text-sm">← ยกเลิก</button>
-            <h2 className="text-sm font-bold">{editId?"แก้ไข Session":"บันทึก Session ใหม่"}</h2>
+            <button onClick={()=>{setView("dashboard");setEditId(null);}} className="j-chip off" style={{fontSize:12}}>← Cancel</button>
+            <h2 style={{fontSize:14,fontWeight:600}}>{editId?"Edit Session":"New Session"}</h2>
           </div>
 
-          {/* ── Step 1: Meta ── */}
-          <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-4 space-y-3">
-            <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">① Session Info</p>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="text-[10px] text-zinc-500 mb-1 block">วันที่</label>
-                <input type="date" value={form.date} onChange={e=>f("date",e.target.value)}
-                  className="w-full bg-[#111113] border border-zinc-700 rounded-lg px-2 py-2 text-xs outline-none focus:border-yellow-400"/>
-              </div>
-              <div>
-                <label className="text-[10px] text-zinc-500 mb-1 block">เวลา</label>
-                <input type="time" value={form.time} onChange={e=>f("time",e.target.value)}
-                  className="w-full bg-[#111113] border border-zinc-700 rounded-lg px-2 py-2 text-xs outline-none focus:border-yellow-400"/>
-              </div>
-              <div>
-                <label className="text-[10px] text-zinc-500 mb-1 block">Session</label>
-                <select value={form.session} onChange={e=>f("session",e.target.value)}
-                  className="w-full bg-[#111113] border border-zinc-700 rounded-lg px-2 py-2 text-xs outline-none focus:border-yellow-400">
+          {/* ① Session info */}
+          <Win title="① SESSION INFO" color="var(--j-lav)">
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div><label className="j-lab">Date</label><input type="date" value={form.date} onChange={e=>f("date",e.target.value)} className="j-in" style={{fontSize:11}}/></div>
+              <div><label className="j-lab">Time</label><input type="time" value={form.time} onChange={e=>f("time",e.target.value)} className="j-in" style={{fontSize:11}}/></div>
+              <div><label className="j-lab">Session</label>
+                <select value={form.session} onChange={e=>f("session",e.target.value)} className="j-in" style={{fontSize:11}}>
                   {SESSIONS.map(s=><option key={s}>{s}</option>)}
                 </select>
               </div>
             </div>
-
-            {/* Direction */}
+            <label className="j-lab">Direction</label>
             <div className="flex gap-2">
               {(["LONG","SHORT"] as Direction[]).map(d=>(
-                <button key={d} onClick={()=>f("direction",d)}
-                  className={`flex-1 py-2.5 rounded-xl text-sm font-black transition-colors ${form.direction===d?d==="LONG"?"bg-emerald-500 text-black":"bg-red-500 text-white":"bg-zinc-800 text-zinc-400"}`}>
+                <button key={d} onClick={()=>f("direction",d)} className={`j-chip flex-1 ${form.direction===d?"":"off"}`}
+                  style={form.direction===d?{background:d==="LONG"?"var(--j-mint)":"var(--j-coral)",textAlign:"center"}:{textAlign:"center"}}>
                   {d==="LONG"?"▲ LONG":"▼ SHORT"}
                 </button>
               ))}
             </div>
-          </div>
+          </Win>
 
-          {/* ── Step 2: Entry / Exit / TP / SL ── */}
-          <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-4 space-y-3">
-            <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">② ราคา & Lot</p>
-
-            {/* Entry */}
-            <div>
-              <label className="text-[10px] text-zinc-500 mb-1 block">Entry Price</label>
-              <input type="number" step="0.001" value={form.entryPrice||""} placeholder="เช่น 4171.200"
-                onChange={e=>f("entryPrice",parseFloat(e.target.value)||0)}
-                className="w-full bg-[#111113] border border-zinc-700 focus:border-yellow-400 rounded-lg px-3 py-2.5 text-base outline-none font-mono font-black text-yellow-300"/>
+          {/* ② Price & Lot */}
+          <Win title="② PRICE & LOT" color="var(--j-butter)">
+            <div className="mb-3"><label className="j-lab">Entry Price</label>
+              <input type="number" step="0.001" value={form.entryPrice||""} placeholder="4171.200"
+                onChange={e=>f("entryPrice",parseFloat(e.target.value)||0)} className="j-in" style={{fontSize:16,fontWeight:700}}/>
             </div>
-
-            {/* Risk Amount + Lot row */}
-            <div className="grid grid-cols-2 gap-2 mb-1">
-              <div>
-                <label className="text-[10px] text-zinc-500 mb-1 block">💰 Risk Amount ($)</label>
-                <div className="relative">
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-yellow-400 font-black text-sm">$</span>
-                  <input type="number" step="0.5" min="0.5" value={(form as any).riskAmount||5} placeholder="5"
-                    onChange={e=>f("riskAmount",parseFloat(e.target.value)||5)}
-                    className="w-full bg-yellow-400/10 border border-yellow-400/40 focus:border-yellow-400 rounded-lg pl-7 pr-3 py-2 text-sm outline-none font-mono font-black text-yellow-400"/>
-                </div>
-                <p className="text-[10px] text-zinc-600 mt-0.5">risk ต่อ session นี้</p>
-              </div>
-              <div>
-                <label className="text-[10px] text-zinc-500 mb-1 block">Lot / Order</label>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div><label className="j-lab">💰 Risk ($)</label>
+                <input type="number" step="0.5" min="0.5" value={(form as any).riskAmount||5} placeholder="5"
+                  onChange={e=>f("riskAmount",parseFloat(e.target.value)||5)} className="j-in"/></div>
+              <div><label className="j-lab">Lot / Order</label>
                 <input type="text" inputMode="decimal" value={form.lotInput} placeholder="0.01"
-                  onChange={e=>{
-                    const v = e.target.value;
-                    if (v === "" || /^\d*\.?\d*$/.test(v)) {
-                      f("lotInput", v);
-                      f("lotPerOrder", parseFloat(v) || 0);
-                    }
-                  }}
-                  className="w-full bg-[#111113] border border-zinc-700 focus:border-yellow-400 rounded-lg px-2 py-2 text-sm outline-none font-mono"/>
-              </div>
+                  onChange={e=>{const v=e.target.value; if(v===""||/^\d*\.?\d*$/.test(v)){f("lotInput",v);f("lotPerOrder",parseFloat(v)||0);}}}
+                  className="j-in"/></div>
             </div>
-
-            {/* TP / SL (optional) */}
             <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[10px] text-zinc-500 mb-1 block">Take Profit 🟢 <span className="text-zinc-700">(ไม่บังคับ)</span></label>
+              <div><label className="j-lab">🟢 TP (optional)</label>
                 <input type="number" step="0.001" value={form.tpPrice||""} placeholder="TP"
-                  onChange={e=>f("tpPrice",parseFloat(e.target.value)||0)}
-                  className="w-full bg-[#111113] border border-zinc-700 focus:border-emerald-400 rounded-lg px-2 py-2 text-sm outline-none font-mono text-emerald-400"/>
-              </div>
-              <div>
-                <label className="text-[10px] text-zinc-500 mb-1 block">Stop Loss 🔴 <span className="text-zinc-700">(ไม่บังคับ)</span></label>
+                  onChange={e=>f("tpPrice",parseFloat(e.target.value)||0)} className="j-in"/></div>
+              <div><label className="j-lab">🔴 SL (optional)</label>
                 <input type="number" step="0.001" value={form.slPrice||""} placeholder="SL"
-                  onChange={e=>f("slPrice",parseFloat(e.target.value)||0)}
-                  className="w-full bg-[#111113] border border-zinc-700 focus:border-red-400 rounded-lg px-2 py-2 text-sm outline-none font-mono text-red-400"/>
-              </div>
+                  onChange={e=>f("slPrice",parseFloat(e.target.value)||0)} className="j-in"/></div>
             </div>
-
-            {/* Auto R:R preview */}
-            {autoRR > 0 && (
-              <div className="flex items-center gap-2 bg-purple-500/10 border border-purple-500/20 rounded-lg px-3 py-2">
-                <span className="text-xs text-zinc-400">R:R อัตโนมัติ</span>
-                <span className="text-lg font-black text-purple-400 ml-auto">1 : {autoRR}</span>
+            {autoRR>0 && (
+              <div className="flex items-center gap-2 mt-3" style={{background:"var(--j-lav)",border:"2px solid var(--j-ink)",borderRadius:7,padding:"7px 11px"}}>
+                <span style={{fontSize:11,color:"var(--j-ink)",fontFamily:"'DM Mono'"}}>AUTO R:R</span>
+                <b className="ml-auto" style={{fontSize:18,fontFamily:"'VT323'"}}>1 : {autoRR}</b>
               </div>
             )}
+          </Win>
 
-            {/* Result quick select */}
-            <div>
-              <label className="text-[10px] text-zinc-500 mb-1 block">ผลลัพธ์</label>
-              <div className="flex gap-2">
-                {(["WIN","LOSS","BE"] as Result[]).map(r=>(
-                  <button key={r} onClick={()=>f("result",r)}
-                    className={`flex-1 py-2 rounded-lg text-sm font-black transition-colors ${
-                      form.result===r
-                        ? r==="WIN"?"bg-emerald-500 text-black":r==="LOSS"?"bg-red-500 text-white":"bg-zinc-500 text-white"
-                        : "bg-zinc-800 text-zinc-400"
-                    }`}>
-                    {r==="WIN"?"✅ WIN":r==="LOSS"?"❌ LOSS":"🟡 BE"}
-                  </button>
-                ))}
-              </div>
+          {/* ③ Exits */}
+          <Win title="③ EXIT PRICES" color="var(--j-mint)">
+            <div className="flex gap-2 mb-3">
+              <input type="number" step="0.001" value={exitInput} placeholder="exit e.g. 4178.018"
+                onChange={e=>setExitInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addExit()} className="j-in flex-1"/>
+              <button onClick={addExit} className="j-btn" style={{padding:"0 16px",background:"var(--j-mint)",fontSize:13}}>+ Add</button>
             </div>
-          </div>
-
-          {/* ── Step 3: Exit prices ── */}
-          <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-4 space-y-3">
-            <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">③ Exit Prices (กรอกทีละออเดอร์)</p>
-
-            {/* Single add */}
+            <label className="j-lab">Or paste many (space / enter separated)</label>
             <div className="flex gap-2">
-              <input type="number" step="0.001" value={exitInput} placeholder="ราคา exit เช่น 4178.018"
-                onChange={e=>setExitInput(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&addExit()}
-                className="flex-1 bg-[#111113] border border-zinc-700 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-emerald-400 font-mono"/>
-              <button onClick={addExit}
-                className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black font-black rounded-lg text-sm transition-colors">
-                + เพิ่ม
-              </button>
+              <textarea value={pasteInput} placeholder={"4177.027\n4178.018\n4178.044"} rows={3}
+                onChange={e=>setPasteInput(e.target.value)} className="j-in flex-1" style={{resize:"none",fontSize:12}}/>
+              <button onClick={parsePaste} className="j-btn self-end" style={{padding:"9px 11px",background:"var(--j-butter)",fontSize:11}}>Paste<br/>All</button>
             </div>
 
-            {/* Bulk paste */}
-            <div>
-              <label className="text-[10px] text-zinc-500 mb-1 block">หรือ Paste หลายราคาพร้อมกัน (เว้นวรรค หรือ Enter)</label>
-              <div className="flex gap-2">
-                <textarea value={pasteInput} placeholder={"4177.027\n4178.018\n4178.044\n4178.011"}
-                  onChange={e=>setPasteInput(e.target.value)} rows={3}
-                  className="flex-1 bg-[#111113] border border-zinc-700 rounded-lg px-3 py-2 text-xs outline-none focus:border-yellow-400 font-mono resize-none"/>
-                <button onClick={parsePaste}
-                  className="px-3 py-2 bg-yellow-400 hover:bg-yellow-300 text-black font-black rounded-lg text-xs transition-colors self-end">
-                  Paste<br/>ทั้งหมด
-                </button>
-              </div>
-            </div>
-
-            {/* Exit list */}
-            {exits.length > 0 && (
-              <div className="bg-[#111113] rounded-xl p-3 space-y-1.5">
+            {exits.length>0 && (
+              <div className="mt-3" style={{background:"#fbf6ea",border:"2px solid var(--j-ink)",borderRadius:7,padding:10}}>
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-[10px] text-zinc-500">{exits.length} ออเดอร์</p>
-                  <button onClick={()=>f("exitPrices",[])} className="text-[10px] text-red-400 hover:underline">ล้างทั้งหมด</button>
+                  <span style={{fontSize:10,color:"var(--j-soft)",fontFamily:"'DM Mono'"}}>{exits.length} orders</span>
+                  <button onClick={()=>f("exitPrices",[])} style={{fontSize:10,color:"#e08a82",fontFamily:"'DM Mono'",cursor:"pointer",background:"none",border:"none"}}>clear all</button>
                 </div>
                 {exits.map((ex,i)=>{
-                  const pl = calcPL(form.direction, form.entryPrice, ex, form.lotPerOrder, accountType === "cent");
-                  const isPos = pl >= 0;
+                  const pl=calcPL(form.direction,form.entryPrice,ex,form.lotPerOrder,isCent);
                   return (
-                    <div key={i} className="flex items-center gap-2">
-                      <span className="text-[10px] text-zinc-600 w-4">{i+1}.</span>
-                      <span className="font-mono text-xs font-bold flex-1">{ex}</span>
-                      <span className={`text-xs font-bold ${isPos?"text-emerald-400":"text-red-400"}`}>{money(pl)}</span>
-                      <button onClick={()=>removeExit(i)} className="text-zinc-600 hover:text-red-400 text-xs ml-1">✕</button>
+                    <div key={i} className="flex items-center gap-2 py-0.5" style={{fontFamily:"'DM Mono'",fontSize:12}}>
+                      <span style={{color:"var(--j-soft)",width:16}}>{i+1}.</span>
+                      <span className="flex-1" style={{fontWeight:700}}>{ex}</span>
+                      <b style={{color:pl>=0?"#5fae89":"#e08a82"}}>{money(pl)}</b>
+                      <button onClick={()=>removeExit(i)} style={{color:"var(--j-soft)",cursor:"pointer",background:"none",border:"none"}}>✕</button>
                     </div>
                   );
                 })}
-
-                {/* Summary */}
-                <div className="border-t border-zinc-800 pt-2 mt-2 space-y-1">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-zinc-500">Avg Exit</span>
-                    <span className="font-mono font-bold">{avgExit.toFixed(3)}</span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-zinc-500">Lot รวม</span>
-                    <span className="font-bold">{totalLot.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-xs text-zinc-500">Total P/L</span>
-                    <span className={`text-base font-black ${totalPL>=0?"text-emerald-400":"text-red-400"}`}>{money(totalPL)}</span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-zinc-500">Result</span>
-                    <span className={`font-black px-2 py-0.5 rounded text-xs ${result==="WIN"?"bg-emerald-400/10 text-emerald-400":result==="LOSS"?"bg-red-400/10 text-red-400":"bg-zinc-600 text-zinc-300"}`}>{result}</span>
-                  </div>
+                <div style={{borderTop:"1.5px dashed #d8cdbd",marginTop:6,paddingTop:6,fontFamily:"'DM Mono'",fontSize:12}}>
+                  <div className="flex justify-between"><span style={{color:"var(--j-soft)"}}>Avg Exit</span><b>{avgExit.toFixed(3)}</b></div>
+                  <div className="flex justify-between"><span style={{color:"var(--j-soft)"}}>Total Lot</span><b>{totalLot.toFixed(2)}</b></div>
+                  <div className="flex justify-between items-center"><span style={{color:"var(--j-soft)"}}>Total P/L</span>
+                    <b style={{fontSize:16,color:totalPL>=0?"#5fae89":"#e08a82"}}>{money(totalPL)}</b></div>
+                  <div className="flex justify-between items-center mt-1"><span style={{color:"var(--j-soft)"}}>Result</span>
+                    <span className="j-mini" style={{background:result==="WIN"?"var(--j-mint)":result==="LOSS"?"var(--j-coral)":"var(--j-lav)"}}>{result}</span></div>
                 </div>
               </div>
             )}
-          </div>
+          </Win>
 
-          {/* ── Step 4: SMC ── */}
-          <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-4 space-y-3">
-            <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">④ SMC Analysis</p>
+          {/* ④ SMC */}
+          <Win title="④ SMC ANALYSIS" color="var(--j-pink)">
+            <label className="j-lab">Timeframe</label>
+            <div className="flex gap-2 mb-3">
+              {(["M1","M5","M15"] as TF[]).map(t=>(
+                <button key={t} onClick={()=>f("tf",t)} className={`j-chip flex-1 ${form.tf===t?"":"off"}`}
+                  style={form.tf===t?{background:"var(--j-butter)",textAlign:"center"}:{textAlign:"center"}}>{t}</button>
+              ))}
+            </div>
+            <label className="j-lab">HTF Bias</label>
+            <div className="flex gap-2 mb-3">
+              {(["Bullish","Bearish","Neutral"] as const).map(b=>(
+                <button key={b} onClick={()=>f("htfBias",b)} className={`j-chip flex-1 ${form.htfBias===b?"":"off"}`}
+                  style={form.htfBias===b?{background:b==="Bullish"?"var(--j-mint)":b==="Bearish"?"var(--j-pink)":"var(--j-lav)",textAlign:"center",fontSize:12}:{textAlign:"center",fontSize:12}}>{b}</button>
+              ))}
+            </div>
+            <label className="j-lab">SMC Concept</label>
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {SMC_LIST.map(c=>{
+                const active=(form.smcConcept||[]).includes(c);
+                return <button key={c} onClick={()=>f("smcConcept",active?form.smcConcept.filter(x=>x!==c):[...form.smcConcept,c])}
+                  className={`j-chip ${active?"":"off"}`} style={active?{background:"var(--j-lav)",fontSize:12,padding:"5px 10px"}:{fontSize:12,padding:"5px 10px"}}>{c}</button>;
+              })}
+            </div>
+            <label className="j-lab">Entry Model</label>
+            <input value={form.entryModel} onChange={e=>f("entryModel",e.target.value)} placeholder="W2, BOS+OB, CHoCH+FVG"
+              className="j-in mb-3" style={{fontSize:13,fontFamily:"'Fredoka'"}}/>
+            <label className="j-lab">Notes / Lesson</label>
+            <textarea value={form.notes} onChange={e=>f("notes",e.target.value)} rows={3} placeholder="lessons, mistakes, what went well..."
+              className="j-in" style={{resize:"none",fontSize:13,fontFamily:"'Fredoka'"}}/>
+          </Win>
 
-            {/* TF */}
-            <div>
-              <label className="text-[10px] text-zinc-500 mb-1.5 block">Timeframe (Entry)</label>
-              <div className="flex gap-2">
-                {(["M1","M5","M15"] as TF[]).map(t=>(
-                  <button key={t} onClick={()=>f("tf",t)}
-                    className={`flex-1 py-2 rounded-lg text-sm font-black border transition-colors ${
-                      form.tf===t
-                        ? "bg-yellow-400/20 border-yellow-400 text-yellow-400"
-                        : "bg-zinc-800 border-zinc-700 text-zinc-500 hover:border-zinc-500"
-                    }`}>{t}</button>
-                ))}
+          {/* ⑤ Screenshot */}
+          <Win title="⑤ 🖼 SCREENSHOT" color="var(--j-sky)">
+            {form.screenshotUrl ? (
+              <div>
+                <img src={form.screenshotUrl} alt="screenshot" onClick={()=>setLightbox(form.screenshotUrl)}
+                  style={{width:"100%",maxHeight:220,objectFit:"contain",border:"2px solid var(--j-ink)",borderRadius:7,cursor:"zoom-in",background:"#fbf6ea"}}/>
+                <button onClick={()=>f("screenshotUrl","")} className="j-chip mt-2" style={{fontSize:11,background:"var(--j-coral)"}}>🗑 Remove image</button>
               </div>
-            </div>
-
-            {/* HTF Bias */}
-            <div>
-              <label className="text-[10px] text-zinc-500 mb-1.5 block">HTF Bias</label>
-              <div className="flex gap-2">
-                {(["Bullish","Bearish","Neutral"] as const).map(b=>(
-                  <button key={b} onClick={()=>f("htfBias",b)}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-colors ${form.htfBias===b?b==="Bullish"?"bg-emerald-500/20 border-emerald-500 text-emerald-400":b==="Bearish"?"bg-red-500/20 border-red-500 text-red-400":"bg-zinc-500/20 border-zinc-500 text-zinc-300":"bg-zinc-800 border-zinc-700 text-zinc-500"}`}>
-                    {b}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* SMC Concepts */}
-            <div>
-              <label className="text-[10px] text-zinc-500 mb-1.5 block">SMC Concept</label>
-              <div className="flex flex-wrap gap-1.5">
-                {SMC_LIST.map(c=>{
-                  const active=(form.smcConcept||[]).includes(c);
-                  return <button key={c} onClick={()=>f("smcConcept",active?form.smcConcept.filter(x=>x!==c):[...form.smcConcept,c])}
-                    className={`px-2.5 py-1 rounded-full text-xs font-bold transition-colors ${active?"bg-purple-500/30 border border-purple-500 text-purple-300":"bg-zinc-800 border border-zinc-700 text-zinc-500"}`}>{c}</button>;
-                })}
-              </div>
-            </div>
-
-            {/* Entry Model */}
-            <div>
-              <label className="text-[10px] text-zinc-500 mb-1 block">Entry Model</label>
-              <input value={form.entryModel} onChange={e=>f("entryModel",e.target.value)}
-                placeholder="W2, M2, BOS+OB, CHoCH+FVG"
-                className="w-full bg-[#111113] border border-zinc-700 rounded-lg px-3 py-2 text-xs outline-none focus:border-yellow-400"/>
-            </div>
-
-            {/* R:R — แสดง auto หรือกรอกเอง */}
-            <div>
-              <label className="text-[10px] text-zinc-500 mb-1 block">
-                R:R {autoRR > 0
-                  ? <span className="text-purple-400 ml-1">← อัตโนมัติ: 1:{autoRR} {totalPL !== 0 && !form.slPrice ? `(P/L $${totalPL.toFixed(2)} ÷ Risk $${riskAmount})` : ""}</span>
-                  : <span className="text-zinc-600">(จะคำนวณอัตโนมัติหลังใส่ exit)</span>}
+            ) : (
+              <label className="j-btn" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:14,background:"var(--j-sky)",fontSize:14,cursor:uploading?"wait":"pointer"}}>
+                {uploading ? "⌛ Uploading..." : "📎 Upload chart screenshot"}
+                <input type="file" accept="image/*" disabled={uploading} style={{display:"none"}}
+                  onChange={e=>{ const file=e.target.files?.[0]; if(file) uploadScreenshot(file); }}/>
               </label>
-              <input type="number" step="0.1"
-                value={autoRR > 0 ? autoRR : (form.rr||"")}
-                readOnly={autoRR > 0}
-                placeholder="เช่น 2.5"
-                onChange={e=>f("rr",parseFloat(e.target.value)||0)}
-                className={`w-full bg-[#111113] border rounded-lg px-3 py-2 text-sm outline-none font-mono font-black ${autoRR>0?"border-purple-500/40 text-purple-400 opacity-80 cursor-default":"border-zinc-700 focus:border-purple-400 text-purple-400"}`}/>
-            </div>
-
-            {/* Notes */}
-            <div>
-              <label className="text-[10px] text-zinc-500 mb-1 block">Notes / บทเรียน</label>
-              <textarea value={form.notes} onChange={e=>f("notes",e.target.value)} rows={3}
-                placeholder="บทเรียน, ข้อผิดพลาด, จุดที่ดี..."
-                className="w-full bg-[#111113] border border-zinc-700 rounded-lg px-3 py-2 text-sm outline-none focus:border-yellow-400 resize-none"/>
-            </div>
-          </div>
+            )}
+            <p style={{fontSize:10,color:"var(--j-soft)",fontFamily:"'DM Mono'",marginTop:8}}>saved to Supabase Storage · shows on this entry</p>
+          </Win>
 
           {/* Save */}
-          <button onClick={saveTrade}
-            disabled={!exits.length || !form.entryPrice}
-            className="w-full py-4 bg-yellow-400 hover:bg-yellow-300 disabled:opacity-40 disabled:cursor-not-allowed text-black font-black text-base rounded-xl transition-colors">
-            {editId?"✓ อัปเดต Session":`✓ บันทึก Session (${exits.length} ออเดอร์ · ${money(totalPL)})`}
+          <button onClick={saveTrade} disabled={!exits.length || !form.entryPrice}
+            className="j-btn w-full" style={{padding:16,background:"var(--j-coral)",fontSize:16}}>
+            {editId?"✓ UPDATE SESSION":`💾 SAVE (${exits.length} ord · ${money(totalPL)})`}
           </button>
+        </div>
+      )}
+
+      </div>
+
+      {/* ── Lightbox ── */}
+      {lightbox && (
+        <div onClick={()=>setLightbox(null)}
+          style={{position:"fixed",inset:0,background:"rgba(90,77,66,.75)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:20,cursor:"zoom-out"}}>
+          <div style={{border:"3px solid var(--j-ink)",borderRadius:10,overflow:"hidden",boxShadow:"6px 6px 0 var(--j-ink)",maxWidth:"100%",maxHeight:"100%",background:"var(--j-win)"}}>
+            <div className="j-bar" style={{background:"var(--j-sky)"}}>
+              <span className="j-t">🖼 SCREENSHOT.bmp</span>
+              <span className="j-ctrl"><span>✕</span></span>
+            </div>
+            <img src={lightbox} alt="full" style={{display:"block",maxWidth:"90vw",maxHeight:"75vh",objectFit:"contain"}}/>
+          </div>
         </div>
       )}
     </main>
