@@ -81,21 +81,35 @@ function PLChart({ trades }: { trades: Trade[] }) {
   const sorted = [...trades].sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
   let cum=0;
   const pts = sorted.map(t=>{ cum+=t.totalPL; return cum; });
+  const W=300,H=88, padL=6,padR=6,padT=8,padB=8;
+  const innerW=W-padL-padR, innerH=H-padT-padB;
   const mn=Math.min(0,...pts), mx=Math.max(...pts), range=mx-mn||1;
-  const W=300,H=80;
-  const svgPts = pts.map((v,i)=>`${(i/(pts.length-1))*W},${H-((v-mn)/range)*H}`).join(" ");
-  const fillPts = pts.map((v,i)=>`${(i/(pts.length-1))*W},${H-((v-mn)/range)*H}`).join(" ");
-  const color = pts[pts.length-1]>=0?"#5fae89":"#e08a82";
+  const X=(i:number)=> padL + (pts.length===1?innerW/2:(i/(pts.length-1))*innerW);
+  const Y=(v:number)=> padT + innerH - ((v-mn)/range)*innerH;
+  const zeroY = Y(0);
+  const up = pts[pts.length-1]>=0;
+  const color   = up?"#3f9b73":"#d4685f";
+  const fillCol = up?"#bfe3d0":"#f3c4cb";
+  // stepped (staircase) path — retro terminal style
+  let d = `M ${X(0)} ${Y(pts[0])}`;
+  for(let i=1;i<pts.length;i++){ d += ` L ${X(i)} ${Y(pts[i-1])} L ${X(i)} ${Y(pts[i])}`; }
+  const area = `${d} L ${X(pts.length-1)} ${padT+innerH} L ${X(0)} ${padT+innerH} Z`;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none">
-      <defs><linearGradient id="plg" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor={color} stopOpacity="0.35"/>
-        <stop offset="100%" stopColor={color} stopOpacity="0"/>
-      </linearGradient></defs>
-      <line x1="0" y1={H-((0-mn)/range)*H} x2={W} y2={H-((0-mn)/range)*H} stroke="#bcae9d" strokeWidth="1" strokeDasharray="4"/>
-      <polygon points={`0,${H} ${fillPts} ${W},${H}`} fill="url(#plg)"/>
-      <polyline points={svgPts} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round"/>
-    </svg>
+    <div style={{border:"2px solid var(--j-ink)",borderRadius:7,background:"#fbf6ea",padding:"4px",boxShadow:"inset 2px 2px 0 rgba(90,77,66,.06)"}}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" shapeRendering="crispEdges">
+        {/* grid */}
+        {pts.map((_,i)=> <line key={`v${i}`} x1={X(i)} y1={padT} x2={X(i)} y2={padT+innerH} stroke="#e3d9c4" strokeWidth="1"/>)}
+        {[0.5,1].map((g,i)=>{ const yy=padT+innerH*(1-g); return <line key={`h${i}`} x1={padL} y1={yy} x2={W-padR} y2={yy} stroke="#e3d9c4" strokeWidth="1"/>; })}
+        {/* zero baseline */}
+        <line x1={padL} y1={zeroY} x2={W-padR} y2={zeroY} stroke="#b0a290" strokeWidth="1.5" strokeDasharray="3 2"/>
+        {/* area block */}
+        <path d={area} fill={fillCol} fillOpacity="0.55"/>
+        {/* stepped line */}
+        <path d={d} fill="none" stroke={color} strokeWidth="3"/>
+        {/* pixel markers */}
+        {pts.map((v,i)=> <rect key={`m${i}`} x={X(i)-2.5} y={Y(v)-2.5} width="5" height="5" fill={fillCol} stroke="var(--j-ink)" strokeWidth="1.5"/>)}
+      </svg>
+    </div>
   );
 }
 
@@ -356,10 +370,11 @@ export default function JournalPage() {
         .j-tab.on{background:var(--j-win);border-color:var(--j-ink);border-bottom-color:var(--j-win);color:var(--j-ink);}
         .j-cell{aspect-ratio:1;border:1.5px solid var(--j-ink);border-radius:6px;background:var(--j-win);
                 display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;
-                font-family:'DM Mono';font-size:12px;position:relative;transition:.1s;}
+                font-family:'DM Mono';position:relative;transition:.1s;gap:1px;}
         .j-cell.empty{border:none;background:transparent;cursor:default;}
         .j-cell.sel{box-shadow:2px 2px 0 var(--j-ink);transform:translate(-1px,-1px);}
-        .j-dot{width:7px;height:7px;border-radius:50%;margin-top:2px;border:1px solid var(--j-ink);}
+        .j-day{font-size:12px;line-height:1;}
+        .j-pl{font-size:8px;font-weight:500;line-height:1;letter-spacing:-0.3px;}
       `}</style>
 
       {/* ── Header window ── */}
@@ -552,13 +567,13 @@ export default function JournalPage() {
                     const dayTrades = byDate[k]||[];
                     const net = dayTrades.reduce((s,t)=>s+t.totalPL,0);
                     const has = dayTrades.length>0;
-                    const dotColor = !has?"":net>0?"#8fd3b4":net<0?"#eda9a1":"var(--j-soft)";
+                    const netTxt = net>0?`+${Math.round(net)}`:net<0?`${Math.round(net)}`:"0";
                     return (
                       <div key={i} className={`j-cell ${calSelected===k?"sel":""}`}
                         onClick={()=>setCalSelected(k===calSelected?null:k)}
                         style={has?{background:net>0?"var(--j-mint)":net<0?"var(--j-pink)":"var(--j-lav)"}:{}}>
-                        <span>{d}</span>
-                        {has && <span className="j-dot" style={{background:dotColor}}/>}
+                        <span className="j-day">{d}</span>
+                        {has && <span className="j-pl" style={{color:net>0?"#3f9b73":net<0?"#d4685f":"var(--j-soft)"}}>{netTxt}</span>}
                       </div>
                     );
                   })}
