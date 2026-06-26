@@ -332,8 +332,8 @@ const WATCHLIST = [
 ];
 
 async function fetchTopMovers(key: string): Promise<{ gainers: Mover[]; losers: Mover[] }> {
-  // Fetch in smaller batches to avoid rate limit
-  const batch = WATCHLIST.slice(0, 20); // free tier ~30 req/s
+  // ดึงราคาหุ้นใหญ่ (จำกัดจำนวนกัน rate limit ของ free tier)
+  const batch = WATCHLIST.slice(0, 24);
   const quotes = await Promise.allSettled(
     batch.map(async (sym) => {
       const q = await fetchQuote(sym, key);
@@ -342,13 +342,13 @@ async function fetchTopMovers(key: string): Promise<{ gainers: Mover[]; losers: 
   );
   const valid = quotes
     .filter((r): r is PromiseFulfilledResult<Mover> => r.status === "fulfilled" && r.value.price > 0)
-    .map(r => r.value)
-    .sort((a, b) => b.changePct - a.changePct);
+    .map(r => r.value);
 
-  return {
-    gainers: valid.slice(0, 5),
-    losers: valid.slice(-5).reverse(),
-  };
+  // แยกตามเครื่องหมายจริง → ไม่มีทางทับกัน และ losers ต้องติดลบจริงเท่านั้น
+  const gainers = valid.filter(m => m.changePct > 0).sort((a, b) => b.changePct - a.changePct).slice(0, 5);
+  const losers  = valid.filter(m => m.changePct < 0).sort((a, b) => a.changePct - b.changePct).slice(0, 5);
+
+  return { gainers, losers };
 }
 
 // ─── Index config ─────────────────────────────────────────────────────────────
@@ -940,17 +940,23 @@ export default function Home() {
                 📉 Top 5 Losers
               </button>
             </div>
-            <p className="text-[10px] text-[var(--tx-5)] px-4 pt-2">S&P 500 + NASDAQ · วันนี้</p>
+            <p className="text-[10px] text-[var(--tx-5)] px-4 pt-2">หุ้นใหญ่ US 24 ตัว · วันนี้</p>
             <div className="divide-y divide-[var(--border)]">
-              {(loading ? Array(5).fill(null) : displayMovers).map((m, i) => {
-                if (!m) return (
+              {loading ? (
+                Array(5).fill(null).map((_, i) => (
                   <div key={i} className="flex items-center gap-3 px-4 py-2.5 animate-pulse">
                     <div className="w-5 h-3 bg-[var(--fill)] rounded" />
                     <div className="w-12 h-3 bg-[var(--fill)] rounded" />
                     <div className="flex-1 h-3 bg-[var(--fill)] rounded" />
                     <div className="w-14 h-3 bg-[var(--fill)] rounded" />
                   </div>
-                );
+                ))
+              ) : displayMovers.length === 0 ? (
+                <div className="px-4 py-8 text-center text-xs text-[var(--tx-4)]">
+                  {moversTab === "gainers" ? "วันนี้ยังไม่มีหุ้นที่บวก 🤔" : "วันนี้ยังไม่มีหุ้นที่ติดลบ 🎉"}
+                </div>
+              ) : (
+                displayMovers.map((m, i) => {
                 const pos = m.changePct >= 0;
                 return (
                   <div key={m.symbol} className="flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--hover)] transition-colors">
@@ -967,7 +973,8 @@ export default function Home() {
                     </span>
                   </div>
                 );
-              })}
+                })
+              )}
             </div>
           </div>
         </div>
