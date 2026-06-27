@@ -1,7 +1,7 @@
 {
   "crons": [
     {
-      "path": "/api/alert-check",
+      "path": "/api/alert-check?secret=yok_cron_2026",
       "schedule": "* * * * *"
     }
   ]
