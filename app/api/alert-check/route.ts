@@ -46,13 +46,6 @@ async function sendTelegram(msg: string) {
 
 // ── Cron handler ──────────────────────────────────────────────────────────────
 export async function GET(req: Request) {
-  // ป้องกันคนอื่นเรียก: เช็ค ?secret=CRON_SECRET ใน URL
-  // (Vercel free tier ไม่ส่ง Authorization header ให้ cron อัตโนมัติ)
-  const { searchParams } = new URL(req.url);
-  const secret = searchParams.get("secret");
-  if (process.env.CRON_SECRET && secret !== process.env.CRON_SECRET) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
 
   const supabase = getSupabase();
 
