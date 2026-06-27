@@ -98,6 +98,59 @@ export default function PortfolioClient() {
   const alertFiredRef                          = useRef<Set<string>>(new Set());
   const [notifPermission, setNotifPermission] = useState<"default"|"denied"|"granted">("default");
 
+  // ── Telegram Alerts ────────────────────────────────────────────────────────
+  const [showTgAlerts,   setShowTgAlerts]   = useState(false);
+  const [tgAlerts,       setTgAlerts]       = useState<any[]>([]);
+  const [tgLoading,      setTgLoading]      = useState(false);
+  const [tgForm,         setTgForm]         = useState({ ticker: "", price: "", condition: "above" as "above"|"below", label: "" });
+
+  const fetchTgAlerts = async () => {
+    setTgLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const res = await fetch("/api/alerts", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const data = await res.json();
+      if (Array.isArray(data)) setTgAlerts(data);
+    } catch { /* ignore */ }
+    setTgLoading(false);
+  };
+
+  const addTgAlert = async () => {
+    if (!tgForm.ticker || !tgForm.price) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { showToast("กรุณา Login ก่อน", "error"); return; }
+      const res = await fetch("/api/alerts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify(tgForm),
+      });
+      if (res.ok) {
+        setTgForm({ ticker: "", price: "", condition: "above", label: "" });
+        fetchTgAlerts();
+        showToast("✅ ตั้ง Alert แล้ว — Telegram จะแจ้งเตือนเมื่อราคาถึง");
+      }
+    } catch { showToast("เพิ่ม Alert ไม่ได้", "error"); }
+  };
+
+  const deleteTgAlert = async (id: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      await fetch(`/api/alerts?id=${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      setTgAlerts(prev => prev.filter(a => a.id !== id));
+      showToast("ลบ Alert แล้ว");
+    } catch { showToast("ลบไม่ได้", "error"); }
+  };
+
+  useEffect(() => { if (showTgAlerts) fetchTgAlerts(); }, [showTgAlerts]);
+
   const { currency, rate, lastUpdate: rateUpdate, toggleCurrency, format: fmtMoney } = useCurrency();
 
   // Keep positionsRef in sync with the latest positions (prevents stale closure in interval/refresh)
@@ -1330,6 +1383,99 @@ export default function PortfolioClient() {
           </div>
         );
       })()}
+
+      {/* ── Telegram Price Alerts ──────────────────────────────────────────────── */}
+      <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl overflow-hidden fade-up mt-4 mx-4">
+        <button onClick={()=>setShowTgAlerts(!showTgAlerts)}
+          className="w-full p-4 hover:bg-[var(--hover)] transition-colors flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-[var(--tx)]">📱 Telegram Alerts</h2>
+            {tgAlerts.filter(a=>!a.triggered).length > 0 && (
+              <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-black px-1.5 py-0.5 rounded-full border border-emerald-500/30">
+                {tgAlerts.filter(a=>!a.triggered).length} active
+              </span>
+            )}
+          </div>
+          <span className={`text-xs transition-transform duration-200 ${showTgAlerts?"rotate-180":""}`}>▼</span>
+        </button>
+
+        {showTgAlerts && (
+          <div className="border-t border-[var(--border)] p-4 space-y-4">
+            {/* form ตั้ง alert ใหม่ */}
+            <div className="bg-[var(--surface-2)] rounded-xl p-3 space-y-2">
+              <p className="text-xs font-bold text-[var(--tx-3)] uppercase tracking-wider">+ ตั้ง Alert ใหม่</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-[var(--tx-5)] mb-1 block">Ticker</label>
+                  <input value={tgForm.ticker} onChange={e=>setTgForm(p=>({...p,ticker:e.target.value.toUpperCase()}))}
+                    placeholder="AAPL" list="ticker-list"
+                    className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs font-mono outline-none focus:border-yellow-400 text-[var(--tx)] uppercase"/>
+                  <datalist id="ticker-list">
+                    {positions.map(p=><option key={p.ticker} value={p.ticker}/>)}
+                  </datalist>
+                </div>
+                <div>
+                  <label className="text-[10px] text-[var(--tx-5)] mb-1 block">ราคาเป้าหมาย ($)</label>
+                  <input type="number" step="0.01" value={tgForm.price} onChange={e=>setTgForm(p=>({...p,price:e.target.value}))}
+                    placeholder="150.00"
+                    className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs font-mono outline-none focus:border-yellow-400 text-[var(--tx)]"/>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-[var(--tx-5)] mb-1 block">เงื่อนไข</label>
+                  <select value={tgForm.condition} onChange={e=>setTgForm(p=>({...p,condition:e.target.value as any}))}
+                    className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs outline-none focus:border-yellow-400 text-[var(--tx)]">
+                    <option value="above">📈 ขึ้นถึง (above)</option>
+                    <option value="below">📉 ลงถึง (below)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-[var(--tx-5)] mb-1 block">Label (ไม่บังคับ)</label>
+                  <input value={tgForm.label} onChange={e=>setTgForm(p=>({...p,label:e.target.value}))}
+                    placeholder="แนวต้าน / TP1"
+                    className="w-full bg-[var(--surface)] border border-[var(--border)] rounded-lg px-2 py-2 text-xs outline-none focus:border-yellow-400 text-[var(--tx)]"/>
+                </div>
+              </div>
+              <button onClick={addTgAlert} disabled={!tgForm.ticker || !tgForm.price}
+                className="w-full py-2.5 bg-yellow-400 hover:bg-yellow-300 disabled:opacity-40 text-black text-xs font-black rounded-lg transition-colors">
+                🔔 ตั้ง Alert → Telegram
+              </button>
+            </div>
+
+            {/* รายการ alerts */}
+            {tgLoading ? (
+              <p className="text-center text-xs text-[var(--tx-5)] py-4">กำลังโหลด...</p>
+            ) : tgAlerts.length === 0 ? (
+              <p className="text-center text-xs text-[var(--tx-5)] py-4">ยังไม่มี Alert — ตั้งด้านบนได้เลย 🔔</p>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-[10px] text-[var(--tx-5)] uppercase tracking-wider font-bold">Alerts ที่ตั้งไว้</p>
+                {tgAlerts.map(a=>(
+                  <div key={a.id} className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-xs ${a.triggered?"border-[var(--border)] bg-[var(--surface-2)] opacity-50":"border-[var(--border)] bg-[var(--surface)]"}`}>
+                    <span className="text-base">{a.condition==="above"?"📈":"📉"}</span>
+                    <div className="flex-1 min-w-0">
+                      <span className="font-black text-[var(--tx)]">{a.ticker}</span>
+                      {a.label && <span className="text-[var(--tx-4)] ml-1">· {a.label}</span>}
+                      <div className="text-[var(--tx-4)] font-mono mt-0.5">
+                        {a.condition==="above"?"ขึ้นถึง":"ลงถึง"} <b className="text-[var(--tx)]">${Number(a.price).toFixed(2)}</b>
+                      </div>
+                    </div>
+                    {a.triggered ? (
+                      <span className="text-[10px] text-emerald-400 font-bold">✓ Sent</span>
+                    ) : (
+                      <span className="text-[10px] text-yellow-400 font-bold animate-pulse">● Active</span>
+                    )}
+                    <button onClick={()=>deleteTgAlert(a.id)}
+                      className="text-[10px] text-red-400 hover:text-red-300 font-bold ml-1">✕</button>
+                  </div>
+                ))}
+                <p className="text-[10px] text-[var(--tx-5)] pt-1">⏱ เช็คราคาทุก 1 นาที · ส่งข้อความ Telegram เมื่อถึงเป้า</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* ── NEW: Rebalance Calculator ──────────────────────────────────────────────── */}
       {(() => {
