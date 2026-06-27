@@ -143,6 +143,19 @@ const PASTELS: Record<string,string> = {
   butter:"var(--j-butter)", lav:"var(--j-lav)", coral:"var(--j-coral)", peach:"var(--j-peach)",
 };
 
+// ─── small retro UI atom (module-level เพื่อไม่ให้ remount ทุก keystroke) ──────
+function Win({title, color, children, controls=true}:{title:string;color:string;children:any;controls?:boolean}) {
+  return (
+    <div className="j-win">
+      <div className="j-bar" style={{background:color}}>
+        <span className="j-t">{title}</span>
+        {controls && <span className="j-ctrl"><span>_</span><span>▢</span><span>✕</span></span>}
+      </div>
+      <div className="j-body">{children}</div>
+    </div>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function JournalPage() {
   const [trades,  setTrades]  = useState<Trade[]>([]);
@@ -308,17 +321,6 @@ export default function JournalPage() {
   };
 
   const filtered = filter==="ALL" ? trades : trades.filter(t=>t.result===filter);
-
-  // ── small retro UI atoms ───────────────────────────────────────────────────
-  const Win = ({title, color, children, controls=true}:{title:string;color:string;children:any;controls?:boolean}) => (
-    <div className="j-win">
-      <div className="j-bar" style={{background:color}}>
-        <span className="j-t">{title}</span>
-        {controls && <span className="j-ctrl"><span>_</span><span>▢</span><span>✕</span></span>}
-      </div>
-      <div className="j-body">{children}</div>
-    </div>
-  );
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
