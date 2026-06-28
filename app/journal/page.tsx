@@ -174,6 +174,44 @@ export default function JournalPage() {
   const [calRef, setCalRef]         = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [calSelected, setCalSelected] = useState<string|null>(null);
 
+  // 8-bit animation states
+  const [booting,   setBooting]   = useState(true);
+  const [bootText,  setBootText]  = useState("");
+  const [bootDone,  setBootDone]  = useState(false);
+  const [pixels,    setPixels]    = useState<{id:number;x:number;y:number;c:string}[]>([]);
+  const [saving,    setSaving]    = useState(false);
+
+  // Boot sequence
+  useEffect(()=>{
+    const lines = [
+      "TRUSH JOURNAL v2.6 ...",
+      "LOADING SMC ENGINE ...",
+      "CONNECTING SUPABASE ...",
+      "READY. GOOD LUCK! ✦",
+    ];
+    let i=0, charIdx=0, current="";
+    const next = ()=>{
+      if(i>=lines.length){ setTimeout(()=>setBootDone(true),400); setTimeout(()=>setBooting(false),900); return; }
+      if(charIdx<lines[i].length){
+        current+=lines[i][charIdx]; charIdx++;
+        setBootText(lines.slice(0,i).join("\n")+(i>0?"\n":"")+current);
+        setTimeout(next, 38);
+      } else { i++; charIdx=0; current=""; setTimeout(next,300); }
+    };
+    setTimeout(next,400);
+  },[]);
+
+  // Pixel sparkle on save
+  const sparkle = ()=>{
+    const colors=["var(--j-mint)","var(--j-pink)","var(--j-butter)","var(--j-lav)","var(--j-coral)","var(--j-sky)"];
+    const ps = Array.from({length:18},(_,i)=>({
+      id:i, x:Math.random()*200-100, y:Math.random()*-120-20,
+      c:colors[Math.floor(Math.random()*colors.length)]
+    }));
+    setPixels(ps);
+    setTimeout(()=>setPixels([]),800);
+  };
+
   useEffect(()=>{
     const loadData = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -295,6 +333,7 @@ export default function JournalPage() {
       await supabase.from("journal_trades").upsert(row, { onConflict: "id" });
     }
     setForm(defaultForm()); setExitInput(""); setPasteInput(""); setEditId(null);
+    sparkle(); setSaving(true); setTimeout(()=>setSaving(false),900);
     setView("list");
   };
 
@@ -337,6 +376,59 @@ export default function JournalPage() {
           background-size:14px 14px;background-position:-7px -7px;
           padding-bottom:40px;
         }
+        /* ── Scanline overlay ── */
+        .j-root::before{
+          content:'';position:fixed;inset:0;pointer-events:none;z-index:999;
+          background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(90,77,66,.03) 2px,rgba(90,77,66,.03) 4px);
+          animation:scanmove 8s linear infinite;
+        }
+        @keyframes scanmove{ from{background-position:0 0} to{background-position:0 40px} }
+
+        /* ── Boot screen ── */
+        @keyframes bootfade{ from{opacity:1} to{opacity:0;transform:scale(1.04)} }
+        .j-boot{ position:fixed;inset:0;z-index:9999;background:#2a1f14;display:flex;flex-direction:column;
+                 align-items:center;justify-content:center;gap:18px; }
+        .j-boot.done{ animation:bootfade .5s ease forwards; }
+        .j-boot-logo{ font-family:'VT323',monospace;font-size:52px;color:#f6e6ac;letter-spacing:3px;
+                      text-shadow:0 0 20px #f6e6ac88,0 0 40px #f6e6ac44;animation:blink 1s step-end infinite; }
+        @keyframes blink{ 50%{opacity:.7} }
+        .j-boot-text{ font-family:'DM Mono',monospace;font-size:13px;color:#c0e6d4;white-space:pre;
+                      line-height:1.8;text-align:left;min-height:96px; }
+        .j-boot-cursor{ display:inline-block;width:9px;height:15px;background:#c0e6d4;
+                        animation:cur .7s step-end infinite;vertical-align:middle; }
+        @keyframes cur{ 50%{opacity:0} }
+        .j-boot-bar{ width:220px;height:10px;border:2px solid #c0e6d4;border-radius:2px;overflow:hidden; }
+        .j-boot-fill{ height:100%;background:#c0e6d4;animation:barfill 2.2s ease forwards; }
+        @keyframes barfill{ from{width:0%} to{width:100%} }
+
+        /* ── Window pop-in (8-bit snap) ── */
+        @keyframes winpop{
+          0%{opacity:0;transform:scale(.92) translate(0,6px)}
+          60%{transform:scale(1.03) translate(0,-2px)}
+          80%{transform:scale(.98)}
+          100%{opacity:1;transform:scale(1)}
+        }
+        .j-win{ animation:winpop .18s steps(3,end) both; }
+
+        /* ── Pixel sparkle ── */
+        .j-pixel{ position:absolute;width:8px;height:8px;border:1.5px solid var(--j-ink);
+                  pointer-events:none;animation:pixelfly .7s steps(4,end) forwards; }
+        @keyframes pixelfly{
+          0%{opacity:1;transform:translate(0,0) scale(1)}
+          50%{opacity:1;transform:translate(var(--px),var(--py)) scale(1.2)}
+          100%{opacity:0;transform:translate(var(--px),calc(var(--py) + 20px)) scale(0)}
+        }
+
+        /* ── Save floppy flash ── */
+        @keyframes savepulse{
+          0%,100%{box-shadow:3px 3px 0 var(--j-ink)}
+          50%{box-shadow:0 0 0 var(--j-ink),0 0 14px var(--j-mint)}
+        }
+        .j-saving{ animation:savepulse .2s steps(2,end) 4; }
+
+        /* ── Tab slide ── */
+        @keyframes tabslide{ from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:none} }
+        .j-tabcontent{ animation:tabslide .15s steps(2,end) both; }
         .j-win{background:var(--j-win);border:2.5px solid var(--j-ink);border-radius:9px;
                box-shadow:4px 4px 0 var(--j-ink);overflow:hidden;}
         .j-bar{display:flex;align-items:center;gap:7px;padding:7px 10px;border-bottom:2.5px solid var(--j-ink);}
@@ -379,6 +471,15 @@ export default function JournalPage() {
         .j-pl{font-size:8px;font-weight:500;line-height:1;letter-spacing:-0.3px;}
       `}</style>
 
+      {/* ── Boot Screen ── */}
+      {booting && (
+        <div className={`j-boot ${bootDone?"done":""}`}>
+          <div className="j-boot-logo">JOURNAL.EXE</div>
+          <div className="j-boot-bar"><div className="j-boot-fill"/></div>
+          <div className="j-boot-text">{bootText}<span className="j-boot-cursor"/></div>
+        </div>
+      )}
+
       {/* ── Header window ── */}
       <div style={{padding:"14px 12px 0"}}>
         <div className="j-win" style={{maxWidth:780,margin:"0 auto"}}>
@@ -417,9 +518,17 @@ export default function JournalPage() {
 
       <div style={{maxWidth:780,margin:"0 auto",padding:"16px 12px 0"}}>
 
+      {/* ── Pixel sparkle overlay ── */}
+      <div style={{position:"fixed",top:"50%",left:"50%",pointerEvents:"none",zIndex:1000}}>
+        {pixels.map(p=>(
+          <div key={p.id} className="j-pixel"
+            style={{"--px":`${p.x}px`,"--py":`${p.y}px`,background:p.c} as any}/>
+        ))}
+      </div>
+
       {/* ── DASHBOARD ── */}
       {view==="dashboard" && (
-        <div className="space-y-4">
+        <div className="space-y-4 j-tabcontent">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="j-stat" style={{background:"var(--j-mint)"}}><div className="j-num">{stats.winRate.toFixed(0)}%</div><div className="j-statlab">Win Rate</div></div>
             <div className="j-stat" style={{background:stats.totalPL>=0?"var(--j-sky)":"var(--j-coral)"}}><div className="j-num">{money(stats.totalPL)}</div><div className="j-statlab">Total P/L</div></div>
@@ -476,7 +585,7 @@ export default function JournalPage() {
 
       {/* ── LIST ── */}
       {view==="list" && (
-        <div className="space-y-3">
+        <div className="space-y-3 j-tabcontent">
           <div className="flex gap-2 items-center flex-wrap">
             {(["ALL","WIN","LOSS","BE"] as const).map(r=>(
               <button key={r} onClick={()=>setFilter(r)} className={`j-chip ${filter===r?"":"off"}`}
@@ -766,8 +875,8 @@ export default function JournalPage() {
 
           {/* Save */}
           <button onClick={saveTrade} disabled={!exits.length || !form.entryPrice}
-            className="j-btn w-full" style={{padding:16,background:"var(--j-coral)",fontSize:16}}>
-            {editId?"✓ UPDATE SESSION":`💾 SAVE (${exits.length} ord · ${money(totalPL)})`}
+            className={`j-btn w-full ${saving?"j-saving":""}`} style={{padding:16,background:"var(--j-coral)",fontSize:16}}>
+            {saving ? "💾 SAVING..." : editId?"✓ UPDATE SESSION":`💾 SAVE (${exits.length} ord · ${money(totalPL)})`}
           </button>
         </div>
       )}
