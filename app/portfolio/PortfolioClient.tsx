@@ -417,14 +417,53 @@ export default function PortfolioClient() {
     setModal({type:"edit",ticker});
   }
 
-  function loadSR(ticker: string) {
+  async function loadSR(ticker: string) {
     try {
+      // โหลดจาก Supabase ก่อน
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase
+          .from("sr_levels")
+          .select("*")
+          .eq("user_id", user.id)
+          .eq("ticker", ticker)
+          .single();
+        if (data) {
+          setSrInvest(String(data.invest || ""));
+          setSrS((data.supports || []).map(String).concat(["","",""]).slice(0,3));
+          setSrR((data.resists  || []).map(String).concat(["","",""]).slice(0,3));
+          return;
+        }
+      }
+      // fallback: localStorage
       const d = JSON.parse(localStorage.getItem(`sr_${ticker}`) || "{}");
       setSrInvest(d.invest||""); setSrS(d.s||["","",""]); setSrR(d.r||["","",""]);
-    } catch { setSrInvest(""); setSrS(["","",""]); setSrR(["","",""]); }
+    } catch {
+      setSrInvest(""); setSrS(["","",""]); setSrR(["","",""]);
+    }
   }
-  function saveSR(invest: string, s: string[], r: string[]) {
-    if (formTicker) localStorage.setItem(`sr_${formTicker}`, JSON.stringify({invest,s,r}));
+
+  async function saveSR(invest: string, s: string[], r: string[]) {
+    if (!formTicker) return;
+    // เซฟ localStorage ไว้ด้วย (fallback)
+    localStorage.setItem(`sr_${formTicker}`, JSON.stringify({invest,s,r}));
+    // เซฟ Supabase
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const supports = s.map(v => parseFloat(v)).filter(v => v > 0);
+      const resists  = r.map(v => parseFloat(v)).filter(v => v > 0);
+      await supabase.from("sr_levels").upsert({
+        user_id: user.id,
+        ticker: formTicker,
+        invest: parseFloat(invest) || 0,
+        supports,
+        resists,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "user_id,ticker" });
+    } catch (e) {
+      console.error("saveSR error", e);
+    }
   }
 
   async function deletePosition(ticker: string) {
@@ -1009,7 +1048,14 @@ export default function PortfolioClient() {
                     </div>
                   </div>
                   {(srInvest||srS.some(s=>s)||srR.some(r=>r)) && (
-                    <button type="button" onClick={()=>{setSrInvest("");setSrS(["","",""]);setSrR(["","",""]);if(formTicker)localStorage.removeItem(`sr_${formTicker}`);}}
+                    <button type="button" onClick={async ()=>{
+                      setSrInvest(""); setSrS(["","",""]); setSrR(["","",""]);
+                      if (formTicker) {
+                        localStorage.removeItem(`sr_${formTicker}`);
+                        const { data: { user } } = await supabase.auth.getUser();
+                        if (user) await supabase.from("sr_levels").delete().eq("user_id", user.id).eq("ticker", formTicker);
+                      }
+                    }}
                       className="w-full py-1.5 text-xs text-[var(--tx-5)] hover:text-red-400 border border-[var(--border)] hover:border-red-400/30 rounded-lg">
                       🗑 ล้างข้อมูล S/R
                     </button>
