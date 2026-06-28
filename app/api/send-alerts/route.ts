@@ -5,9 +5,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? "";
-const CHAT_ID = process.env.TELEGRAM_CHAT_ID ?? "";
+const CHAT_ID   = process.env.TELEGRAM_CHAT_ID   ?? "";
+const ALERT_PCT = 1.0; // แจ้งเตือนเมื่อราคาห่างจากแนวรับ/ต้าน ≤ 1%
 
-// ── Supabase (service role เพื่อ bypass RLS ฝั่ง cron) ───────────────────────
 function getSupabase() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,77 +15,84 @@ function getSupabase() {
   );
 }
 
-// ── ส่ง Telegram ──────────────────────────────────────────────────────────────
 async function sendTelegram(msg: string) {
   if (!BOT_TOKEN || !CHAT_ID) return;
   await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: CHAT_ID,
-      text: msg,
-      parse_mode: "HTML",
-    }),
+    body: JSON.stringify({ chat_id: CHAT_ID, text: msg, parse_mode: "HTML" }),
   });
 }
 
-// ── Cron handler ──────────────────────────────────────────────────────────────
-export async function GET(req: Request) {
+async function fetchPrice(ticker: string): Promise<number | null> {
+  try {
+    const res = await fetch(
+      `https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${process.env.NEXT_PUBLIC_FINNHUB_API_KEY}`,
+      { cache: "no-store" }
+    );
+    const d = await res.json();
+    return d.c > 0 ? Number(d.c) : null;
+  } catch { return null; }
+}
+
+export async function GET() {
   const supabase = getSupabase();
 
-  // ดึง alerts ที่ยังไม่ triggered ทั้งหมด (ทุก user)
-  const { data: alerts, error } = await supabase
-    .from("price_alerts")
-    .select("*")
-    .eq("triggered", false);
+  // ดึง S/R levels ทั้งหมดของทุก user
+  const { data: srRows, error } = await supabase
+    .from("sr_levels")
+    .select("ticker, supports, resists");
 
-  if (error || !alerts?.length) {
+  if (error || !srRows?.length) {
     return NextResponse.json({ ok: true, checked: 0 });
   }
 
-  // รวม ticker unique ไม่ดึงซ้ำ
-  const tickers = [...new Set(alerts.map((a: any) => a.ticker))];
+  // รวม ticker unique → ดึงราคาครั้งเดียว
+  const tickers = [...new Set(srRows.map((r: any) => r.ticker))];
   const prices: Record<string, number | null> = {};
   await Promise.all(tickers.map(async (t) => {
-    const res = await fetch(
-      `https://finnhub.io/api/v1/quote?symbol=${t}&token=${process.env.NEXT_PUBLIC_FINNHUB_API_KEY}`,
-      { next: { revalidate: 0 } }
-    );
-    const d = await res.json();
-    prices[t] = d.c > 0 ? Number(d.c) : null;
+    prices[t] = await fetchPrice(t);
   }));
 
   const triggered: string[] = [];
 
-  for (const alert of alerts as any[]) {
-    const price = prices[alert.ticker];
-    if (price === null) continue;
+  for (const row of srRows as any[]) {
+    const price = prices[row.ticker];
+    if (!price) continue;
 
-    const hit =
-      (alert.condition === "above" && price >= alert.price) ||
-      (alert.condition === "below" && price <= alert.price);
+    const supports: number[] = (row.supports || []).filter((v: number) => v > 0);
+    const resists:  number[] = (row.resists  || []).filter((v: number) => v > 0);
 
-    if (!hit) continue;
+    // เช็คแนวรับ
+    for (const lv of supports) {
+      const dist = Math.abs((price - lv) / lv) * 100;
+      if (dist <= ALERT_PCT) {
+        const msg =
+          `🟢 <b>แนวรับใกล้แล้ว!</b>\n` +
+          `<b>${row.ticker}</b>\n` +
+          `ราคาปัจจุบัน: <b>$${price.toFixed(2)}</b>\n` +
+          `แนวรับ: <b>$${lv.toFixed(2)}</b> (ห่าง ${dist.toFixed(2)}%)\n` +
+          `⏰ ${new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })}`;
+        await sendTelegram(msg);
+        triggered.push(`${row.ticker} S@${lv}`);
+      }
+    }
 
-    // mark triggered
-    await supabase
-      .from("price_alerts")
-      .update({ triggered: true })
-      .eq("id", alert.id);
-
-    // ส่ง Telegram
-    const arrow = alert.condition === "above" ? "📈" : "📉";
-    const label = alert.label ? ` (${alert.label})` : "";
-    const msg =
-      `${arrow} <b>Price Alert!</b>\n` +
-      `<b>${alert.ticker}</b>${label}\n` +
-      `ราคาปัจจุบัน: <b>$${price.toLocaleString("en-US", { minimumFractionDigits: 2 })}</b>\n` +
-      `เงื่อนไข: ${alert.condition === "above" ? "ขึ้นถึง" : "ลงถึง"} $${Number(alert.price).toLocaleString("en-US", { minimumFractionDigits: 2 })}\n` +
-      `⏰ ${new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })}`;
-
-    await sendTelegram(msg);
-    triggered.push(alert.ticker);
+    // เช็คแนวต้าน
+    for (const lv of resists) {
+      const dist = Math.abs((price - lv) / lv) * 100;
+      if (dist <= ALERT_PCT) {
+        const msg =
+          `🔴 <b>แนวต้านใกล้แล้ว!</b>\n` +
+          `<b>${row.ticker}</b>\n` +
+          `ราคาปัจจุบัน: <b>$${price.toFixed(2)}</b>\n` +
+          `แนวต้าน: <b>$${lv.toFixed(2)}</b> (ห่าง ${dist.toFixed(2)}%)\n` +
+          `⏰ ${new Date().toLocaleString("th-TH", { timeZone: "Asia/Bangkok" })}`;
+        await sendTelegram(msg);
+        triggered.push(`${row.ticker} R@${lv}`);
+      }
+    }
   }
 
-  return NextResponse.json({ ok: true, checked: alerts.length, triggered });
+  return NextResponse.json({ ok: true, checked: srRows.length, triggered });
 }
