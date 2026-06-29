@@ -70,14 +70,18 @@ function calcDD(trades: Trade[]) {
   return { dd: currentDD, maxDD, ddPct, maxDDPct };
 }
 
-// ─── Equity Curve ─────────────────────────────────────────────────────────────
+// ─── Equity Curve + DD (tab สลับ) ────────────────────────────────────────────
 function PLChart({ trades }: { trades: Trade[] }) {
+  const [tab, setTab] = useState<"equity"|"dd">("equity");
+
   if (trades.length < 2) return <p className="text-xs text-center py-6" style={{color:"var(--j-soft)",fontFamily:"'DM Mono',monospace"}}>need at least 2 sessions</p>;
   const sorted = [...trades].sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
   let cum=0;
   const pts = sorted.map(t=>{ cum+=t.totalPL; return cum; });
   const W=300,H=88,padL=6,padR=6,padT=8,padB=8;
   const innerW=W-padL-padR, innerH=H-padT-padB;
+
+  // Equity curve
   const mn=Math.min(0,...pts), mx=Math.max(...pts), range=mx-mn||1;
   const X=(i:number)=> padL+(pts.length===1?innerW/2:(i/(pts.length-1))*innerW);
   const Y=(v:number)=> padT+innerH-((v-mn)/range)*innerH;
@@ -87,52 +91,81 @@ function PLChart({ trades }: { trades: Trade[] }) {
   for(let i=1;i<pts.length;i++){ d+=` L ${X(i)} ${Y(pts[i-1])} L ${X(i)} ${Y(pts[i])}`; }
   const area=`${d} L ${X(pts.length-1)} ${padT+innerH} L ${X(0)} ${padT+innerH} Z`;
 
-  // DD overlay — หา peak ณ แต่ละจุด แล้ว shade ช่วง DD
-  let peak2=0;
-  const ddPts = pts.map(v=>{ if(v>peak2) peak2=v; return peak2-v; });
-  const maxDD = Math.max(...ddPts);
-
+  // DD series
   const { dd, maxDD: mxDD, ddPct, maxDDPct } = calcDD(trades);
+  let peak3=0;
+  const ddSeries = pts.map(v=>{ if(v>peak3) peak3=v; return peak3-v; });
+  const ddMax = Math.max(...ddSeries)||1;
+  const Ydd=(v:number)=> padT+innerH*( v/ddMax );
+  let ddPath=`M ${X(0)} ${Ydd(ddSeries[0])}`;
+  for(let i=1;i<ddSeries.length;i++){ ddPath+=` L ${X(i)} ${Ydd(ddSeries[i-1])} L ${X(i)} ${Ydd(ddSeries[i])}`; }
+  const ddArea=`${ddPath} L ${X(ddSeries.length-1)} ${padT+innerH} L ${X(0)} ${padT+innerH} Z`;
+
+  const tabBtn = (t:"equity"|"dd", label:string, bg:string) => (
+    <button onClick={()=>setTab(t)} style={{
+      fontFamily:"'DM Mono',monospace",fontSize:10,padding:"3px 10px",cursor:"pointer",
+      border:"1.5px solid var(--j-ink)",borderRadius:"5px 5px 0 0",
+      background: tab===t ? bg : "var(--j-win)",
+      color:"var(--j-ink)", fontWeight: tab===t ? 600 : 400,
+      borderBottom: tab===t ? `1.5px solid ${bg}` : "1.5px solid var(--j-ink)",
+      marginBottom: tab===t ? -1.5 : 0,
+    }}>{label}</button>
+  );
 
   return (
     <div>
-      <div style={{border:"2px solid var(--j-ink)",borderRadius:7,background:"#fbf6ea",padding:"4px"}}>
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" shapeRendering="crispEdges">
-          {pts.map((_,i)=><line key={`v${i}`} x1={X(i)} y1={padT} x2={X(i)} y2={padT+innerH} stroke="#e3d9c4" strokeWidth="1"/>)}
-          {[0.5,1].map((g,i)=>{ const yy=padT+innerH*(1-g); return <line key={`h${i}`} x1={padL} y1={yy} x2={W-padR} y2={yy} stroke="#e3d9c4" strokeWidth="1"/>; })}
-          <line x1={padL} y1={zeroY} x2={W-padR} y2={zeroY} stroke="#b0a290" strokeWidth="1.5" strokeDasharray="3 2"/>
-          {/* DD shading — แรเงาแดงช่วงที่ pullback จาก peak */}
-          {maxDD > 0 && pts.map((v,i)=>{
-            const peakY = Y(Math.max(...pts.slice(0,i+1)));
-            const curY = Y(v);
-            if(curY <= peakY) return null;
-            return <rect key={`dd${i}`} x={X(i)-1} y={peakY} width={i<pts.length-1?X(i+1)-X(i)+1:4} height={curY-peakY} fill="#d4685f" fillOpacity="0.18"/>;
-          })}
-          <path d={area} fill={fillCol} fillOpacity="0.55"/>
-          <path d={d} fill="none" stroke={color} strokeWidth="3"/>
-          {pts.map((v,i)=><rect key={`m${i}`} x={X(i)-2.5} y={Y(v)-2.5} width="5" height="5" fill={fillCol} stroke="var(--j-ink)" strokeWidth="1.5"/>)}
-        </svg>
+      {/* Tab bar */}
+      <div style={{display:"flex",gap:4,marginBottom:0,position:"relative",zIndex:1}}>
+        {tabBtn("equity","📈 Equity","var(--j-sky)")}
+        {tabBtn("dd","📉 Drawdown","var(--j-coral)")}
       </div>
-      {/* DD stats strip */}
-      <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}}>
-        <div style={{flex:1,background:"#f3c4cb55",border:"1.5px solid var(--j-ink)",borderRadius:7,padding:"6px 10px",minWidth:110}}>
-          <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>Current DD</div>
-          <div style={{fontFamily:"'VT323',monospace",fontSize:22,color:dd>0?"#d4685f":"#5fae89",lineHeight:1}}>{dd>0?`-$${dd.toFixed(2)}`:"+$0.00"}</div>
-          <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"#d4685f"}}>{ddPct>0?`-${ddPct.toFixed(1)}% from peak`:""}</div>
-        </div>
-        <div style={{flex:1,background:"#f6cdd555",border:"1.5px solid var(--j-ink)",borderRadius:7,padding:"6px 10px",minWidth:110}}>
-          <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>Max DD</div>
-          <div style={{fontFamily:"'VT323',monospace",fontSize:22,color:"#d4685f",lineHeight:1}}>{mxDD>0?`-$${mxDD.toFixed(2)}`:"+$0.00"}</div>
-          <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"#d4685f"}}>{maxDDPct>0?`-${maxDDPct.toFixed(1)}% worst peak`:""}</div>
-        </div>
-        <div style={{flex:1,background:"var(--j-lav)55",border:"1.5px solid var(--j-ink)",borderRadius:7,padding:"6px 10px",minWidth:110}}>
-          <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>DD Rule</div>
-          <div style={{fontFamily:"'VT323',monospace",fontSize:16,color:maxDDPct>20?"#d4685f":maxDDPct>10?"#d4a65f":"#5fae89",lineHeight:1.2}}>
-            {maxDDPct<=10?"✓ SAFE":maxDDPct<=20?"⚠ WATCH":"✕ DANGER"}
+
+      {/* Chart area */}
+      <div style={{border:"2px solid var(--j-ink)",borderRadius:"0 7px 7px 7px",background:"#fbf6ea",padding:"4px"}}>
+        {tab==="equity" ? (
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" shapeRendering="crispEdges">
+            {pts.map((_,i)=><line key={`v${i}`} x1={X(i)} y1={padT} x2={X(i)} y2={padT+innerH} stroke="#e3d9c4" strokeWidth="1"/>)}
+            {[0.5,1].map((g,i)=>{ const yy=padT+innerH*(1-g); return <line key={`h${i}`} x1={padL} y1={yy} x2={W-padR} y2={yy} stroke="#e3d9c4" strokeWidth="1"/>; })}
+            <line x1={padL} y1={zeroY} x2={W-padR} y2={zeroY} stroke="#b0a290" strokeWidth="1.5" strokeDasharray="3 2"/>
+            <path d={area} fill={fillCol} fillOpacity="0.55"/>
+            <path d={d} fill="none" stroke={color} strokeWidth="3"/>
+            {pts.map((v,i)=><rect key={`m${i}`} x={X(i)-2.5} y={Y(v)-2.5} width="5" height="5" fill={fillCol} stroke="var(--j-ink)" strokeWidth="1.5"/>)}
+          </svg>
+        ) : (
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" shapeRendering="crispEdges">
+            {pts.map((_,i)=><line key={`v${i}`} x1={X(i)} y1={padT} x2={X(i)} y2={padT+innerH} stroke="#e3d9c4" strokeWidth="1"/>)}
+            {[0.25,0.5,0.75].map((g,i)=>{ const yy=padT+innerH*g; return <line key={`h${i}`} x1={padL} y1={yy} x2={W-padR} y2={yy} stroke="#e3d9c4" strokeWidth="1"/>; })}
+            {/* DD 20% limit line */}
+            <line x1={padL} y1={Ydd(ddMax*0.2)} x2={W-padR} y2={Ydd(ddMax*0.2)} stroke="#d4685f" strokeWidth="1" strokeDasharray="3 2"/>
+            <path d={ddArea} fill="#f3c4cb" fillOpacity="0.55"/>
+            <path d={ddPath} fill="none" stroke="#d4685f" strokeWidth="3"/>
+            {ddSeries.map((v,i)=><rect key={`dm${i}`} x={X(i)-2.5} y={Ydd(v)-2.5} width="5" height="5" fill="#f3c4cb" stroke="var(--j-ink)" strokeWidth="1.5"/>)}
+          </svg>
+        )}
+      </div>
+
+      {/* DD stats — แสดงเฉพาะตอนกด DD tab */}
+      {tab==="dd" && (
+        <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}}>
+          <div style={{flex:1,background:"#f3c4cb55",border:"1.5px solid var(--j-ink)",borderRadius:7,padding:"6px 10px",minWidth:100}}>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>Current DD</div>
+            <div style={{fontFamily:"'VT323',monospace",fontSize:22,color:dd>0?"#d4685f":"#5fae89",lineHeight:1}}>{dd>0?`-$${dd.toFixed(2)}`:"+$0.00"}</div>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"#d4685f"}}>{ddPct>0?`-${ddPct.toFixed(1)}% from peak`:""}</div>
           </div>
-          <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)"}}>limit: 20% DD</div>
+          <div style={{flex:1,background:"#f6cdd555",border:"1.5px solid var(--j-ink)",borderRadius:7,padding:"6px 10px",minWidth:100}}>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>Max DD</div>
+            <div style={{fontFamily:"'VT323',monospace",fontSize:22,color:"#d4685f",lineHeight:1}}>{mxDD>0?`-$${mxDD.toFixed(2)}`:"+$0.00"}</div>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"#d4685f"}}>{maxDDPct>0?`-${maxDDPct.toFixed(1)}% worst`:""}</div>
+          </div>
+          <div style={{flex:1,background:"var(--j-lav)55",border:"1.5px solid var(--j-ink)",borderRadius:7,padding:"6px 10px",minWidth:100}}>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>Status</div>
+            <div style={{fontFamily:"'VT323',monospace",fontSize:18,color:maxDDPct>20?"#d4685f":maxDDPct>10?"#d4a65f":"#5fae89",lineHeight:1.2}}>
+              {maxDDPct<=10?"✓ SAFE":maxDDPct<=20?"⚠ WATCH":"✕ DANGER"}
+            </div>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)"}}>limit 20%</div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
