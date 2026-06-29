@@ -362,12 +362,12 @@ function AchievementBadges({ trades }: { trades: Trade[] }) {
 }
 
 // ─── Roadmap Widget ───────────────────────────────────────────────────────────
-const STARTING_CAPITAL = 100;
+const STARTING_CAPITAL = 50;   // ทุนเริ่มต้นจริง $50 (equity = 50 + P/L จาก journal)
 const MONTHLY_GOAL     = 2000;
 const TOTAL_TARGET     = 20000;
 
 const PHASES = [
-  { id:1, label:"Phase 1", months:"Month 1–8",   from:100,   to:1000,
+  { id:1, label:"Phase 1", months:"Month 1–8",   from:50,    to:1000,
     color:"var(--j-coral)",  risk:"$5/trade",
     focus:"No lot increase · journal every trade",
     reminder:"✦ Phase 1 : No FOMO · Journal every trade · R:R ≥ 1:2 only ✦" },
