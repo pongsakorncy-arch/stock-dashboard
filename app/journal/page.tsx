@@ -193,7 +193,175 @@ function Win({title,color,children,controls=true}:{title:string;color:string;chi
   );
 }
 
-// ─── ROADMAP WIDGET ───────────────────────────────────────────────────────────
+// ─── Weekly Mini Goals ────────────────────────────────────────────────────────
+const WEEKLY_GOALS = [
+  { id:"w1", label:"Win 3 trades",        check:(t:Trade[])=>t.filter(x=>x.result==="WIN").length>=3 },
+  { id:"w2", label:"R:R ≥ 2 × 3 trades", check:(t:Trade[])=>t.filter(x=>x.rr>=2).length>=3 },
+  { id:"w3", label:"No LOSS streak >2",   check:(t:Trade[])=>{
+    let streak=0,max=0;
+    [...t].sort((a,b)=>a.date.localeCompare(b.date)).forEach(x=>{ if(x.result==="LOSS"){streak++;max=Math.max(max,streak);}else streak=0; });
+    return max<=2;
+  }},
+  { id:"w4", label:"Journal 5 sessions",  check:(t:Trade[])=>t.length>=5 },
+  { id:"w5", label:"Win Rate ≥ 60%",      check:(t:Trade[])=>t.length>=3&&t.filter(x=>x.result==="WIN").length/t.length>=0.6 },
+];
+
+function WeeklyGoals({ trades }: { trades: Trade[] }) {
+  // เทรดของสัปดาห์นี้
+  const now = new Date();
+  const dow = now.getDay(); // 0=Sun
+  const monday = new Date(now); monday.setDate(now.getDate()-(dow===0?6:dow-1)); monday.setHours(0,0,0,0);
+  const weekStr = monday.toISOString().split("T")[0];
+  const weekTrades = trades.filter(t=>t.date>=weekStr);
+  const done = WEEKLY_GOALS.filter(g=>g.check(weekTrades)).length;
+
+  return (
+    <div className="j-win">
+      <div className="j-bar" style={{background:"var(--j-butter)"}}>
+        <span className="j-t">🎯 WEEKLY GOALS</span>
+        <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-ink)",fontWeight:600}}>
+          {done}/{WEEKLY_GOALS.length} done
+        </span>
+        <span className="j-ctrl"><span>_</span><span>▢</span><span>✕</span></span>
+      </div>
+      <div className="j-body" style={{display:"flex",flexDirection:"column",gap:7}}>
+        {/* progress bar */}
+        <div>
+          <div style={{height:10,border:"2px solid var(--j-ink)",borderRadius:6,overflow:"hidden",background:"var(--j-win)",display:"flex",marginBottom:6}}>
+            <div style={{background:"var(--j-mint)",width:`${(done/WEEKLY_GOALS.length)*100}%`,transition:"width .4s"}}/>
+          </div>
+          <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)"}}>
+            Week of {weekStr} · {weekTrades.length} sessions logged
+          </div>
+        </div>
+        {/* goal list */}
+        {WEEKLY_GOALS.map(g=>{
+          const ok = g.check(weekTrades);
+          return (
+            <div key={g.id} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 10px",
+              border:`2px solid var(--j-ink)`,borderRadius:8,
+              background: ok ? "var(--j-mint)" : "var(--j-win)",
+              boxShadow: ok ? "2px 2px 0 var(--j-ink)" : "none",
+              transition:"all .2s"}}>
+              <div style={{width:22,height:22,border:"2px solid var(--j-ink)",borderRadius:5,
+                background: ok?"var(--j-ink)":"transparent",
+                display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
+                fontFamily:"'VT323',monospace",fontSize:14,color:"var(--j-win)",
+                boxShadow: ok?"none":"1px 1px 0 var(--j-ink)"}}>
+                {ok?"✓":""}
+              </div>
+              <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,
+                color: ok?"var(--j-ink)":"var(--j-soft)",
+                textDecoration: ok?"line-through":"none",fontWeight:ok?600:400}}>
+                {g.label}
+              </span>
+              {ok && <span style={{marginLeft:"auto",fontSize:14}}>⭐</span>}
+            </div>
+          );
+        })}
+        {done===WEEKLY_GOALS.length && (
+          <div style={{background:"var(--j-lav)",border:"2px solid var(--j-ink)",borderRadius:8,padding:"10px",
+            textAlign:"center",fontFamily:"'VT323',monospace",fontSize:22,boxShadow:"2px 2px 0 var(--j-ink)"}}>
+            🏆 PERFECT WEEK! ALL GOALS DONE!
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Achievement Badges ───────────────────────────────────────────────────────
+const BADGES = [
+  { id:"b01", icon:"🔥", label:"First Blood",      desc:"First WIN trade",
+    check:(t:Trade[])=>t.some(x=>x.result==="WIN") },
+  { id:"b02", icon:"⚡", label:"Hat Trick",         desc:"3 WIN streak",
+    check:(t:Trade[])=>{ let s=0,mx=0; [...t].sort((a,b)=>a.date.localeCompare(b.date)).forEach(x=>{if(x.result==="WIN"){s++;mx=Math.max(mx,s);}else s=0;}); return mx>=3; }},
+  { id:"b03", icon:"💎", label:"Diamond Hands",     desc:"5 WIN streak",
+    check:(t:Trade[])=>{ let s=0,mx=0; [...t].sort((a,b)=>a.date.localeCompare(b.date)).forEach(x=>{if(x.result==="WIN"){s++;mx=Math.max(mx,s);}else s=0;}); return mx>=5; }},
+  { id:"b04", icon:"📐", label:"R:R Master",        desc:"R:R ≥ 2 five times",
+    check:(t:Trade[])=>t.filter(x=>x.rr>=2).length>=5 },
+  { id:"b05", icon:"🎯", label:"Sniper",            desc:"R:R ≥ 3 three times",
+    check:(t:Trade[])=>t.filter(x=>x.rr>=3).length>=3 },
+  { id:"b06", icon:"📓", label:"Loyal Logger",      desc:"10 sessions journaled",
+    check:(t:Trade[])=>t.length>=10 },
+  { id:"b07", icon:"📚", label:"Veteran",           desc:"50 sessions journaled",
+    check:(t:Trade[])=>t.length>=50 },
+  { id:"b08", icon:"💰", label:"First $50",         desc:"Cumulative profit ≥ $50",
+    check:(t:Trade[])=>t.reduce((s,x)=>s+x.totalPL,0)>=50 },
+  { id:"b09", icon:"💵", label:"Century Club",      desc:"Cumulative profit ≥ $100",
+    check:(t:Trade[])=>t.reduce((s,x)=>s+x.totalPL,0)>=100 },
+  { id:"b10", icon:"🏦", label:"Phase 1 Clear",     desc:"Equity reached $1,000",
+    check:(t:Trade[])=>STARTING_CAPITAL+t.reduce((s,x)=>s+x.totalPL,0)>=1000 },
+  { id:"b11", icon:"📊", label:"Win Machine",       desc:"Win rate ≥ 60% (min 10 trades)",
+    check:(t:Trade[])=>t.length>=10&&t.filter(x=>x.result==="WIN").length/t.length>=0.6 },
+  { id:"b12", icon:"🛡", label:"DD Guardian",       desc:"Max DD ≤ 10% (min 5 trades)",
+    check:(t:Trade[])=>{ if(t.length<5) return false; const {maxDDPct}=calcDD(t); return maxDDPct<=10; }},
+  { id:"b13", icon:"🌙", label:"Night Owl",         desc:"5 Tokyo session trades",
+    check:(t:Trade[])=>t.filter(x=>x.session==="Tokyo").length>=5 },
+  { id:"b14", icon:"☀️", label:"London Caller",    desc:"5 London session trades",
+    check:(t:Trade[])=>t.filter(x=>x.session==="London").length>=5 },
+  { id:"b15", icon:"🗺", label:"Session Master",    desc:"Trade all 4 sessions",
+    check:(t:Trade[])=>["Tokyo","London","New York","Overlap"].every(s=>t.some(x=>x.session===s)) },
+];
+
+function AchievementBadges({ trades }: { trades: Trade[] }) {
+  const [expand, setExpand] = useState(false);
+  const unlocked = BADGES.filter(b=>b.check(trades));
+  const locked   = BADGES.filter(b=>!b.check(trades));
+  const show = expand ? BADGES : BADGES.slice(0, 8);
+
+  return (
+    <div className="j-win">
+      <div className="j-bar" style={{background:"var(--j-lav)"}}>
+        <span className="j-t">🏆 ACHIEVEMENTS</span>
+        <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-ink)",fontWeight:600}}>
+          {unlocked.length}/{BADGES.length} unlocked
+        </span>
+        <span className="j-ctrl"><span>_</span><span>▢</span><span>✕</span></span>
+      </div>
+      <div className="j-body">
+        {/* summary bar */}
+        <div style={{marginBottom:12}}>
+          <div style={{height:8,border:"2px solid var(--j-ink)",borderRadius:5,overflow:"hidden",background:"var(--j-win)",marginBottom:4}}>
+            <div style={{height:"100%",background:"var(--j-lav)",width:`${(unlocked.length/BADGES.length)*100}%`,transition:"width .4s"}}/>
+          </div>
+          <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)"}}>
+            {unlocked.length} unlocked · {locked.length} remaining
+          </div>
+        </div>
+
+        {/* badge grid */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+          {(expand?BADGES:BADGES.slice(0,9)).map(b=>{
+            const ok = b.check(trades);
+            return (
+              <div key={b.id} title={b.desc} style={{
+                border:"2px solid var(--j-ink)",borderRadius:9,padding:"10px 8px",
+                textAlign:"center",cursor:"default",
+                background: ok ? "var(--j-win)" : "#f1e9da",
+                boxShadow: ok ? "3px 3px 0 var(--j-ink)" : "none",
+                opacity: ok ? 1 : 0.45,
+                transition:"all .2s",position:"relative",
+              }}>
+                {ok && <div style={{position:"absolute",top:4,right:5,width:7,height:7,borderRadius:"50%",background:"#5fae89",border:"1.5px solid var(--j-ink)"}}/>}
+                <div style={{fontSize:22,marginBottom:4,filter:ok?"none":"grayscale(1)"}}>{b.icon}</div>
+                <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,fontWeight:600,color:"var(--j-ink)",lineHeight:1.2}}>{b.label}</div>
+                <div style={{fontFamily:"'DM Mono',monospace",fontSize:8,color:"var(--j-soft)",marginTop:2,lineHeight:1.2}}>{b.desc}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        <button onClick={()=>setExpand(!expand)}
+          className="j-chip off" style={{width:"100%",marginTop:10,fontSize:10,textAlign:"center"}}>
+          {expand ? "▲ Show less" : `▼ Show all ${BADGES.length} badges`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Roadmap Widget ───────────────────────────────────────────────────────────
 const STARTING_CAPITAL = 100;
 const MONTHLY_GOAL     = 2000;
 const TOTAL_TARGET     = 20000;
@@ -582,6 +750,8 @@ export default function JournalPage() {
               </Win>
             </div>
             <Win title="📈 EQUITY CURVE + DRAWDOWN" color="var(--j-sky)"><PLChart trades={trades}/></Win>
+            <WeeklyGoals trades={trades}/>
+            <AchievementBadges trades={trades}/>
             <RoadmapWidget trades={trades}/>
             <Win title="🕘 RECENT SESSIONS" color="var(--j-peach)">
               {trades.slice(0,5).map(t=>(
