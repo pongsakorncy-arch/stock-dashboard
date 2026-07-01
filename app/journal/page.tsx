@@ -503,6 +503,29 @@ export default function JournalPage() {
   const [pixels,setPixels]           = useState<{id:number;x:number;y:number;c:string}[]>([]);
   const [saving,setSaving]           = useState(false);
 
+  // ── Daily Loss Limit ───────────────────────────────────────────────────────
+  const DAILY_LOSS_LIMIT = 3;
+  const [showLossAlert, setShowLossAlert] = useState(false);
+  const [lossAlertDismissed, setLossAlertDismissed] = useState<string>(() => {
+    try { return localStorage.getItem("yok_loss_dismissed") || ""; } catch { return ""; }
+  });
+
+  const todayStr = new Date().toISOString().split("T")[0];
+  const todayLosses = trades.filter(t => t.date === todayStr && t.result === "LOSS").length;
+
+  // เช็คทุกครั้งที่ trades เปลี่ยน
+  useEffect(()=>{
+    if (todayLosses >= DAILY_LOSS_LIMIT && lossAlertDismissed !== todayStr) {
+      setShowLossAlert(true);
+    }
+  }, [trades, todayLosses, lossAlertDismissed, todayStr]);
+
+  const dismissLossAlert = () => {
+    localStorage.setItem("yok_loss_dismissed", todayStr);
+    setLossAlertDismissed(todayStr);
+    setShowLossAlert(false);
+  };
+
   useEffect(()=>{
     const lines=["TRUSH JOURNAL v2.6 ...","LOADING SMC ENGINE ...","CONNECTING SUPABASE ...","READY. GOOD LUCK! ✦"];
     let i=0,charIdx=0,current="";
@@ -1013,6 +1036,75 @@ export default function JournalPage() {
           </div>
         )}
       </div>
+
+      {/* ── Daily Loss Alert ── */}
+      {showLossAlert && (
+        <div style={{position:"fixed",inset:0,zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center",padding:20,
+          background:"rgba(42,31,20,.85)",backdropFilter:"blur(3px)"}}>
+          <div className="j-win" style={{maxWidth:340,width:"100%",animation:"winpop .25s steps(3,end) both"}}>
+            {/* title bar */}
+            <div className="j-bar" style={{background:"var(--j-coral)"}}>
+              <span className="j-t">⚠️ DAILY LIMIT REACHED</span>
+              <span className="j-ctrl"><span>!</span></span>
+            </div>
+            <div className="j-body" style={{textAlign:"center",padding:"24px 20px"}}>
+              {/* ไอคอนใหญ่ */}
+              <div style={{fontSize:52,marginBottom:12,animation:"blink 1s step-end infinite"}}>🛑</div>
+
+              {/* ตัวเลข loss วันนี้ */}
+              <div style={{fontFamily:"'VT323',monospace",fontSize:48,color:"#d4685f",lineHeight:1,marginBottom:4}}>
+                {todayLosses} LOSSES
+              </div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",marginBottom:20,letterSpacing:1}}>
+                TODAY · LIMIT: {DAILY_LOSS_LIMIT}
+              </div>
+
+              {/* ข้อความหลัก */}
+              <div style={{background:"#fbf6ea",border:"2px solid var(--j-ink)",borderRadius:9,padding:"14px 16px",
+                marginBottom:20,boxShadow:"2px 2px 0 var(--j-ink)"}}>
+                <div style={{fontFamily:"'Fredoka',sans-serif",fontSize:18,fontWeight:700,color:"var(--j-ink)",lineHeight:1.4,marginBottom:8}}>
+                  พักเทรดก่อนนะ 🌿
+                </div>
+                <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--j-soft)",lineHeight:1.8}}>
+                  "ตลาดไม่เคยหนีไปไหน<br/>
+                  โอกาสยังมีเสมอ"
+                </div>
+              </div>
+
+              {/* stats วันนี้ */}
+              <div style={{display:"flex",gap:8,marginBottom:20}}>
+                <div style={{flex:1,background:"var(--j-mint)",border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px",boxShadow:"2px 2px 0 var(--j-ink)"}}>
+                  <div style={{fontFamily:"'DM Mono',monospace",fontSize:8,color:"var(--j-soft)",textTransform:"uppercase"}}>Today WIN</div>
+                  <div style={{fontFamily:"'VT323',monospace",fontSize:26,color:"#5fae89"}}>
+                    {trades.filter(t=>t.date===todayStr&&t.result==="WIN").length}
+                  </div>
+                </div>
+                <div style={{flex:1,background:"var(--j-coral)",border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px",boxShadow:"2px 2px 0 var(--j-ink)"}}>
+                  <div style={{fontFamily:"'DM Mono',monospace",fontSize:8,color:"var(--j-soft)",textTransform:"uppercase"}}>Today LOSS</div>
+                  <div style={{fontFamily:"'VT323',monospace",fontSize:26,color:"#d4685f"}}>{todayLosses}</div>
+                </div>
+                <div style={{flex:1,background:"var(--j-butter)",border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px",boxShadow:"2px 2px 0 var(--j-ink)"}}>
+                  <div style={{fontFamily:"'DM Mono',monospace",fontSize:8,color:"var(--j-soft)",textTransform:"uppercase"}}>Today P/L</div>
+                  <div style={{fontFamily:"'VT323',monospace",fontSize:22,
+                    color:trades.filter(t=>t.date===todayStr).reduce((s,t)=>s+t.totalPL,0)>=0?"#5fae89":"#d4685f"}}>
+                    {(()=>{const pl=trades.filter(t=>t.date===todayStr).reduce((s,t)=>s+t.totalPL,0); return (pl>=0?"+":"")+pl.toFixed(2);})()}
+                  </div>
+                </div>
+              </div>
+
+              {/* ปุ่ม */}
+              <button onClick={dismissLossAlert} className="j-btn" style={{
+                width:"100%",padding:"13px",background:"var(--j-mint)",fontSize:14,
+                fontFamily:"'Fredoka',sans-serif"}}>
+                ✓ รับทราบ — พักก่อนแล้วกัน
+              </button>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",marginTop:8}}>
+                popup นี้จะไม่ขึ้นอีกจนถึงพรุ่งนี้
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {lightbox&&(
         <div onClick={()=>setLightbox(null)} style={{position:"fixed",inset:0,background:"rgba(90,77,66,.75)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:20,cursor:"zoom-out"}}>
