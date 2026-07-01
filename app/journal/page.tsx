@@ -506,19 +506,23 @@ export default function JournalPage() {
   // ── Daily Loss Limit ───────────────────────────────────────────────────────
   const DAILY_LOSS_LIMIT = 3;
   const [showLossAlert, setShowLossAlert] = useState(false);
-  const [lossAlertDismissed, setLossAlertDismissed] = useState<string>(() => {
-    try { return localStorage.getItem("yok_loss_dismissed") || ""; } catch { return ""; }
+  const [lossAlertDismissed, setLossAlertDismissed] = useState<string>(()=>{
+    try {
+      const dismissed = localStorage.getItem("yok_loss_dismissed") || "";
+      const today = new Date().toISOString().split("T")[0];
+      return dismissed === today ? dismissed : ""; // วันใหม่ → reset อัตโนมัติ
+    } catch { return ""; }
   });
 
   const todayStr = new Date().toISOString().split("T")[0];
   const todayLosses = trades.filter(t => t.date === todayStr && t.result === "LOSS").length;
 
-  // เช็คทุกครั้งที่ trades เปลี่ยน
+  // เช็คทุกครั้งที่ trades โหลด / เปลี่ยน / view เปลี่ยน
   useEffect(()=>{
     if (todayLosses >= DAILY_LOSS_LIMIT && lossAlertDismissed !== todayStr) {
       setShowLossAlert(true);
     }
-  }, [trades, todayLosses, lossAlertDismissed, todayStr]);
+  }, [trades, todayLosses, lossAlertDismissed, todayStr, view]);
 
   const dismissLossAlert = () => {
     localStorage.setItem("yok_loss_dismissed", todayStr);
