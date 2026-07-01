@@ -34,6 +34,29 @@ const save = (t: Trade[]) => localStorage.setItem(KEY, JSON.stringify(t));
 const SMC_LIST: SMCConcept[] = ["OB","FVG","BOS","CHoCH","Liquidity","MSB","W-Pattern","M-Pattern","Other"];
 const SESSIONS: Session[]    = ["Tokyo","London","New York","Overlap"];
 
+const MAX_TRADES_PER_DAY = 3;
+const LOSS_WARN_AT      = 2;
+const LOSS_STOP_AT      = 3;
+
+function calcDailyStatus(trades: Trade[], todayStr: string) {
+  const todayTrades = [...trades].filter(t => t.date === todayStr).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const totalToday = todayTrades.length;
+  let lossStreak = 0;
+  for (let i = todayTrades.length - 1; i >= 0; i--) {
+    if (todayTrades[i].result === "LOSS") lossStreak++;
+    else break;
+  }
+  const tradesLeft   = Math.max(0, MAX_TRADES_PER_DAY - totalToday);
+  const isDayDone    = totalToday >= MAX_TRADES_PER_DAY;
+  const isHardStop   = lossStreak >= LOSS_STOP_AT;
+  const isWarnBreak  = lossStreak === LOSS_WARN_AT && !isHardStop;
+  const todayWins   = todayTrades.filter(t => t.result === "WIN").length;
+  const todayLosses = todayTrades.filter(t => t.result === "LOSS").length;
+  const todayBE     = todayTrades.filter(t => t.result === "BE").length;
+  const todayPL     = todayTrades.reduce((s, t) => s + t.totalPL, 0);
+  return { totalToday, tradesLeft, isDayDone, isHardStop, isWarnBreak, lossStreak, todayWins, todayLosses, todayBE, todayPL, todayTrades };
+}
+
 function calcPL(direction: Direction, entry: number, exit: number, lot: number, isCent = true): number {
   const diff = direction === "LONG" ? exit - entry : entry - exit;
   return Math.round(diff * lot * (isCent ? 1 : 100) * 100) / 100;
@@ -53,7 +76,6 @@ function calcStats(trades: Trade[]) {
   return { total:trades.length,wins,losses,be,winRate:wins/trades.length*100,totalPL,avgRR,best:Math.max(...pls),worst:Math.min(...pls),streak,streakType:first||"" };
 }
 
-// ─── DD Calculator ────────────────────────────────────────────────────────────
 function calcDD(trades: Trade[]) {
   if (trades.length < 2) return { dd: 0, maxDD: 0, ddPct: 0, maxDDPct: 0 };
   const sorted = [...trades].sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
@@ -70,18 +92,14 @@ function calcDD(trades: Trade[]) {
   return { dd: currentDD, maxDD, ddPct, maxDDPct };
 }
 
-// ─── Equity Curve + DD (tab สลับ) ────────────────────────────────────────────
 function PLChart({ trades }: { trades: Trade[] }) {
   const [tab, setTab] = useState<"equity"|"dd">("equity");
-
   if (trades.length < 2) return <p className="text-xs text-center py-6" style={{color:"var(--j-soft)",fontFamily:"'DM Mono',monospace"}}>need at least 2 sessions</p>;
   const sorted = [...trades].sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
   let cum=0;
   const pts = sorted.map(t=>{ cum+=t.totalPL; return cum; });
   const W=300,H=88,padL=6,padR=6,padT=8,padB=8;
   const innerW=W-padL-padR, innerH=H-padT-padB;
-
-  // Equity curve
   const mn=Math.min(0,...pts), mx=Math.max(...pts), range=mx-mn||1;
   const X=(i:number)=> padL+(pts.length===1?innerW/2:(i/(pts.length-1))*innerW);
   const Y=(v:number)=> padT+innerH-((v-mn)/range)*innerH;
@@ -90,39 +108,24 @@ function PLChart({ trades }: { trades: Trade[] }) {
   let d=`M ${X(0)} ${Y(pts[0])}`;
   for(let i=1;i<pts.length;i++){ d+=` L ${X(i)} ${Y(pts[i-1])} L ${X(i)} ${Y(pts[i])}`; }
   const area=`${d} L ${X(pts.length-1)} ${padT+innerH} L ${X(0)} ${padT+innerH} Z`;
-
-  // DD series
   const { dd, maxDD: mxDD, ddPct, maxDDPct } = calcDD(trades);
   let peak3=0;
   const ddSeries = pts.map(v=>{ if(v>peak3) peak3=v; return peak3-v; });
   const ddMax = Math.max(...ddSeries)||1;
-  const Ydd=(v:number)=> padT+innerH*( v/ddMax );
+  const Ydd=(v:number)=> padT+innerH*(v/ddMax);
   let ddPath=`M ${X(0)} ${Ydd(ddSeries[0])}`;
   for(let i=1;i<ddSeries.length;i++){ ddPath+=` L ${X(i)} ${Ydd(ddSeries[i-1])} L ${X(i)} ${Ydd(ddSeries[i])}`; }
   const ddArea=`${ddPath} L ${X(ddSeries.length-1)} ${padT+innerH} L ${X(0)} ${padT+innerH} Z`;
-
   const tabBtn = (t:"equity"|"dd", label:string, bg:string) => (
-    <button onClick={()=>setTab(t)} style={{
-      fontFamily:"'DM Mono',monospace",fontSize:10,padding:"3px 10px",cursor:"pointer",
-      border:"1.5px solid var(--j-ink)",borderRadius:"5px 5px 0 0",
-      background: tab===t ? bg : "var(--j-win)",
-      color:"var(--j-ink)", fontWeight: tab===t ? 600 : 400,
-      borderBottom: tab===t ? `1.5px solid ${bg}` : "1.5px solid var(--j-ink)",
-      marginBottom: tab===t ? -1.5 : 0,
-    }}>{label}</button>
+    <button onClick={()=>setTab(t)} style={{fontFamily:"'DM Mono',monospace",fontSize:10,padding:"3px 10px",cursor:"pointer",border:"1.5px solid var(--j-ink)",borderRadius:"5px 5px 0 0",background:tab===t?bg:"var(--j-win)",color:"var(--j-ink)",fontWeight:tab===t?600:400,borderBottom:tab===t?`1.5px solid ${bg}`:"1.5px solid var(--j-ink)",marginBottom:tab===t?-1.5:0}}>{label}</button>
   );
-
   return (
     <div>
-      {/* Tab bar */}
       <div style={{display:"flex",gap:4,marginBottom:0,position:"relative",zIndex:1}}>
-        {tabBtn("equity","📈 Equity","var(--j-sky)")}
-        {tabBtn("dd","📉 Drawdown","var(--j-coral)")}
+        {tabBtn("equity","📈 Equity","var(--j-sky)")}{tabBtn("dd","📉 Drawdown","var(--j-coral)")}
       </div>
-
-      {/* Chart area */}
       <div style={{border:"2px solid var(--j-ink)",borderRadius:"0 7px 7px 7px",background:"#fbf6ea",padding:"4px"}}>
-        {tab==="equity" ? (
+        {tab==="equity"?(
           <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" shapeRendering="crispEdges">
             {pts.map((_,i)=><line key={`v${i}`} x1={X(i)} y1={padT} x2={X(i)} y2={padT+innerH} stroke="#e3d9c4" strokeWidth="1"/>)}
             {[0.5,1].map((g,i)=>{ const yy=padT+innerH*(1-g); return <line key={`h${i}`} x1={padL} y1={yy} x2={W-padR} y2={yy} stroke="#e3d9c4" strokeWidth="1"/>; })}
@@ -131,11 +134,10 @@ function PLChart({ trades }: { trades: Trade[] }) {
             <path d={d} fill="none" stroke={color} strokeWidth="3"/>
             {pts.map((v,i)=><rect key={`m${i}`} x={X(i)-2.5} y={Y(v)-2.5} width="5" height="5" fill={fillCol} stroke="var(--j-ink)" strokeWidth="1.5"/>)}
           </svg>
-        ) : (
+        ):(
           <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" shapeRendering="crispEdges">
             {pts.map((_,i)=><line key={`v${i}`} x1={X(i)} y1={padT} x2={X(i)} y2={padT+innerH} stroke="#e3d9c4" strokeWidth="1"/>)}
             {[0.25,0.5,0.75].map((g,i)=>{ const yy=padT+innerH*g; return <line key={`h${i}`} x1={padL} y1={yy} x2={W-padR} y2={yy} stroke="#e3d9c4" strokeWidth="1"/>; })}
-            {/* DD 20% limit line */}
             <line x1={padL} y1={Ydd(ddMax*0.2)} x2={W-padR} y2={Ydd(ddMax*0.2)} stroke="#d4685f" strokeWidth="1" strokeDasharray="3 2"/>
             <path d={ddArea} fill="#f3c4cb" fillOpacity="0.55"/>
             <path d={ddPath} fill="none" stroke="#d4685f" strokeWidth="3"/>
@@ -143,9 +145,7 @@ function PLChart({ trades }: { trades: Trade[] }) {
           </svg>
         )}
       </div>
-
-      {/* DD stats — แสดงเฉพาะตอนกด DD tab */}
-      {tab==="dd" && (
+      {tab==="dd"&&(
         <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}}>
           <div style={{flex:1,background:"#f3c4cb55",border:"1.5px solid var(--j-ink)",borderRadius:7,padding:"6px 10px",minWidth:100}}>
             <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>Current DD</div>
@@ -159,9 +159,7 @@ function PLChart({ trades }: { trades: Trade[] }) {
           </div>
           <div style={{flex:1,background:"var(--j-lav)55",border:"1.5px solid var(--j-ink)",borderRadius:7,padding:"6px 10px",minWidth:100}}>
             <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",textTransform:"uppercase",letterSpacing:1,marginBottom:2}}>Status</div>
-            <div style={{fontFamily:"'VT323',monospace",fontSize:18,color:maxDDPct>20?"#d4685f":maxDDPct>10?"#d4a65f":"#5fae89",lineHeight:1.2}}>
-              {maxDDPct<=10?"✓ SAFE":maxDDPct<=20?"⚠ WATCH":"✕ DANGER"}
-            </div>
+            <div style={{fontFamily:"'VT323',monospace",fontSize:18,color:maxDDPct>20?"#d4685f":maxDDPct>10?"#d4a65f":"#5fae89",lineHeight:1.2}}>{maxDDPct<=10?"✓ SAFE":maxDDPct<=20?"⚠ WATCH":"✕ DANGER"}</div>
             <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)"}}>limit 20%</div>
           </div>
         </div>
@@ -193,76 +191,44 @@ function Win({title,color,children,controls=true}:{title:string;color:string;chi
   );
 }
 
-// ─── Weekly Mini Goals ────────────────────────────────────────────────────────
-const WEEKLY_GOALS = [
-  { id:"w1", label:"Win 3 trades",        check:(t:Trade[])=>t.filter(x=>x.result==="WIN").length>=3 },
-  { id:"w2", label:"R:R ≥ 2 × 3 trades", check:(t:Trade[])=>t.filter(x=>x.rr>=2).length>=3 },
-  { id:"w3", label:"No LOSS streak >2",   check:(t:Trade[])=>{
-    let streak=0,max=0;
-    [...t].sort((a,b)=>a.date.localeCompare(b.date)).forEach(x=>{ if(x.result==="LOSS"){streak++;max=Math.max(max,streak);}else streak=0; });
-    return max<=2;
-  }},
-  { id:"w4", label:"Journal 5 sessions",  check:(t:Trade[])=>t.length>=5 },
-  { id:"w5", label:"Win Rate ≥ 60%",      check:(t:Trade[])=>t.length>=3&&t.filter(x=>x.result==="WIN").length/t.length>=0.6 },
-];
-
-function WeeklyGoals({ trades }: { trades: Trade[] }) {
-  // เทรดของสัปดาห์นี้
-  const now = new Date();
-  const dow = now.getDay(); // 0=Sun
-  const monday = new Date(now); monday.setDate(now.getDate()-(dow===0?6:dow-1)); monday.setHours(0,0,0,0);
-  const weekStr = monday.toISOString().split("T")[0];
-  const weekTrades = trades.filter(t=>t.date>=weekStr);
-  const done = WEEKLY_GOALS.filter(g=>g.check(weekTrades)).length;
-
+function DailyStatusBar({ status }: { status: ReturnType<typeof calcDailyStatus> }) {
+  const { totalToday, tradesLeft, lossStreak, isHardStop, isWarnBreak, todayWins, todayLosses, todayBE, todayPL } = status;
+  const barColor = isHardStop ? "var(--j-coral)" : isWarnBreak ? "var(--j-butter)" : "var(--j-mint)";
+  const statusText = isHardStop ? "🛑 STOP — LOSS 3 ติด หยุดวันนี้"
+    : isWarnBreak ? "⚠️ พัก 1 ชั่วโมง — LOSS 2 ติด"
+    : totalToday >= MAX_TRADES_PER_DAY ? "✓ ครบ 3 ไม้แล้ววันนี้"
+    : `เหลือ ${tradesLeft} ไม้`;
   return (
-    <div className="j-win">
-      <div className="j-bar" style={{background:"var(--j-butter)"}}>
-        <span className="j-t">🎯 WEEKLY GOALS</span>
-        <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-ink)",fontWeight:600}}>
-          {done}/{WEEKLY_GOALS.length} done
-        </span>
-        <span className="j-ctrl"><span>_</span><span>▢</span><span>✕</span></span>
+    <div style={{border:"2.5px solid var(--j-ink)",borderRadius:9,overflow:"hidden",boxShadow:"3px 3px 0 var(--j-ink)"}}>
+      <div style={{background:barColor,borderBottom:"2px solid var(--j-ink)",padding:"6px 12px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,fontWeight:600}}>📅 TODAY</span>
+        <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,fontWeight:600}}>{statusText}</span>
       </div>
-      <div className="j-body" style={{display:"flex",flexDirection:"column",gap:7}}>
-        {/* progress bar */}
-        <div>
-          <div style={{height:10,border:"2px solid var(--j-ink)",borderRadius:6,overflow:"hidden",background:"var(--j-win)",display:"flex",marginBottom:6}}>
-            <div style={{background:"var(--j-mint)",width:`${(done/WEEKLY_GOALS.length)*100}%`,transition:"width .4s"}}/>
-          </div>
-          <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)"}}>
-            Week of {weekStr} · {weekTrades.length} sessions logged
-          </div>
-        </div>
-        {/* goal list */}
-        {WEEKLY_GOALS.map(g=>{
-          const ok = g.check(weekTrades);
-          return (
-            <div key={g.id} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 10px",
-              border:`2px solid var(--j-ink)`,borderRadius:8,
-              background: ok ? "var(--j-mint)" : "var(--j-win)",
-              boxShadow: ok ? "2px 2px 0 var(--j-ink)" : "none",
-              transition:"all .2s"}}>
-              <div style={{width:22,height:22,border:"2px solid var(--j-ink)",borderRadius:5,
-                background: ok?"var(--j-ink)":"transparent",
-                display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
-                fontFamily:"'VT323',monospace",fontSize:14,color:"var(--j-win)",
-                boxShadow: ok?"none":"1px 1px 0 var(--j-ink)"}}>
-                {ok?"✓":""}
+      <div style={{background:"var(--j-win)",padding:"10px 12px"}}>
+        <div style={{display:"flex",gap:6,marginBottom:10}}>
+          {Array.from({length:MAX_TRADES_PER_DAY}).map((_,i)=>{
+            const t = status.todayTrades[i];
+            const bg = !t ? "#e3d9c4" : t.result==="WIN" ? "var(--j-mint)" : t.result==="LOSS" ? "var(--j-coral)" : "var(--j-lav)";
+            const label = !t ? `ไม้ ${i+1}` : t.result==="WIN" ? "✓ WIN" : t.result==="LOSS" ? "✕ LOSS" : "= BE";
+            return (
+              <div key={i} style={{flex:1,border:"2px solid var(--j-ink)",borderRadius:7,padding:"7px 4px",textAlign:"center",background:bg,boxShadow:t?"2px 2px 0 var(--j-ink)":"none"}}>
+                <div style={{fontFamily:"'VT323',monospace",fontSize:15,lineHeight:1}}>{label}</div>
+                {t && <div style={{fontFamily:"'DM Mono',monospace",fontSize:8,color:"var(--j-soft)",marginTop:1}}>{t.time}</div>}
               </div>
-              <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,
-                color: ok?"var(--j-ink)":"var(--j-soft)",
-                textDecoration: ok?"line-through":"none",fontWeight:ok?600:400}}>
-                {g.label}
-              </span>
-              {ok && <span style={{marginLeft:"auto",fontSize:14}}>⭐</span>}
+            );
+          })}
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          {[{label:"WIN",val:todayWins,color:"#5fae89"},{label:"LOSS",val:todayLosses,color:"#e08a82"},{label:"BE",val:todayBE,color:"var(--j-soft)"},{label:"P/L",val:(todayPL>=0?"+":"")+todayPL.toFixed(2),color:todayPL>=0?"#5fae89":"#e08a82"}].map(s=>(
+            <div key={s.label} style={{flex:1,textAlign:"center"}}>
+              <div style={{fontFamily:"'VT323',monospace",fontSize:20,color:s.color,lineHeight:1}}>{s.val}</div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:8,color:"var(--j-soft)",textTransform:"uppercase"}}>{s.label}</div>
             </div>
-          );
-        })}
-        {done===WEEKLY_GOALS.length && (
-          <div style={{background:"var(--j-lav)",border:"2px solid var(--j-ink)",borderRadius:8,padding:"10px",
-            textAlign:"center",fontFamily:"'VT323',monospace",fontSize:22,boxShadow:"2px 2px 0 var(--j-ink)"}}>
-            🏆 PERFECT WEEK! ALL GOALS DONE!
+          ))}
+        </div>
+        {lossStreak >= LOSS_WARN_AT && (
+          <div style={{marginTop:8,background:isHardStop?"var(--j-coral)":"var(--j-butter)",border:"1.5px solid var(--j-ink)",borderRadius:7,padding:"6px 10px",fontFamily:"'DM Mono',monospace",fontSize:10,textAlign:"center"}}>
+            {isHardStop ? `🛑 LOSS ${lossStreak} ติดกัน — หยุดเทรดวันนี้ทันที` : `⚠️ LOSS ${lossStreak} ติดกัน — พัก 1 ชั่วโมงก่อนไม้สุดท้าย`}
           </div>
         )}
       </div>
@@ -270,131 +236,136 @@ function WeeklyGoals({ trades }: { trades: Trade[] }) {
   );
 }
 
-// ─── Achievement Badges ───────────────────────────────────────────────────────
+const WEEKLY_GOALS = [
+  { id:"w1", label:"Win 3 trades",        check:(t:Trade[])=>t.filter(x=>x.result==="WIN").length>=3 },
+  { id:"w2", label:"R:R ≥ 2 × 3 trades", check:(t:Trade[])=>t.filter(x=>x.rr>=2).length>=3 },
+  { id:"w3", label:"No LOSS streak >2",   check:(t:Trade[])=>{ let streak=0,max=0; [...t].sort((a,b)=>a.date.localeCompare(b.date)).forEach(x=>{ if(x.result==="LOSS"){streak++;max=Math.max(max,streak);}else streak=0; }); return max<=2; }},
+  { id:"w4", label:"Journal 5 sessions",  check:(t:Trade[])=>t.length>=5 },
+  { id:"w5", label:"Win Rate ≥ 60%",      check:(t:Trade[])=>t.length>=3&&t.filter(x=>x.result==="WIN").length/t.length>=0.6 },
+];
+
+function WeeklyGoals({ trades }: { trades: Trade[] }) {
+  const now = new Date();
+  const dow = now.getDay();
+  const monday = new Date(now); monday.setDate(now.getDate()-(dow===0?6:dow-1)); monday.setHours(0,0,0,0);
+  const weekStr = monday.toISOString().split("T")[0];
+  const weekTrades = trades.filter(t=>t.date>=weekStr);
+  const done = WEEKLY_GOALS.filter(g=>g.check(weekTrades)).length;
+  return (
+    <div className="j-win">
+      <div className="j-bar" style={{background:"var(--j-butter)"}}>
+        <span className="j-t">🎯 WEEKLY GOALS</span>
+        <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-ink)",fontWeight:600}}>{done}/{WEEKLY_GOALS.length} done</span>
+        <span className="j-ctrl"><span>_</span><span>▢</span><span>✕</span></span>
+      </div>
+      <div className="j-body" style={{display:"flex",flexDirection:"column",gap:7}}>
+        <div>
+          <div style={{height:10,border:"2px solid var(--j-ink)",borderRadius:6,overflow:"hidden",background:"var(--j-win)",display:"flex",marginBottom:6}}>
+            <div style={{background:"var(--j-mint)",width:`${(done/WEEKLY_GOALS.length)*100}%`,transition:"width .4s"}}/>
+          </div>
+          <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)"}}>Week of {weekStr} · {weekTrades.length} sessions logged</div>
+        </div>
+        {WEEKLY_GOALS.map(g=>{ const ok=g.check(weekTrades); return (
+          <div key={g.id} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 10px",border:"2px solid var(--j-ink)",borderRadius:8,background:ok?"var(--j-mint)":"var(--j-win)",boxShadow:ok?"2px 2px 0 var(--j-ink)":"none",transition:"all .2s"}}>
+            <div style={{width:22,height:22,border:"2px solid var(--j-ink)",borderRadius:5,background:ok?"var(--j-ink)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontFamily:"'VT323',monospace",fontSize:14,color:"var(--j-win)",boxShadow:ok?"none":"1px 1px 0 var(--j-ink)"}}>{ok?"✓":""}</div>
+            <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:ok?"var(--j-ink)":"var(--j-soft)",textDecoration:ok?"line-through":"none",fontWeight:ok?600:400}}>{g.label}</span>
+            {ok&&<span style={{marginLeft:"auto",fontSize:14}}>⭐</span>}
+          </div>
+        ); })}
+        {done===WEEKLY_GOALS.length&&(<div style={{background:"var(--j-lav)",border:"2px solid var(--j-ink)",borderRadius:8,padding:"10px",textAlign:"center",fontFamily:"'VT323',monospace",fontSize:22,boxShadow:"2px 2px 0 var(--j-ink)"}}>🏆 PERFECT WEEK! ALL GOALS DONE!</div>)}
+      </div>
+    </div>
+  );
+}
+
+const STARTING_CAPITAL = 50;
+const MONTHLY_GOAL     = 2000;
+const TOTAL_TARGET     = 20000;
+
 const BADGES = [
-  { id:"b01", icon:"🔥", label:"First Blood",      desc:"First WIN trade",
-    check:(t:Trade[])=>t.some(x=>x.result==="WIN") },
-  { id:"b02", icon:"⚡", label:"Hat Trick",         desc:"3 WIN streak",
-    check:(t:Trade[])=>{ let s=0,mx=0; [...t].sort((a,b)=>a.date.localeCompare(b.date)).forEach(x=>{if(x.result==="WIN"){s++;mx=Math.max(mx,s);}else s=0;}); return mx>=3; }},
-  { id:"b03", icon:"💎", label:"Diamond Hands",     desc:"5 WIN streak",
-    check:(t:Trade[])=>{ let s=0,mx=0; [...t].sort((a,b)=>a.date.localeCompare(b.date)).forEach(x=>{if(x.result==="WIN"){s++;mx=Math.max(mx,s);}else s=0;}); return mx>=5; }},
-  { id:"b04", icon:"📐", label:"R:R Master",        desc:"R:R ≥ 2 five times",
-    check:(t:Trade[])=>t.filter(x=>x.rr>=2).length>=5 },
-  { id:"b05", icon:"🎯", label:"Sniper",            desc:"R:R ≥ 3 three times",
-    check:(t:Trade[])=>t.filter(x=>x.rr>=3).length>=3 },
-  { id:"b06", icon:"📓", label:"Loyal Logger",      desc:"10 sessions journaled",
-    check:(t:Trade[])=>t.length>=10 },
-  { id:"b07", icon:"📚", label:"Veteran",           desc:"50 sessions journaled",
-    check:(t:Trade[])=>t.length>=50 },
-  { id:"b08", icon:"💰", label:"First $50",         desc:"Cumulative profit ≥ $50",
-    check:(t:Trade[])=>t.reduce((s,x)=>s+x.totalPL,0)>=50 },
-  { id:"b09", icon:"💵", label:"Century Club",      desc:"Cumulative profit ≥ $100",
-    check:(t:Trade[])=>t.reduce((s,x)=>s+x.totalPL,0)>=100 },
-  { id:"b10", icon:"🏦", label:"Phase 1 Clear",     desc:"Equity reached $1,000",
-    check:(t:Trade[])=>STARTING_CAPITAL+t.reduce((s,x)=>s+x.totalPL,0)>=1000 },
-  { id:"b11", icon:"📊", label:"Win Machine",       desc:"Win rate ≥ 60% (min 10 trades)",
-    check:(t:Trade[])=>t.length>=10&&t.filter(x=>x.result==="WIN").length/t.length>=0.6 },
-  { id:"b12", icon:"🛡", label:"DD Guardian",       desc:"Max DD ≤ 10% (min 5 trades)",
-    check:(t:Trade[])=>{ if(t.length<5) return false; const {maxDDPct}=calcDD(t); return maxDDPct<=10; }},
-  { id:"b13", icon:"🌙", label:"Night Owl",         desc:"5 Tokyo session trades",
-    check:(t:Trade[])=>t.filter(x=>x.session==="Tokyo").length>=5 },
-  { id:"b14", icon:"☀️", label:"London Caller",    desc:"5 London session trades",
-    check:(t:Trade[])=>t.filter(x=>x.session==="London").length>=5 },
-  { id:"b15", icon:"🗺", label:"Session Master",    desc:"Trade all 4 sessions",
-    check:(t:Trade[])=>["Tokyo","London","New York","Overlap"].every(s=>t.some(x=>x.session===s)) },
+  { id:"b01", icon:"🔥", label:"First Blood",    desc:"First WIN trade",                 check:(t:Trade[])=>t.some(x=>x.result==="WIN") },
+  { id:"b02", icon:"⚡", label:"Hat Trick",       desc:"3 WIN streak",                    check:(t:Trade[])=>{ let s=0,mx=0; [...t].sort((a,b)=>a.date.localeCompare(b.date)).forEach(x=>{if(x.result==="WIN"){s++;mx=Math.max(mx,s);}else s=0;}); return mx>=3; }},
+  { id:"b03", icon:"💎", label:"Diamond Hands",   desc:"5 WIN streak",                    check:(t:Trade[])=>{ let s=0,mx=0; [...t].sort((a,b)=>a.date.localeCompare(b.date)).forEach(x=>{if(x.result==="WIN"){s++;mx=Math.max(mx,s);}else s=0;}); return mx>=5; }},
+  { id:"b04", icon:"📐", label:"R:R Master",      desc:"R:R ≥ 2 five times",             check:(t:Trade[])=>t.filter(x=>x.rr>=2).length>=5 },
+  { id:"b05", icon:"🎯", label:"Sniper",          desc:"R:R ≥ 3 three times",            check:(t:Trade[])=>t.filter(x=>x.rr>=3).length>=3 },
+  { id:"b06", icon:"📓", label:"Loyal Logger",    desc:"10 sessions journaled",           check:(t:Trade[])=>t.length>=10 },
+  { id:"b07", icon:"📚", label:"Veteran",         desc:"50 sessions journaled",           check:(t:Trade[])=>t.length>=50 },
+  { id:"b08", icon:"💰", label:"First $50",       desc:"Cumulative profit ≥ $50",         check:(t:Trade[])=>t.reduce((s,x)=>s+x.totalPL,0)>=50 },
+  { id:"b09", icon:"💵", label:"Century Club",    desc:"Cumulative profit ≥ $100",        check:(t:Trade[])=>t.reduce((s,x)=>s+x.totalPL,0)>=100 },
+  { id:"b10", icon:"🏦", label:"Phase 1 Clear",   desc:"Equity reached $1,000",           check:(t:Trade[])=>STARTING_CAPITAL+t.reduce((s,x)=>s+x.totalPL,0)>=1000 },
+  { id:"b11", icon:"📊", label:"Win Machine",     desc:"Win rate ≥ 60% (min 10 trades)", check:(t:Trade[])=>t.length>=10&&t.filter(x=>x.result==="WIN").length/t.length>=0.6 },
+  { id:"b12", icon:"🛡", label:"DD Guardian",     desc:"Max DD ≤ 10% (min 5 trades)",    check:(t:Trade[])=>{ if(t.length<5) return false; const {maxDDPct}=calcDD(t); return maxDDPct<=10; }},
+  { id:"b13", icon:"🌙", label:"Night Owl",       desc:"5 Tokyo session trades",          check:(t:Trade[])=>t.filter(x=>x.session==="Tokyo").length>=5 },
+  { id:"b14", icon:"☀️", label:"London Caller",  desc:"5 London session trades",         check:(t:Trade[])=>t.filter(x=>x.session==="London").length>=5 },
+  { id:"b15", icon:"🗺", label:"Session Master",  desc:"Trade all 4 sessions",            check:(t:Trade[])=>["Tokyo","London","New York","Overlap"].every(s=>t.some(x=>x.session===s)) },
+  { id:"b16", icon:"🧘", label:"Iron Mind",       desc:"หยุดได้หลัง LOSS 3 ติด ×3 ครั้ง",
+    check:(t:Trade[])=>{
+      const byDate: Record<string,Trade[]> = {};
+      t.forEach(x=>{ (byDate[x.date]||=[]).push(x); });
+      let ironCount = 0;
+      Object.values(byDate).forEach(dayTrades=>{
+        const sorted = [...dayTrades].sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
+        let lStreak=0;
+        for(const x of sorted){ if(x.result==="LOSS") lStreak++; else lStreak=0; }
+        if(lStreak>=3 && sorted.length<=3) ironCount++;
+      });
+      return ironCount>=3;
+    }},
 ];
 
 function AchievementBadges({ trades }: { trades: Trade[] }) {
   const [expand, setExpand] = useState(false);
   const unlocked = BADGES.filter(b=>b.check(trades));
   const locked   = BADGES.filter(b=>!b.check(trades));
-  const show = expand ? BADGES : BADGES.slice(0, 8);
-
   return (
     <div className="j-win">
       <div className="j-bar" style={{background:"var(--j-lav)"}}>
         <span className="j-t">🏆 ACHIEVEMENTS</span>
-        <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-ink)",fontWeight:600}}>
-          {unlocked.length}/{BADGES.length} unlocked
-        </span>
+        <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-ink)",fontWeight:600}}>{unlocked.length}/{BADGES.length} unlocked</span>
         <span className="j-ctrl"><span>_</span><span>▢</span><span>✕</span></span>
       </div>
       <div className="j-body">
-        {/* summary bar */}
         <div style={{marginBottom:12}}>
           <div style={{height:8,border:"2px solid var(--j-ink)",borderRadius:5,overflow:"hidden",background:"var(--j-win)",marginBottom:4}}>
             <div style={{height:"100%",background:"var(--j-lav)",width:`${(unlocked.length/BADGES.length)*100}%`,transition:"width .4s"}}/>
           </div>
-          <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)"}}>
-            {unlocked.length} unlocked · {locked.length} remaining
-          </div>
+          <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)"}}>{unlocked.length} unlocked · {locked.length} remaining</div>
         </div>
-
-        {/* badge grid */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
-          {(expand?BADGES:BADGES.slice(0,9)).map(b=>{
-            const ok = b.check(trades);
-            return (
-              <div key={b.id} title={b.desc} style={{
-                border:"2px solid var(--j-ink)",borderRadius:9,padding:"10px 8px",
-                textAlign:"center",cursor:"default",
-                background: ok ? "var(--j-win)" : "#f1e9da",
-                boxShadow: ok ? "3px 3px 0 var(--j-ink)" : "none",
-                opacity: ok ? 1 : 0.45,
-                transition:"all .2s",position:"relative",
-              }}>
-                {ok && <div style={{position:"absolute",top:4,right:5,width:7,height:7,borderRadius:"50%",background:"#5fae89",border:"1.5px solid var(--j-ink)"}}/>}
-                <div style={{fontSize:22,marginBottom:4,filter:ok?"none":"grayscale(1)"}}>{b.icon}</div>
-                <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,fontWeight:600,color:"var(--j-ink)",lineHeight:1.2}}>{b.label}</div>
-                <div style={{fontFamily:"'DM Mono',monospace",fontSize:8,color:"var(--j-soft)",marginTop:2,lineHeight:1.2}}>{b.desc}</div>
-              </div>
-            );
-          })}
+          {(expand?BADGES:BADGES.slice(0,9)).map(b=>{ const ok=b.check(trades); return (
+            <div key={b.id} title={b.desc} style={{border:"2px solid var(--j-ink)",borderRadius:9,padding:"10px 8px",textAlign:"center",cursor:"default",background:ok?"var(--j-win)":"#f1e9da",boxShadow:ok?"3px 3px 0 var(--j-ink)":"none",opacity:ok?1:0.45,transition:"all .2s",position:"relative"}}>
+              {ok&&<div style={{position:"absolute",top:4,right:5,width:7,height:7,borderRadius:"50%",background:"#5fae89",border:"1.5px solid var(--j-ink)"}}/>}
+              <div style={{fontSize:22,marginBottom:4,filter:ok?"none":"grayscale(1)"}}>{b.icon}</div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,fontWeight:600,color:"var(--j-ink)",lineHeight:1.2}}>{b.label}</div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:8,color:"var(--j-soft)",marginTop:2,lineHeight:1.2}}>{b.desc}</div>
+            </div>
+          ); })}
         </div>
-
-        <button onClick={()=>setExpand(!expand)}
-          className="j-chip off" style={{width:"100%",marginTop:10,fontSize:10,textAlign:"center"}}>
-          {expand ? "▲ Show less" : `▼ Show all ${BADGES.length} badges`}
+        <button onClick={()=>setExpand(!expand)} className="j-chip off" style={{width:"100%",marginTop:10,fontSize:10,textAlign:"center"}}>
+          {expand?"▲ Show less":`▼ Show all ${BADGES.length} badges`}
         </button>
       </div>
     </div>
   );
 }
 
-// ─── Roadmap Widget ───────────────────────────────────────────────────────────
-const STARTING_CAPITAL = 50;   // ทุนเริ่มต้นจริง $50 (equity = 50 + P/L จาก journal)
-const MONTHLY_GOAL     = 2000;
-const TOTAL_TARGET     = 20000;
-
 const PHASES = [
-  { id:1, label:"Phase 1", months:"Month 1–8",   from:50,    to:1000,
-    color:"var(--j-coral)",  risk:"$5/trade",
-    focus:"No lot increase · journal every trade",
-    reminder:"✦ Phase 1 : No FOMO · Journal every trade · R:R ≥ 1:2 only ✦" },
-  { id:2, label:"Phase 2", months:"Month 9–18",  from:1000,  to:12000,
-    color:"var(--j-butter)", risk:"$20–150/trade",
-    focus:"Add $500/mo · win rate ≥ 55%",
-    reminder:"✦ Phase 2 : Add capital regularly · Win rate ≥ 55% · No overtrade ✦" },
-  { id:3, label:"Phase 3", months:"Month 19–24", from:12000, to:20000,
-    color:"var(--j-mint)",   risk:"$150–200/trade",
-    focus:"Withdraw $2,000/mo · control DD",
-    reminder:"✦ Phase 3 : Withdraw $2,000/mo · Control DD · You are almost there ✦" },
+  { id:1, label:"Phase 1", months:"Month 1–8",   from:50,    to:1000,  color:"var(--j-coral)",  risk:"$5/trade",      focus:"No lot increase · journal every trade", reminder:"✦ Phase 1 : No FOMO · Journal every trade · R:R ≥ 1:2 only ✦" },
+  { id:2, label:"Phase 2", months:"Month 9–18",  from:1000,  to:12000, color:"var(--j-butter)", risk:"$20–150/trade", focus:"Add $500/mo · win rate ≥ 55%",          reminder:"✦ Phase 2 : Add capital regularly · Win rate ≥ 55% · No overtrade ✦" },
+  { id:3, label:"Phase 3", months:"Month 19–24", from:12000, to:20000, color:"var(--j-mint)",   risk:"$150–200/trade",focus:"Withdraw $2,000/mo · control DD",        reminder:"✦ Phase 3 : Withdraw $2,000/mo · Control DD · You are almost there ✦" },
 ];
 
 function RoadmapWidget({ trades }: { trades: Trade[] }) {
-  const totalPL       = trades.reduce((s,t) => s+t.totalPL, 0);
-  const currentEquity = Math.max(0, STARTING_CAPITAL + totalPL);
-  const currentPhase  = PHASES.find(p => currentEquity < p.to) || PHASES[PHASES.length-1];
-  const phaseProgress = Math.min(100, Math.max(0,
-    ((currentEquity - currentPhase.from) / (currentPhase.to - currentPhase.from)) * 100
-  ));
-  const overallPct = Math.min(100, (currentEquity / TOTAL_TARGET) * 100);
-  const now       = new Date();
-  const thisMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
-  const monthlyPL = trades.filter(t => t.date.startsWith(thisMonth)).reduce((s,t) => s+t.totalPL, 0);
-  const fmt  = (v: number) => `$${Math.abs(v).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-  const sign = (v: number) => v >= 0 ? "+" : "-";
-
+  const totalPL=trades.reduce((s,t)=>s+t.totalPL,0);
+  const currentEquity=Math.max(0,STARTING_CAPITAL+totalPL);
+  const currentPhase=PHASES.find(p=>currentEquity<p.to)||PHASES[PHASES.length-1];
+  const phaseProgress=Math.min(100,Math.max(0,((currentEquity-currentPhase.from)/(currentPhase.to-currentPhase.from))*100));
+  const overallPct=Math.min(100,(currentEquity/TOTAL_TARGET)*100);
+  const now=new Date();
+  const thisMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+  const monthlyPL=trades.filter(t=>t.date.startsWith(thisMonth)).reduce((s,t)=>s+t.totalPL,0);
+  const fmt=(v:number)=>`$${Math.abs(v).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const sign=(v:number)=>v>=0?"+":"-";
   return (
     <div className="j-win">
       <div className="j-bar" style={{background:"var(--j-lav)"}}>
@@ -403,82 +374,30 @@ function RoadmapWidget({ trades }: { trades: Trade[] }) {
       </div>
       <div className="j-body" style={{display:"flex",flexDirection:"column",gap:12}}>
         <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between"}}>
-          <div>
-            <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",marginBottom:2}}>CURRENT EQUITY</div>
-            <div style={{fontFamily:"'VT323',monospace",fontSize:36,lineHeight:1}}>{fmt(currentEquity)}</div>
-          </div>
-          <div style={{textAlign:"right"}}>
-            <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",marginBottom:2}}>THIS MONTH</div>
-            <div style={{fontFamily:"'VT323',monospace",fontSize:24,lineHeight:1,color:monthlyPL>=0?"#5fae89":"#e08a82"}}>
-              {sign(monthlyPL)}{fmt(monthlyPL)}
-            </div>
-          </div>
+          <div><div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",marginBottom:2}}>CURRENT EQUITY</div><div style={{fontFamily:"'VT323',monospace",fontSize:36,lineHeight:1}}>{fmt(currentEquity)}</div></div>
+          <div style={{textAlign:"right"}}><div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",marginBottom:2}}>THIS MONTH</div><div style={{fontFamily:"'VT323',monospace",fontSize:24,lineHeight:1,color:monthlyPL>=0?"#5fae89":"#e08a82"}}>{sign(monthlyPL)}{fmt(monthlyPL)}</div></div>
         </div>
         <div>
-          <div style={{display:"flex",justifyContent:"space-between",fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",marginBottom:4}}>
-            <span>$100</span>
-            <span style={{color:"var(--j-ink)",fontWeight:500}}>{overallPct.toFixed(1)}% to {fmt(TOTAL_TARGET)}</span>
-            <span>{fmt(TOTAL_TARGET)}</span>
-          </div>
+          <div style={{display:"flex",justifyContent:"space-between",fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",marginBottom:4}}><span>$50</span><span style={{color:"var(--j-ink)",fontWeight:500}}>{overallPct.toFixed(1)}% to {fmt(TOTAL_TARGET)}</span><span>{fmt(TOTAL_TARGET)}</span></div>
           <div style={{height:12,border:"2px solid var(--j-ink)",borderRadius:6,overflow:"hidden",background:"var(--j-win)",display:"flex"}}>
-            {PHASES.map(p => {
-              const segW  = ((p.to - p.from) / TOTAL_TARGET) * 100;
-              const filled = Math.min(100, Math.max(0, ((currentEquity - p.from) / (p.to - p.from)) * 100));
-              return (
-                <div key={p.id} style={{width:`${segW}%`,position:"relative",overflow:"hidden"}}>
-                  <div style={{position:"absolute",inset:0,background:"#e3d9c4"}}/>
-                  <div style={{position:"absolute",top:0,left:0,height:"100%",width:`${filled}%`,background:p.color,transition:"width .4s"}}/>
-                </div>
-              );
-            })}
+            {PHASES.map(p=>{ const segW=((p.to-p.from)/TOTAL_TARGET)*100; const filled=Math.min(100,Math.max(0,((currentEquity-p.from)/(p.to-p.from))*100)); return (<div key={p.id} style={{width:`${segW}%`,position:"relative",overflow:"hidden"}}><div style={{position:"absolute",inset:0,background:"#e3d9c4"}}/><div style={{position:"absolute",top:0,left:0,height:"100%",width:`${filled}%`,background:p.color,transition:"width .4s"}}/></div>); })}
           </div>
-          <div style={{display:"flex",marginTop:3}}>
-            {PHASES.map(p=>(
-              <div key={p.id} style={{width:`${((p.to-p.from)/TOTAL_TARGET)*100}%`,textAlign:"center",fontFamily:"'DM Mono',monospace",fontSize:8,color:"var(--j-soft)"}}>P{p.id}</div>
-            ))}
-          </div>
+          <div style={{display:"flex",marginTop:3}}>{PHASES.map(p=>(<div key={p.id} style={{width:`${((p.to-p.from)/TOTAL_TARGET)*100}%`,textAlign:"center",fontFamily:"'DM Mono',monospace",fontSize:8,color:"var(--j-soft)"}}>P{p.id}</div>))}</div>
         </div>
         <div style={{background:currentPhase.color+"55",border:"2px solid var(--j-ink)",borderRadius:8,padding:"10px 12px"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-            <div>
-              <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,fontWeight:600,background:currentPhase.color,border:"1.5px solid var(--j-ink)",borderRadius:5,padding:"2px 7px",marginRight:6}}>{currentPhase.label}</span>
-              <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)"}}>{currentPhase.months}</span>
-            </div>
+            <div><span style={{fontFamily:"'DM Mono',monospace",fontSize:11,fontWeight:600,background:currentPhase.color,border:"1.5px solid var(--j-ink)",borderRadius:5,padding:"2px 7px",marginRight:6}}>{currentPhase.label}</span><span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)"}}>{currentPhase.months}</span></div>
             <span style={{fontFamily:"'VT323',monospace",fontSize:20}}>{phaseProgress.toFixed(0)}%</span>
           </div>
-          <div style={{height:8,border:"1.5px solid var(--j-ink)",borderRadius:5,overflow:"hidden",background:"var(--j-win)",marginBottom:8}}>
-            <div style={{height:"100%",width:`${phaseProgress}%`,background:currentPhase.color,transition:"width .4s"}}/>
-          </div>
-          <div style={{display:"flex",justifyContent:"space-between",fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",marginBottom:6}}>
-            <span>{fmt(currentPhase.from)}</span>
-            <span style={{color:"var(--j-ink)",fontSize:10}}>{fmt(currentEquity)} → {fmt(currentPhase.to)}</span>
-            <span>{fmt(currentPhase.to)}</span>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>
-            <div style={{fontFamily:"'DM Mono',monospace",fontSize:10}}><span style={{color:"var(--j-soft)"}}>Risk </span><b>{currentPhase.risk}</b></div>
-            <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)"}}>{currentPhase.focus}</div>
-          </div>
+          <div style={{height:8,border:"1.5px solid var(--j-ink)",borderRadius:5,overflow:"hidden",background:"var(--j-win)",marginBottom:8}}><div style={{height:"100%",width:`${phaseProgress}%`,background:currentPhase.color,transition:"width .4s"}}/></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",marginBottom:6}}><span>{fmt(currentPhase.from)}</span><span style={{color:"var(--j-ink)",fontSize:10}}>{fmt(currentEquity)} → {fmt(currentPhase.to)}</span><span>{fmt(currentPhase.to)}</span></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}><div style={{fontFamily:"'DM Mono',monospace",fontSize:10}}><span style={{color:"var(--j-soft)"}}>Risk </span><b>{currentPhase.risk}</b></div><div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)"}}>{currentPhase.focus}</div></div>
         </div>
         <div style={{display:"flex",gap:6}}>
-          {PHASES.map(p => {
-            const done=currentEquity>=p.to, cur=p.id===currentPhase.id;
-            return (
-              <div key={p.id} style={{flex:1,border:"2px solid var(--j-ink)",borderRadius:7,background:done?p.color:cur?p.color+"44":"var(--j-win)",padding:"7px 6px",textAlign:"center",boxShadow:cur?"2px 2px 0 var(--j-ink)":"none"}}>
-                <div style={{fontFamily:"'VT323',monospace",fontSize:11,color:done?"#3a3028":"var(--j-soft)"}}>{done?"✓":cur?"▶":"○"}</div>
-                <div style={{fontFamily:"'DM Mono',monospace",fontSize:8,fontWeight:600}}>P{p.id}</div>
-                <div style={{fontFamily:"'DM Mono',monospace",fontSize:7,color:"var(--j-soft)"}}>{fmt(p.to)}</div>
-              </div>
-            );
-          })}
-          <div style={{flex:1,border:"2px solid var(--j-ink)",borderRadius:7,background:currentEquity>=TOTAL_TARGET?"var(--j-mint)":"var(--j-win)",padding:"7px 6px",textAlign:"center"}}>
-            <div style={{fontFamily:"'VT323',monospace",fontSize:11,color:"var(--j-soft)"}}>{currentEquity>=TOTAL_TARGET?"★":"◎"}</div>
-            <div style={{fontFamily:"'DM Mono',monospace",fontSize:8,fontWeight:600}}>GOAL</div>
-            <div style={{fontFamily:"'DM Mono',monospace",fontSize:7,color:"var(--j-soft)"}}>$2K/mo</div>
-          </div>
+          {PHASES.map(p=>{ const done=currentEquity>=p.to,cur=p.id===currentPhase.id; return (<div key={p.id} style={{flex:1,border:"2px solid var(--j-ink)",borderRadius:7,background:done?p.color:cur?p.color+"44":"var(--j-win)",padding:"7px 6px",textAlign:"center",boxShadow:cur?"2px 2px 0 var(--j-ink)":"none"}}><div style={{fontFamily:"'VT323',monospace",fontSize:11,color:done?"#3a3028":"var(--j-soft)"}}>{done?"✓":cur?"▶":"○"}</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:8,fontWeight:600}}>P{p.id}</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:7,color:"var(--j-soft)"}}>{fmt(p.to)}</div></div>); })}
+          <div style={{flex:1,border:"2px solid var(--j-ink)",borderRadius:7,background:currentEquity>=TOTAL_TARGET?"var(--j-mint)":"var(--j-win)",padding:"7px 6px",textAlign:"center"}}><div style={{fontFamily:"'VT323',monospace",fontSize:11,color:"var(--j-soft)"}}>{currentEquity>=TOTAL_TARGET?"★":"◎"}</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:8,fontWeight:600}}>GOAL</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:7,color:"var(--j-soft)"}}>$2K/mo</div></div>
         </div>
-        <div style={{background:"#fbf6ea",border:"1.5px dashed var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",lineHeight:1.6,textAlign:"center"}}>
-          {currentPhase.reminder}
-        </div>
+        <div style={{background:"#fbf6ea",border:"1.5px dashed var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",lineHeight:1.6,textAlign:"center"}}>{currentPhase.reminder}</div>
       </div>
     </div>
   );
@@ -502,30 +421,23 @@ export default function JournalPage() {
   const [bootDone,setBootDone]       = useState(false);
   const [pixels,setPixels]           = useState<{id:number;x:number;y:number;c:string}[]>([]);
   const [saving,setSaving]           = useState(false);
-
-  // ── Daily Loss Limit ───────────────────────────────────────────────────────
-  const DAILY_LOSS_LIMIT = 3;
-  const [showLossAlert, setShowLossAlert] = useState(false);
+  const [showAlert,setShowAlert]     = useState(false);
 
   const todayStr = new Date().toISOString().split("T")[0];
-  const todayLosses = trades.filter(t => t.date === todayStr && t.result === "LOSS").length;
+  const dailyStatus = calcDailyStatus(trades, todayStr);
 
-  // ขึ้นทุกครั้งที่ trades โหลด / view เปลี่ยน ถ้า LOSS ≥ 3 วันนี้
+  // ขึ้น alert ทุกครั้งที่ trades เปลี่ยน หรือ view เปลี่ยน ถ้า hard stop หรือ day done
   useEffect(()=>{
-    if (todayLosses >= DAILY_LOSS_LIMIT) setShowLossAlert(true);
-  }, [trades, todayLosses, view]);
-
-  const dismissLossAlert = () => setShowLossAlert(false);
+    if(dailyStatus.isHardStop || dailyStatus.isDayDone) setShowAlert(true);
+  }, [trades, view]);
 
   useEffect(()=>{
-    // Boot เร็วขึ้น — typewriter สั้นลง แล้วปิดเร็ว
     const lines=["JOURNAL.EXE","LOADING... 🥇"];
     let i=0,charIdx=0,current="";
     const next=()=>{
       if(i>=lines.length){ setTimeout(()=>setBootDone(true),200); setTimeout(()=>setBooting(false),600); return; }
-      if(charIdx<lines[i].length){ current+=lines[i][charIdx]; charIdx++;
-        setBootText(lines.slice(0,i).join("\n")+(i>0?"\n":"")+current); setTimeout(next,22);
-      } else { i++; charIdx=0; current=""; setTimeout(next,150); }
+      if(charIdx<lines[i].length){ current+=lines[i][charIdx]; charIdx++; setBootText(lines.slice(0,i).join("\n")+(i>0?"\n":"")+current); setTimeout(next,22); }
+      else { i++; charIdx=0; current=""; setTimeout(next,150); }
     };
     setTimeout(next,100);
   },[]);
@@ -645,6 +557,13 @@ export default function JournalPage() {
 
   const filtered=filter==="ALL"?trades:trades.filter(t=>t.result===filter);
 
+  const { isHardStop, isDayDone, todayWins, todayLosses, todayBE, todayPL, lossStreak } = dailyStatus;
+  const alertColor = isHardStop ? "var(--j-coral)" : "var(--j-mint)";
+  const alertTitle = isHardStop ? "🛑 HARD STOP — หยุดวันนี้" : "✓ ครบ 3 ไม้แล้ว";
+  const alertEmoji = isHardStop ? "🛑" : "✅";
+  const alertMsg   = isHardStop ? `LOSS ${lossStreak} ไม้ติดกัน\nห้ามเปิดไม้ใหม่วันนี้เด็ดขาด` : `เทรดครบ ${MAX_TRADES_PER_DAY} ไม้แล้ว\nพักผ่อน review journal ได้เลย`;
+  const alertSub   = isHardStop ? '"ตลาดไม่ไปไหน โอกาสมีเสมอ"' : '"วันนี้ทำหน้าที่ครบแล้ว 👏"';
+
   return (
     <main className="j-root">
       <style>{`
@@ -657,7 +576,6 @@ export default function JournalPage() {
         .j-boot.done{animation:bootfade .5s ease forwards;}
         .j-boot-logo{font-family:'VT323',monospace;font-size:52px;color:#f6e6ac;letter-spacing:3px;text-shadow:0 0 20px #f6e6ac88,0 0 40px #f6e6ac44;animation:blink 1s step-end infinite;}
         @keyframes blink{50%{opacity:.7}}
-        .j-boot-text{font-family:'DM Mono',monospace;font-size:13px;color:#c0e6d4;white-space:pre;line-height:1.8;text-align:left;min-height:96px;}
         .j-boot-cursor{display:inline-block;width:9px;height:15px;background:#c0e6d4;animation:cur .7s step-end infinite;vertical-align:middle;}
         @keyframes cur{50%{opacity:0}}
         .j-boot-bar{width:280px;height:22px;border:2px solid #c0e6d4;border-radius:4px;overflow:hidden;position:relative;}
@@ -700,43 +618,18 @@ export default function JournalPage() {
         .j-pl{font-size:8px;font-weight:500;line-height:1;letter-spacing:-0.3px;}
       `}</style>
 
-      {booting&&(
-        <div className={`j-boot ${bootDone?"done":""}`}>
-          <div className="j-boot-logo">JOURNAL.EXE</div>
-          <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,color:"#c0e6d4",marginBottom:6,minHeight:40,whiteSpace:"pre"}}>
-            {bootText}<span className="j-boot-cursor"/>
-          </div>
-          <div className="j-boot-bar" style={{position:"relative"}}>
-            <div className="j-boot-fill"/>
-            {/* เลข % วิ่งตาม bar */}
-            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
-              fontFamily:"'VT323',monospace",fontSize:12,color:"#2a1f14",mixBlendMode:"multiply"}}>
-              LOADING...
-            </div>
-          </div>
-          <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#c0e6d4",opacity:.6,letterSpacing:2}}>
-            SMC · XAUUSD · TRUST YOUR OWN
-          </div>
-        </div>
-      )}
+      {booting&&(<div className={`j-boot ${bootDone?"done":""}`}><div className="j-boot-logo">JOURNAL.EXE</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:13,color:"#c0e6d4",marginBottom:6,minHeight:40,whiteSpace:"pre"}}>{bootText}<span className="j-boot-cursor"/></div><div className="j-boot-bar"><div className="j-boot-fill"/><div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'VT323',monospace",fontSize:12,color:"#2a1f14",mixBlendMode:"multiply"}}>LOADING...</div></div><div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#c0e6d4",opacity:.6,letterSpacing:2}}>SMC · XAUUSD · TRUST YOUR OWN</div></div>)}
 
       <div style={{padding:"14px 12px 0"}}>
         <div className="j-win" style={{maxWidth:780,margin:"0 auto"}}>
           <div className="j-bar" style={{background:"var(--j-pink)"}}>
             <span className="j-t">★ JOURNAL.EXE — XAUUSD</span>
-            <span className="j-ctrl"><span>_</span><span>▢</span>
-              <Link href="/" style={{textDecoration:"none",color:"var(--j-ink)"}} title="Home"><span>✕</span></Link>
-            </span>
+            <span className="j-ctrl"><span>_</span><span>▢</span><Link href="/" style={{textDecoration:"none",color:"var(--j-ink)"}} title="Home"><span>✕</span></Link></span>
           </div>
           <div className="j-body" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
-            <div>
-              <div style={{fontFamily:"'VT323',monospace",fontSize:34,lineHeight:.8}}>TRADING JOURNAL</div>
-              <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,letterSpacing:2,color:"var(--j-soft)",marginTop:4}}>✦ SMC · GOLD DIARY ✦</div>
-            </div>
+            <div><div style={{fontFamily:"'VT323',monospace",fontSize:34,lineHeight:.8}}>TRADING JOURNAL</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:10,letterSpacing:2,color:"var(--j-soft)",marginTop:4}}>✦ SMC · GOLD DIARY ✦</div></div>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              <button onClick={()=>setAccountType(accountType==="cent"?"standard":"cent")} className="j-chip" style={{fontSize:11,background:accountType==="cent"?"var(--j-butter)":"var(--j-lav)"}}>
-                {accountType==="cent"?"Cent $":"Std $"}
-              </button>
+              <button onClick={()=>setAccountType(accountType==="cent"?"standard":"cent")} className="j-chip" style={{fontSize:11,background:accountType==="cent"?"var(--j-butter)":"var(--j-lav)"}}>{accountType==="cent"?"Cent $":"Std $"}</button>
               <button onClick={()=>{ setForm(defaultForm()); setExitInput(""); setPasteInput(""); setEditId(null); setView("add"); }} className="j-btn" style={{padding:"9px 14px",background:"var(--j-mint)",fontSize:13}}>✎ New</button>
             </div>
           </div>
@@ -755,6 +648,7 @@ export default function JournalPage() {
 
         {view==="dashboard"&&(
           <div className="space-y-4 j-tabcontent">
+            <DailyStatusBar status={dailyStatus}/>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="j-stat" style={{background:"var(--j-mint)"}}><div className="j-num">{stats.winRate.toFixed(0)}%</div><div className="j-statlab">Win Rate</div></div>
               <div className="j-stat" style={{background:stats.totalPL>=0?"var(--j-sky)":"var(--j-coral)"}}><div className="j-num">{money(stats.totalPL)}</div><div className="j-statlab">Total P/L</div></div>
@@ -768,18 +662,11 @@ export default function JournalPage() {
                   <div className="text-center"><div className="j-num" style={{color:"#e08a82"}}>{stats.losses}</div><div className="j-statlab">Loss</div></div>
                   <div className="text-center"><div className="j-num" style={{color:"var(--j-soft)"}}>{stats.be}</div><div className="j-statlab">BE</div></div>
                 </div>
-                {stats.total>0&&(<div style={{height:10,border:"2px solid var(--j-ink)",borderRadius:6,overflow:"hidden",display:"flex",background:"var(--j-win)"}}>
-                  <div style={{background:"#8fd3b4",width:`${stats.winRate}%`}}/><div style={{background:"#d8cdbd",width:`${stats.be/stats.total*100}%`}}/><div style={{background:"#eda9a1",flex:1}}/>
-                </div>)}
+                {stats.total>0&&(<div style={{height:10,border:"2px solid var(--j-ink)",borderRadius:6,overflow:"hidden",display:"flex",background:"var(--j-win)"}}><div style={{background:"#8fd3b4",width:`${stats.winRate}%`}}/><div style={{background:"#d8cdbd",width:`${stats.be/stats.total*100}%`}}/><div style={{background:"#eda9a1",flex:1}}/></div>)}
               </Win>
               <Win title="STREAK" color="var(--j-butter)" controls={false}>
-                <div className="j-num" style={{fontSize:38,color:stats.streakType==="WIN"?"#5fae89":stats.streakType==="LOSS"?"#e08a82":"var(--j-soft)"}}>
-                  {stats.streakType==="WIN"?`🔥${stats.streak}W`:stats.streakType==="LOSS"?`❄️${stats.streak}L`:"-"}
-                </div>
-                <div style={{marginTop:6,fontSize:12,fontFamily:"'DM Mono'"}}>
-                  <div><span style={{color:"var(--j-soft)"}}>Best </span><b style={{color:"#5fae89"}}>{money(stats.best)}</b></div>
-                  <div><span style={{color:"var(--j-soft)"}}>Worst </span><b style={{color:"#e08a82"}}>{money(stats.worst)}</b></div>
-                </div>
+                <div className="j-num" style={{fontSize:38,color:stats.streakType==="WIN"?"#5fae89":stats.streakType==="LOSS"?"#e08a82":"var(--j-soft)"}}>{stats.streakType==="WIN"?`🔥${stats.streak}W`:stats.streakType==="LOSS"?`❄️${stats.streak}L`:"-"}</div>
+                <div style={{marginTop:6,fontSize:12,fontFamily:"'DM Mono'"}}><div><span style={{color:"var(--j-soft)"}}>Best </span><b style={{color:"#5fae89"}}>{money(stats.best)}</b></div><div><span style={{color:"var(--j-soft)"}}>Worst </span><b style={{color:"#e08a82"}}>{money(stats.worst)}</b></div></div>
               </Win>
             </div>
             <Win title="📈 EQUITY CURVE + DRAWDOWN" color="var(--j-sky)"><PLChart trades={trades}/></Win>
@@ -787,17 +674,7 @@ export default function JournalPage() {
             <AchievementBadges trades={trades}/>
             <RoadmapWidget trades={trades}/>
             <Win title="🕘 RECENT SESSIONS" color="var(--j-peach)">
-              {trades.slice(0,5).map(t=>(
-                <div key={t.id} className="flex items-center gap-2 py-2" style={{borderBottom:"1.5px dashed #e3d9c4"}}>
-                  <span className="j-mini" style={{background:t.direction==="LONG"?"var(--j-mint)":"var(--j-coral)"}}>{t.direction}</span>
-                  <div className="flex-1 min-w-0">
-                    <div style={{fontSize:12,fontWeight:600}}>{t.date} · {t.session}</div>
-                    <div style={{fontSize:10,color:"var(--j-soft)",fontFamily:"'DM Mono'"}}>{t.orderCount} orders · {t.entryPrice}→{t.avgExit}</div>
-                  </div>
-                  {t.screenshotUrl&&<span title="has screenshot">🖼</span>}
-                  <b style={{fontFamily:"'DM Mono'",color:t.totalPL>=0?"#5fae89":"#e08a82"}}>{money(t.totalPL)}</b>
-                </div>
-              ))}
+              {trades.slice(0,5).map(t=>(<div key={t.id} className="flex items-center gap-2 py-2" style={{borderBottom:"1.5px dashed #e3d9c4"}}><span className="j-mini" style={{background:t.direction==="LONG"?"var(--j-mint)":"var(--j-coral)"}}>{t.direction}</span><div className="flex-1 min-w-0"><div style={{fontSize:12,fontWeight:600}}>{t.date} · {t.session}</div><div style={{fontSize:10,color:"var(--j-soft)",fontFamily:"'DM Mono'"}}>{t.orderCount} orders · {t.entryPrice}→{t.avgExit}</div></div>{t.screenshotUrl&&<span title="has screenshot">🖼</span>}<b style={{fontFamily:"'DM Mono'",color:t.totalPL>=0?"#5fae89":"#e08a82"}}>{money(t.totalPL)}</b></div>))}
               {!trades.length&&<p className="text-center py-6" style={{color:"var(--j-soft)",fontSize:13}}>No sessions yet · tap ✎ New</p>}
             </Win>
           </div>
@@ -806,49 +683,10 @@ export default function JournalPage() {
         {view==="list"&&(
           <div className="space-y-3 j-tabcontent">
             <div className="flex gap-2 items-center flex-wrap">
-              {(["ALL","WIN","LOSS","BE"] as const).map(r=>(
-                <button key={r} onClick={()=>setFilter(r)} className={`j-chip ${filter===r?"":"off"}`}
-                  style={filter===r?{background:r==="WIN"?"var(--j-mint)":r==="LOSS"?"var(--j-coral)":r==="BE"?"var(--j-lav)":"var(--j-butter)"}:{}}>{r}</button>
-              ))}
+              {(["ALL","WIN","LOSS","BE"] as const).map(r=>(<button key={r} onClick={()=>setFilter(r)} className={`j-chip ${filter===r?"":"off"}`} style={filter===r?{background:r==="WIN"?"var(--j-mint)":r==="LOSS"?"var(--j-coral)":r==="BE"?"var(--j-lav)":"var(--j-butter)"}:{}}>{r}</button>))}
               <span className="ml-auto" style={{fontSize:11,color:"var(--j-soft)",fontFamily:"'DM Mono'"}}>{filtered.length} sessions</span>
             </div>
-            {filtered.map(t=>(
-              <div key={t.id} className="j-win">
-                <div className="j-bar" style={{background:t.result==="WIN"?"var(--j-mint)":t.result==="LOSS"?"var(--j-pink)":"var(--j-lav)"}}>
-                  <span className="j-t">🥇 {t.symbol} · {t.direction}</span>
-                  <span style={{fontFamily:"'DM Mono'",fontSize:10}}>{t.date}</span>
-                </div>
-                <div className="j-body">
-                  <div className="flex items-center gap-2 mb-2 flex-wrap">
-                    <span className="j-mini" style={{background:t.result==="WIN"?"var(--j-mint)":t.result==="LOSS"?"var(--j-coral)":"var(--j-lav)",boxShadow:"2px 2px 0 var(--j-ink)"}}>
-                      {t.result==="WIN"?"✓ WIN":t.result==="LOSS"?"✕ LOSS":"= BE"}
-                    </span>
-                    <span style={{fontFamily:"'DM Mono'",fontSize:11,color:"var(--j-soft)"}}>{t.time} · {t.session}</span>
-                    <b className="ml-auto" style={{fontFamily:"'DM Mono'",fontSize:15,color:t.totalPL>=0?"#5fae89":"#e08a82"}}>{money(t.totalPL)}</b>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 mb-2" style={{fontSize:11,fontFamily:"'DM Mono'"}}>
-                    <div><span style={{color:"var(--j-soft)"}}>Entry </span><b>{t.entryPrice}</b></div>
-                    <div><span style={{color:"var(--j-soft)"}}>Avg </span><b>{t.avgExit}</b></div>
-                    <div><span style={{color:"var(--j-soft)"}}>R:R </span><b>{t.rr?`${t.rr.toFixed(1)}R`:"-"}</b></div>
-                    <div><span style={{color:"var(--j-soft)"}}>Orders </span><b>{t.orderCount}×{t.lotPerOrder}</b></div>
-                    <div><span style={{color:"var(--j-soft)"}}>Lot </span><b>{t.totalLot.toFixed(2)}</b></div>
-                    <div><span style={{color:"var(--j-soft)"}}>SL </span><b style={{color:"#e08a82"}}>{t.slPrice||"-"}</b></div>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    <span className="j-mini" style={{background:t.htfBias==="Bullish"?"var(--j-mint)":t.htfBias==="Bearish"?"var(--j-pink)":"var(--j-win)"}}>{t.htfBias}</span>
-                    {t.tf&&<span className="j-mini" style={{background:"var(--j-sky)"}}>{t.tf}</span>}
-                    {t.entryModel&&<span className="j-mini" style={{background:"var(--j-butter)"}}>{t.entryModel}</span>}
-                    {t.smcConcept.map(c=><span key={c} className="j-mini" style={{background:"var(--j-lav)"}}>{c}</span>)}
-                  </div>
-                  {t.screenshotUrl&&(<img src={t.screenshotUrl} alt="screenshot" onClick={()=>setLightbox(t.screenshotUrl)} style={{width:"100%",maxHeight:170,objectFit:"cover",border:"2px solid var(--j-ink)",borderRadius:7,cursor:"zoom-in",marginBottom:8,boxShadow:"2px 2px 0 var(--j-ink)"}}/>)}
-                  {t.notes&&<p style={{fontFamily:"'DM Mono'",fontSize:12,color:"var(--j-ink)",borderTop:"1.5px dashed #d8cdbd",paddingTop:8,lineHeight:1.4}}>"{t.notes}"</p>}
-                  <div className="flex gap-2 mt-2">
-                    <button onClick={()=>editTrade(t)} className="j-chip" style={{fontSize:11,background:"var(--j-butter)"}}>✎ Edit</button>
-                    <button onClick={()=>deleteTrade(t.id)} className="j-chip" style={{fontSize:11,background:"var(--j-coral)"}}>🗑 Delete</button>
-                  </div>
-                </div>
-              </div>
-            ))}
+            {filtered.map(t=>(<div key={t.id} className="j-win"><div className="j-bar" style={{background:t.result==="WIN"?"var(--j-mint)":t.result==="LOSS"?"var(--j-pink)":"var(--j-lav)"}}><span className="j-t">🥇 {t.symbol} · {t.direction}</span><span style={{fontFamily:"'DM Mono'",fontSize:10}}>{t.date}</span></div><div className="j-body"><div className="flex items-center gap-2 mb-2 flex-wrap"><span className="j-mini" style={{background:t.result==="WIN"?"var(--j-mint)":t.result==="LOSS"?"var(--j-coral)":"var(--j-lav)",boxShadow:"2px 2px 0 var(--j-ink)"}}>{t.result==="WIN"?"✓ WIN":t.result==="LOSS"?"✕ LOSS":"= BE"}</span><span style={{fontFamily:"'DM Mono'",fontSize:11,color:"var(--j-soft)"}}>{t.time} · {t.session}</span><b className="ml-auto" style={{fontFamily:"'DM Mono'",fontSize:15,color:t.totalPL>=0?"#5fae89":"#e08a82"}}>{money(t.totalPL)}</b></div><div className="grid grid-cols-3 gap-2 mb-2" style={{fontSize:11,fontFamily:"'DM Mono'"}}><div><span style={{color:"var(--j-soft)"}}>Entry </span><b>{t.entryPrice}</b></div><div><span style={{color:"var(--j-soft)"}}>Avg </span><b>{t.avgExit}</b></div><div><span style={{color:"var(--j-soft)"}}>R:R </span><b>{t.rr?`${t.rr.toFixed(1)}R`:"-"}</b></div><div><span style={{color:"var(--j-soft)"}}>Orders </span><b>{t.orderCount}×{t.lotPerOrder}</b></div><div><span style={{color:"var(--j-soft)"}}>Lot </span><b>{t.totalLot.toFixed(2)}</b></div><div><span style={{color:"var(--j-soft)"}}>SL </span><b style={{color:"#e08a82"}}>{t.slPrice||"-"}</b></div></div><div className="flex flex-wrap gap-1.5 mb-2"><span className="j-mini" style={{background:t.htfBias==="Bullish"?"var(--j-mint)":t.htfBias==="Bearish"?"var(--j-pink)":"var(--j-win)"}}>{t.htfBias}</span>{t.tf&&<span className="j-mini" style={{background:"var(--j-sky)"}}>{t.tf}</span>}{t.entryModel&&<span className="j-mini" style={{background:"var(--j-butter)"}}>{t.entryModel}</span>}{t.smcConcept.map(c=><span key={c} className="j-mini" style={{background:"var(--j-lav)"}}>{c}</span>)}</div>{t.screenshotUrl&&(<img src={t.screenshotUrl} alt="screenshot" onClick={()=>setLightbox(t.screenshotUrl)} style={{width:"100%",maxHeight:170,objectFit:"cover",border:"2px solid var(--j-ink)",borderRadius:7,cursor:"zoom-in",marginBottom:8,boxShadow:"2px 2px 0 var(--j-ink)"}}/>)}{t.notes&&<p style={{fontFamily:"'DM Mono'",fontSize:12,color:"var(--j-ink)",borderTop:"1.5px dashed #d8cdbd",paddingTop:8,lineHeight:1.4}}>"{t.notes}"</p>}<div className="flex gap-2 mt-2"><button onClick={()=>editTrade(t)} className="j-chip" style={{fontSize:11,background:"var(--j-butter)"}}>✎ Edit</button><button onClick={()=>deleteTrade(t.id)} className="j-chip" style={{fontSize:11,background:"var(--j-coral)"}}>🗑 Delete</button></div></div></div>))}
             {!filtered.length&&<p className="text-center py-10" style={{color:"var(--j-soft)"}}>No sessions</p>}
           </div>
         )}
@@ -867,54 +705,8 @@ export default function JournalPage() {
           const selTrades=calSelected?(byDate[calSelected]||[]):[];
           return (
             <div className="space-y-3">
-              <div className="j-win">
-                <div className="j-bar" style={{background:"var(--j-sky)"}}>
-                  <button onClick={()=>setCalRef(new Date(y,m-1,1))} className="j-ctrl"><span>◀</span></button>
-                  <span className="j-t" style={{justifyContent:"center",fontSize:13}}>📅 {monthName}</span>
-                  <button onClick={()=>setCalRef(new Date(y,m+1,1))} className="j-ctrl"><span>▶</span></button>
-                </div>
-                <div className="j-body">
-                  <div className="grid grid-cols-7 gap-1.5 mb-1.5" style={{textAlign:"center",fontFamily:"'DM Mono'",fontSize:9,color:"var(--j-soft)"}}>
-                    {["S","M","T","W","T","F","S"].map((d,i)=><div key={i}>{d}</div>)}
-                  </div>
-                  <div className="grid grid-cols-7 gap-1.5">
-                    {cells.map((d,i)=>{
-                      if(d===null) return <div key={i} className="j-cell empty"/>;
-                      const k=key(d), dayTrades=byDate[k]||[], net=dayTrades.reduce((s,t)=>s+t.totalPL,0), has=dayTrades.length>0;
-                      const netTxt=net>0?`+${Math.round(net)}`:net<0?`${Math.round(net)}`:"0";
-                      return (
-                        <div key={i} className={`j-cell ${calSelected===k?"sel":""}`} onClick={()=>setCalSelected(k===calSelected?null:k)}
-                          style={has?{background:net>0?"var(--j-mint)":net<0?"var(--j-pink)":"var(--j-lav)"}:{}}>
-                          <span className="j-day">{d}</span>
-                          {has&&<span className="j-pl" style={{color:net>0?"#3f9b73":net<0?"#d4685f":"var(--j-soft)"}}>{netTxt}</span>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="flex gap-3 justify-center mt-3" style={{fontSize:10,fontFamily:"'DM Mono'",color:"var(--j-soft)"}}>
-                    <span><span style={{display:"inline-block",width:8,height:8,borderRadius:4,background:"#8fd3b4",border:"1px solid var(--j-ink)",marginRight:4}}/>Win day</span>
-                    <span><span style={{display:"inline-block",width:8,height:8,borderRadius:4,background:"#eda9a1",border:"1px solid var(--j-ink)",marginRight:4}}/>Loss day</span>
-                  </div>
-                </div>
-              </div>
-              {calSelected&&(
-                <Win title={`📋 ${calSelected} (${selTrades.length})`} color="var(--j-peach)">
-                  {selTrades.length===0?<p className="text-center py-4" style={{color:"var(--j-soft)",fontSize:13}}>No trades this day</p>:
-                    selTrades.map(t=>(
-                      <div key={t.id} className="flex items-center gap-2 py-2" style={{borderBottom:"1.5px dashed #e3d9c4"}}>
-                        <span className="j-mini" style={{background:t.direction==="LONG"?"var(--j-mint)":"var(--j-coral)"}}>{t.direction}</span>
-                        <div className="flex-1 min-w-0">
-                          <div style={{fontSize:12,fontWeight:600}}>{t.time} · {t.session}</div>
-                          <div style={{fontSize:10,color:"var(--j-soft)",fontFamily:"'DM Mono'"}}>{t.entryPrice}→{t.avgExit} · {t.orderCount} ord</div>
-                        </div>
-                        {t.screenshotUrl&&<span onClick={()=>setLightbox(t.screenshotUrl)} style={{cursor:"zoom-in"}}>🖼</span>}
-                        <b style={{fontFamily:"'DM Mono'",color:t.totalPL>=0?"#5fae89":"#e08a82"}}>{money(t.totalPL)}</b>
-                        <button onClick={()=>editTrade(t)} className="j-chip off" style={{fontSize:10,padding:"3px 7px"}}>✎</button>
-                      </div>
-                    ))
-                  }
-                </Win>
-              )}
+              <div className="j-win"><div className="j-bar" style={{background:"var(--j-sky)"}}><button onClick={()=>setCalRef(new Date(y,m-1,1))} className="j-ctrl"><span>◀</span></button><span className="j-t" style={{justifyContent:"center",fontSize:13}}>📅 {monthName}</span><button onClick={()=>setCalRef(new Date(y,m+1,1))} className="j-ctrl"><span>▶</span></button></div><div className="j-body"><div className="grid grid-cols-7 gap-1.5 mb-1.5" style={{textAlign:"center",fontFamily:"'DM Mono'",fontSize:9,color:"var(--j-soft)"}}>{["S","M","T","W","T","F","S"].map((d,i)=><div key={i}>{d}</div>)}</div><div className="grid grid-cols-7 gap-1.5">{cells.map((d,i)=>{ if(d===null) return <div key={i} className="j-cell empty"/>; const k=key(d),dayTrades=byDate[k]||[],net=dayTrades.reduce((s,t)=>s+t.totalPL,0),has=dayTrades.length>0; const netTxt=net>0?`+${Math.round(net)}`:net<0?`${Math.round(net)}`:"0"; return (<div key={i} className={`j-cell ${calSelected===k?"sel":""}`} onClick={()=>setCalSelected(k===calSelected?null:k)} style={has?{background:net>0?"var(--j-mint)":net<0?"var(--j-pink)":"var(--j-lav)"}:{}}><span className="j-day">{d}</span>{has&&<span className="j-pl" style={{color:net>0?"#3f9b73":net<0?"#d4685f":"var(--j-soft)"}}>{netTxt}</span>}</div>); })}</div><div className="flex gap-3 justify-center mt-3" style={{fontSize:10,fontFamily:"'DM Mono'",color:"var(--j-soft)"}}><span><span style={{display:"inline-block",width:8,height:8,borderRadius:4,background:"#8fd3b4",border:"1px solid var(--j-ink)",marginRight:4}}/>Win day</span><span><span style={{display:"inline-block",width:8,height:8,borderRadius:4,background:"#eda9a1",border:"1px solid var(--j-ink)",marginRight:4}}/>Loss day</span></div></div></div>
+              {calSelected&&(<Win title={`📋 ${calSelected} (${selTrades.length})`} color="var(--j-peach)">{selTrades.length===0?<p className="text-center py-4" style={{color:"var(--j-soft)",fontSize:13}}>No trades this day</p>:selTrades.map(t=>(<div key={t.id} className="flex items-center gap-2 py-2" style={{borderBottom:"1.5px dashed #e3d9c4"}}><span className="j-mini" style={{background:t.direction==="LONG"?"var(--j-mint)":"var(--j-coral)"}}>{t.direction}</span><div className="flex-1 min-w-0"><div style={{fontSize:12,fontWeight:600}}>{t.time} · {t.session}</div><div style={{fontSize:10,color:"var(--j-soft)",fontFamily:"'DM Mono'"}}>{t.entryPrice}→{t.avgExit} · {t.orderCount} ord</div></div>{t.screenshotUrl&&<span onClick={()=>setLightbox(t.screenshotUrl)} style={{cursor:"zoom-in"}}>🖼</span>}<b style={{fontFamily:"'DM Mono'",color:t.totalPL>=0?"#5fae89":"#e08a82"}}>{money(t.totalPL)}</b><button onClick={()=>editTrade(t)} className="j-chip off" style={{fontSize:10,padding:"3px 7px"}}>✎</button></div>))}</Win>)}
               {!calSelected&&<p className="text-center py-2" style={{color:"var(--j-soft)",fontSize:12,fontFamily:"'DM Mono'"}}>tap a colored day to see trades</p>}
             </div>
           );
@@ -927,117 +719,36 @@ export default function JournalPage() {
               <h2 style={{fontSize:14,fontWeight:600}}>{editId?"Edit Session":"New Session"}</h2>
             </div>
             <Win title="① SESSION INFO" color="var(--j-lav)">
-              <div className="grid grid-cols-3 gap-2 mb-3">
-                <div><label className="j-lab">Date</label><input type="date" value={form.date} onChange={e=>f("date",e.target.value)} className="j-in" style={{fontSize:11}}/></div>
-                <div><label className="j-lab">Time</label><input type="time" value={form.time} onChange={e=>f("time",e.target.value)} className="j-in" style={{fontSize:11}}/></div>
-                <div><label className="j-lab">Session</label>
-                  <select value={form.session} onChange={e=>f("session",e.target.value)} className="j-in" style={{fontSize:11}}>
-                    {SESSIONS.map(s=><option key={s}>{s}</option>)}
-                  </select>
-                </div>
-              </div>
+              <div className="grid grid-cols-3 gap-2 mb-3"><div><label className="j-lab">Date</label><input type="date" value={form.date} onChange={e=>f("date",e.target.value)} className="j-in" style={{fontSize:11}}/></div><div><label className="j-lab">Time</label><input type="time" value={form.time} onChange={e=>f("time",e.target.value)} className="j-in" style={{fontSize:11}}/></div><div><label className="j-lab">Session</label><select value={form.session} onChange={e=>f("session",e.target.value)} className="j-in" style={{fontSize:11}}>{SESSIONS.map(s=><option key={s}>{s}</option>)}</select></div></div>
               <label className="j-lab">Direction</label>
-              <div className="flex gap-2">
-                {(["LONG","SHORT"] as Direction[]).map(d=>(
-                  <button key={d} onClick={()=>f("direction",d)} className={`j-chip flex-1 ${form.direction===d?"":"off"}`}
-                    style={form.direction===d?{background:d==="LONG"?"var(--j-mint)":"var(--j-coral)",textAlign:"center"}:{textAlign:"center"}}>
-                    {d==="LONG"?"▲ LONG":"▼ SHORT"}
-                  </button>
-                ))}
-              </div>
+              <div className="flex gap-2">{(["LONG","SHORT"] as Direction[]).map(d=>(<button key={d} onClick={()=>f("direction",d)} className={`j-chip flex-1 ${form.direction===d?"":"off"}`} style={form.direction===d?{background:d==="LONG"?"var(--j-mint)":"var(--j-coral)",textAlign:"center"}:{textAlign:"center"}}>{d==="LONG"?"▲ LONG":"▼ SHORT"}</button>))}</div>
             </Win>
             <Win title="② PRICE & LOT" color="var(--j-butter)">
-              <div className="mb-3"><label className="j-lab">Entry Price</label>
-                <input type="number" step="0.001" value={form.entryPrice||""} placeholder="4171.200" onChange={e=>f("entryPrice",parseFloat(e.target.value)||0)} className="j-in" style={{fontSize:16,fontWeight:700}}/>
-              </div>
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                <div><label className="j-lab">💰 Risk ($)</label><input type="number" step="0.5" min="0.5" value={(form as any).riskAmount||5} placeholder="5" onChange={e=>f("riskAmount",parseFloat(e.target.value)||5)} className="j-in"/></div>
-                <div><label className="j-lab">Lot / Order</label><input type="text" inputMode="decimal" value={form.lotInput} placeholder="0.01" onChange={e=>{const v=e.target.value; if(v===""||/^\d*\.?\d*$/.test(v)){f("lotInput",v);f("lotPerOrder",parseFloat(v)||0);}}} className="j-in"/></div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div><label className="j-lab">🟢 TP (optional)</label><input type="number" step="0.001" value={form.tpPrice||""} placeholder="TP" onChange={e=>f("tpPrice",parseFloat(e.target.value)||0)} className="j-in"/></div>
-                <div><label className="j-lab">🔴 SL (optional)</label><input type="number" step="0.001" value={form.slPrice||""} placeholder="SL" onChange={e=>f("slPrice",parseFloat(e.target.value)||0)} className="j-in"/></div>
-              </div>
-              {autoRR>0&&(<div className="flex items-center gap-2 mt-3" style={{background:"var(--j-lav)",border:"2px solid var(--j-ink)",borderRadius:7,padding:"7px 11px"}}>
-                <span style={{fontSize:11,color:"var(--j-ink)",fontFamily:"'DM Mono'"}}>AUTO R:R</span>
-                <b className="ml-auto" style={{fontSize:18,fontFamily:"'VT323'"}}>1 : {autoRR}</b>
-              </div>)}
+              <div className="mb-3"><label className="j-lab">Entry Price</label><input type="number" step="0.001" value={form.entryPrice||""} placeholder="4171.200" onChange={e=>f("entryPrice",parseFloat(e.target.value)||0)} className="j-in" style={{fontSize:16,fontWeight:700}}/></div>
+              <div className="grid grid-cols-2 gap-2 mb-3"><div><label className="j-lab">💰 Risk ($)</label><input type="number" step="0.5" min="0.5" value={(form as any).riskAmount||5} placeholder="5" onChange={e=>f("riskAmount",parseFloat(e.target.value)||5)} className="j-in"/></div><div><label className="j-lab">Lot / Order</label><input type="text" inputMode="decimal" value={form.lotInput} placeholder="0.01" onChange={e=>{const v=e.target.value; if(v===""||/^\d*\.?\d*$/.test(v)){f("lotInput",v);f("lotPerOrder",parseFloat(v)||0);}}} className="j-in"/></div></div>
+              <div className="grid grid-cols-2 gap-2"><div><label className="j-lab">🟢 TP (optional)</label><input type="number" step="0.001" value={form.tpPrice||""} placeholder="TP" onChange={e=>f("tpPrice",parseFloat(e.target.value)||0)} className="j-in"/></div><div><label className="j-lab">🔴 SL (optional)</label><input type="number" step="0.001" value={form.slPrice||""} placeholder="SL" onChange={e=>f("slPrice",parseFloat(e.target.value)||0)} className="j-in"/></div></div>
+              {autoRR>0&&(<div className="flex items-center gap-2 mt-3" style={{background:"var(--j-lav)",border:"2px solid var(--j-ink)",borderRadius:7,padding:"7px 11px"}}><span style={{fontSize:11,color:"var(--j-ink)",fontFamily:"'DM Mono'"}}>AUTO R:R</span><b className="ml-auto" style={{fontSize:18,fontFamily:"'VT323'"}}>1 : {autoRR}</b></div>)}
             </Win>
             <Win title="③ EXIT PRICES" color="var(--j-mint)">
-              <div className="flex gap-2 mb-3">
-                <input type="number" step="0.001" value={exitInput} placeholder="exit e.g. 4178.018" onChange={e=>setExitInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addExit()} className="j-in flex-1"/>
-                <button onClick={addExit} className="j-btn" style={{padding:"0 16px",background:"var(--j-mint)",fontSize:13}}>+ Add</button>
-              </div>
+              <div className="flex gap-2 mb-3"><input type="number" step="0.001" value={exitInput} placeholder="exit e.g. 4178.018" onChange={e=>setExitInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addExit()} className="j-in flex-1"/><button onClick={addExit} className="j-btn" style={{padding:"0 16px",background:"var(--j-mint)",fontSize:13}}>+ Add</button></div>
               <label className="j-lab">Or paste many (space / enter separated)</label>
-              <div className="flex gap-2">
-                <textarea value={pasteInput} placeholder={"4177.027\n4178.018\n4178.044"} rows={3} onChange={e=>setPasteInput(e.target.value)} className="j-in flex-1" style={{resize:"none",fontSize:12}}/>
-                <button onClick={parsePaste} className="j-btn self-end" style={{padding:"9px 11px",background:"var(--j-butter)",fontSize:11}}>Paste<br/>All</button>
-              </div>
-              {exits.length>0&&(
-                <div className="mt-3" style={{background:"#fbf6ea",border:"2px solid var(--j-ink)",borderRadius:7,padding:10}}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span style={{fontSize:10,color:"var(--j-soft)",fontFamily:"'DM Mono'"}}>{exits.length} orders</span>
-                    <button onClick={()=>f("exitPrices",[])} style={{fontSize:10,color:"#e08a82",fontFamily:"'DM Mono'",cursor:"pointer",background:"none",border:"none"}}>clear all</button>
-                  </div>
-                  {exits.map((ex,i)=>{
-                    const pl=calcPL(form.direction,form.entryPrice,ex,form.lotPerOrder,isCent);
-                    return (
-                      <div key={i} className="flex items-center gap-2 py-0.5" style={{fontFamily:"'DM Mono'",fontSize:12}}>
-                        <span style={{color:"var(--j-soft)",width:16}}>{i+1}.</span>
-                        <span className="flex-1" style={{fontWeight:700}}>{ex}</span>
-                        <b style={{color:pl>=0?"#5fae89":"#e08a82"}}>{money(pl)}</b>
-                        <button onClick={()=>removeExit(i)} style={{color:"var(--j-soft)",cursor:"pointer",background:"none",border:"none"}}>✕</button>
-                      </div>
-                    );
-                  })}
-                  <div style={{borderTop:"1.5px dashed #d8cdbd",marginTop:6,paddingTop:6,fontFamily:"'DM Mono'",fontSize:12}}>
-                    <div className="flex justify-between"><span style={{color:"var(--j-soft)"}}>Avg Exit</span><b>{avgExit.toFixed(3)}</b></div>
-                    <div className="flex justify-between"><span style={{color:"var(--j-soft)"}}>Total Lot</span><b>{totalLot.toFixed(2)}</b></div>
-                    <div className="flex justify-between items-center"><span style={{color:"var(--j-soft)"}}>Total P/L</span><b style={{fontSize:16,color:totalPL>=0?"#5fae89":"#e08a82"}}>{money(totalPL)}</b></div>
-                    <div className="flex justify-between items-center mt-1"><span style={{color:"var(--j-soft)"}}>Result</span>
-                      <span className="j-mini" style={{background:result==="WIN"?"var(--j-mint)":result==="LOSS"?"var(--j-coral)":"var(--j-lav)"}}>{result}</span></div>
-                  </div>
-                </div>
-              )}
+              <div className="flex gap-2"><textarea value={pasteInput} placeholder={"4177.027\n4178.018\n4178.044"} rows={3} onChange={e=>setPasteInput(e.target.value)} className="j-in flex-1" style={{resize:"none",fontSize:12}}/><button onClick={parsePaste} className="j-btn self-end" style={{padding:"9px 11px",background:"var(--j-butter)",fontSize:11}}>Paste<br/>All</button></div>
+              {exits.length>0&&(<div className="mt-3" style={{background:"#fbf6ea",border:"2px solid var(--j-ink)",borderRadius:7,padding:10}}><div className="flex items-center justify-between mb-2"><span style={{fontSize:10,color:"var(--j-soft)",fontFamily:"'DM Mono'"}}>{exits.length} orders</span><button onClick={()=>f("exitPrices",[])} style={{fontSize:10,color:"#e08a82",fontFamily:"'DM Mono'",cursor:"pointer",background:"none",border:"none"}}>clear all</button></div>{exits.map((ex,i)=>{ const pl=calcPL(form.direction,form.entryPrice,ex,form.lotPerOrder,isCent); return (<div key={i} className="flex items-center gap-2 py-0.5" style={{fontFamily:"'DM Mono'",fontSize:12}}><span style={{color:"var(--j-soft)",width:16}}>{i+1}.</span><span className="flex-1" style={{fontWeight:700}}>{ex}</span><b style={{color:pl>=0?"#5fae89":"#e08a82"}}>{money(pl)}</b><button onClick={()=>removeExit(i)} style={{color:"var(--j-soft)",cursor:"pointer",background:"none",border:"none"}}>✕</button></div>); })}<div style={{borderTop:"1.5px dashed #d8cdbd",marginTop:6,paddingTop:6,fontFamily:"'DM Mono'",fontSize:12}}><div className="flex justify-between"><span style={{color:"var(--j-soft)"}}>Avg Exit</span><b>{avgExit.toFixed(3)}</b></div><div className="flex justify-between"><span style={{color:"var(--j-soft)"}}>Total Lot</span><b>{totalLot.toFixed(2)}</b></div><div className="flex justify-between items-center"><span style={{color:"var(--j-soft)"}}>Total P/L</span><b style={{fontSize:16,color:totalPL>=0?"#5fae89":"#e08a82"}}>{money(totalPL)}</b></div><div className="flex justify-between items-center mt-1"><span style={{color:"var(--j-soft)"}}>Result</span><span className="j-mini" style={{background:result==="WIN"?"var(--j-mint)":result==="LOSS"?"var(--j-coral)":"var(--j-lav)"}}>{result}</span></div></div></div>)}
             </Win>
             <Win title="④ SMC ANALYSIS" color="var(--j-pink)">
               <label className="j-lab">Timeframe</label>
-              <div className="flex gap-2 mb-3">
-                {(["M1","M5","M15"] as TF[]).map(t=>(
-                  <button key={t} onClick={()=>f("tf",t)} className={`j-chip flex-1 ${form.tf===t?"":"off"}`} style={form.tf===t?{background:"var(--j-butter)",textAlign:"center"}:{textAlign:"center"}}>{t}</button>
-                ))}
-              </div>
+              <div className="flex gap-2 mb-3">{(["M1","M5","M15"] as TF[]).map(t=>(<button key={t} onClick={()=>f("tf",t)} className={`j-chip flex-1 ${form.tf===t?"":"off"}`} style={form.tf===t?{background:"var(--j-butter)",textAlign:"center"}:{textAlign:"center"}}>{t}</button>))}</div>
               <label className="j-lab">HTF Bias</label>
-              <div className="flex gap-2 mb-3">
-                {(["Bullish","Bearish","Neutral"] as const).map(b=>(
-                  <button key={b} onClick={()=>f("htfBias",b)} className={`j-chip flex-1 ${form.htfBias===b?"":"off"}`}
-                    style={form.htfBias===b?{background:b==="Bullish"?"var(--j-mint)":b==="Bearish"?"var(--j-pink)":"var(--j-lav)",textAlign:"center",fontSize:12}:{textAlign:"center",fontSize:12}}>{b}</button>
-                ))}
-              </div>
+              <div className="flex gap-2 mb-3">{(["Bullish","Bearish","Neutral"] as const).map(b=>(<button key={b} onClick={()=>f("htfBias",b)} className={`j-chip flex-1 ${form.htfBias===b?"":"off"}`} style={form.htfBias===b?{background:b==="Bullish"?"var(--j-mint)":b==="Bearish"?"var(--j-pink)":"var(--j-lav)",textAlign:"center",fontSize:12}:{textAlign:"center",fontSize:12}}>{b}</button>))}</div>
               <label className="j-lab">SMC Concept</label>
-              <div className="flex flex-wrap gap-1.5 mb-3">
-                {SMC_LIST.map(c=>{
-                  const active=(form.smcConcept||[]).includes(c);
-                  return <button key={c} onClick={()=>f("smcConcept",active?form.smcConcept.filter(x=>x!==c):[...form.smcConcept,c])} className={`j-chip ${active?"":"off"}`} style={active?{background:"var(--j-lav)",fontSize:12,padding:"5px 10px"}:{fontSize:12,padding:"5px 10px"}}>{c}</button>;
-                })}
-              </div>
+              <div className="flex flex-wrap gap-1.5 mb-3">{SMC_LIST.map(c=>{ const active=(form.smcConcept||[]).includes(c); return <button key={c} onClick={()=>f("smcConcept",active?form.smcConcept.filter(x=>x!==c):[...form.smcConcept,c])} className={`j-chip ${active?"":"off"}`} style={active?{background:"var(--j-lav)",fontSize:12,padding:"5px 10px"}:{fontSize:12,padding:"5px 10px"}}>{c}</button>; })}</div>
               <label className="j-lab">Entry Model</label>
               <input value={form.entryModel} onChange={e=>f("entryModel",e.target.value)} placeholder="W2, BOS+OB, CHoCH+FVG" className="j-in mb-3" style={{fontSize:13,fontFamily:"'Fredoka'"}}/>
               <label className="j-lab">Notes / Lesson</label>
               <textarea value={form.notes} onChange={e=>f("notes",e.target.value)} rows={3} placeholder="lessons, mistakes, what went well..." className="j-in" style={{resize:"none",fontSize:13,fontFamily:"'Fredoka'"}}/>
             </Win>
             <Win title="⑤ 🖼 SCREENSHOT" color="var(--j-sky)">
-              {form.screenshotUrl?(
-                <div>
-                  <img src={form.screenshotUrl} alt="screenshot" onClick={()=>setLightbox(form.screenshotUrl)} style={{width:"100%",maxHeight:220,objectFit:"contain",border:"2px solid var(--j-ink)",borderRadius:7,cursor:"zoom-in",background:"#fbf6ea"}}/>
-                  <button onClick={()=>f("screenshotUrl","")} className="j-chip mt-2" style={{fontSize:11,background:"var(--j-coral)"}}>🗑 Remove image</button>
-                </div>
-              ):(
-                <label className="j-btn" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:14,background:"var(--j-sky)",fontSize:14,cursor:uploading?"wait":"pointer"}}>
-                  {uploading?"⌛ Uploading...":"📎 Upload chart screenshot"}
-                  <input type="file" accept="image/*" disabled={uploading} style={{display:"none"}} onChange={e=>{ const file=e.target.files?.[0]; if(file) uploadScreenshot(file); }}/>
-                </label>
-              )}
+              {form.screenshotUrl?(<div><img src={form.screenshotUrl} alt="screenshot" onClick={()=>setLightbox(form.screenshotUrl)} style={{width:"100%",maxHeight:220,objectFit:"contain",border:"2px solid var(--j-ink)",borderRadius:7,cursor:"zoom-in",background:"#fbf6ea"}}/><button onClick={()=>f("screenshotUrl","")} className="j-chip mt-2" style={{fontSize:11,background:"var(--j-coral)"}}>🗑 Remove image</button></div>):(<label className="j-btn" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:14,background:"var(--j-sky)",fontSize:14,cursor:uploading?"wait":"pointer"}}>{uploading?"⌛ Uploading...":"📎 Upload chart screenshot"}<input type="file" accept="image/*" disabled={uploading} style={{display:"none"}} onChange={e=>{ const file=e.target.files?.[0]; if(file) uploadScreenshot(file); }}/></label>)}
               <p style={{fontSize:10,color:"var(--j-soft)",fontFamily:"'DM Mono'",marginTop:8}}>saved to Supabase Storage · shows on this entry</p>
             </Win>
             <button onClick={saveTrade} disabled={!exits.length||!form.entryPrice} className={`j-btn w-full ${saving?"j-saving":""}`} style={{padding:16,background:"var(--j-coral)",fontSize:16}}>
@@ -1047,73 +758,31 @@ export default function JournalPage() {
         )}
       </div>
 
-      {/* ── Daily Loss Alert ── */}
-      {showLossAlert && (
-        <div style={{position:"fixed",inset:0,zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center",padding:20,
-          background:"rgba(42,31,20,.85)",backdropFilter:"blur(3px)"}}>
+      {/* Alert Popup */}
+      {showAlert && (isHardStop || isDayDone) && (
+        <div style={{position:"fixed",inset:0,zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center",padding:20,background:"rgba(42,31,20,.85)",backdropFilter:"blur(3px)"}}>
           <div className="j-win" style={{maxWidth:340,width:"100%",animation:"winpop .25s steps(3,end) both"}}>
-            <div className="j-bar" style={{background:"var(--j-coral)"}}>
-              <span className="j-t">⚠️ DAILY LIMIT REACHED</span>
+            <div className="j-bar" style={{background:alertColor}}>
+              <span className="j-t">{alertTitle}</span>
               <span className="j-ctrl"><span>!</span></span>
             </div>
             <div className="j-body" style={{textAlign:"center",padding:"24px 20px"}}>
-              <div style={{fontSize:52,marginBottom:12,animation:"blink 1s step-end infinite"}}>🛑</div>
-              <div style={{fontFamily:"'VT323',monospace",fontSize:48,color:"#d4685f",lineHeight:1,marginBottom:4}}>
-                {todayLosses} LOSSES
-              </div>
-              <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",marginBottom:20,letterSpacing:1}}>
-                TODAY · LIMIT: {DAILY_LOSS_LIMIT}
-              </div>
-              <div style={{background:"#fbf6ea",border:"2px solid var(--j-ink)",borderRadius:9,padding:"14px 16px",
-                marginBottom:20,boxShadow:"2px 2px 0 var(--j-ink)"}}>
-                <div style={{fontFamily:"'Fredoka',sans-serif",fontSize:18,fontWeight:700,color:"var(--j-ink)",lineHeight:1.4,marginBottom:8}}>
-                  พักเทรดก่อนนะ 🌿
-                </div>
-                <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--j-soft)",lineHeight:1.8}}>
-                  "ตลาดไม่เคยหนีไปไหน<br/>
-                  โอกาสยังมีเสมอ"
-                </div>
-              </div>
+              <div style={{fontSize:52,marginBottom:12}}>{alertEmoji}</div>
+              <div style={{fontFamily:"'VT323',monospace",fontSize:32,color:"var(--j-ink)",lineHeight:1.2,marginBottom:4,whiteSpace:"pre-line"}}>{alertMsg}</div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--j-soft)",marginBottom:20,marginTop:8}}>{alertSub}</div>
               <div style={{display:"flex",gap:8,marginBottom:20}}>
-                <div style={{flex:1,background:"var(--j-mint)",border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px",boxShadow:"2px 2px 0 var(--j-ink)"}}>
-                  <div style={{fontFamily:"'DM Mono',monospace",fontSize:8,color:"var(--j-soft)",textTransform:"uppercase"}}>Today WIN</div>
-                  <div style={{fontFamily:"'VT323',monospace",fontSize:26,color:"#5fae89"}}>
-                    {trades.filter(t=>t.date===todayStr&&t.result==="WIN").length}
-                  </div>
-                </div>
-                <div style={{flex:1,background:"var(--j-coral)",border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px",boxShadow:"2px 2px 0 var(--j-ink)"}}>
-                  <div style={{fontFamily:"'DM Mono',monospace",fontSize:8,color:"var(--j-soft)",textTransform:"uppercase"}}>Today LOSS</div>
-                  <div style={{fontFamily:"'VT323',monospace",fontSize:26,color:"#d4685f"}}>{todayLosses}</div>
-                </div>
-                <div style={{flex:1,background:"var(--j-butter)",border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px",boxShadow:"2px 2px 0 var(--j-ink)"}}>
-                  <div style={{fontFamily:"'DM Mono',monospace",fontSize:8,color:"var(--j-soft)",textTransform:"uppercase"}}>Today P/L</div>
-                  <div style={{fontFamily:"'VT323',monospace",fontSize:22,
-                    color:trades.filter(t=>t.date===todayStr).reduce((s,t)=>s+t.totalPL,0)>=0?"#5fae89":"#d4685f"}}>
-                    {(()=>{const pl=trades.filter(t=>t.date===todayStr).reduce((s,t)=>s+t.totalPL,0); return (pl>=0?"+":"")+pl.toFixed(2);})()}
-                  </div>
-                </div>
+                {[{label:"WIN",val:todayWins,bg:"var(--j-mint)",color:"#5fae89"},{label:"LOSS",val:todayLosses,bg:"var(--j-coral)",color:"#d4685f"},{label:"BE",val:todayBE,bg:"var(--j-lav)",color:"var(--j-soft)"},{label:"P/L",val:(todayPL>=0?"+":"")+todayPL.toFixed(2),bg:"var(--j-butter)",color:todayPL>=0?"#5fae89":"#d4685f"}].map(s=>(<div key={s.label} style={{flex:1,background:s.bg,border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 4px",boxShadow:"2px 2px 0 var(--j-ink)"}}><div style={{fontFamily:"'DM Mono',monospace",fontSize:7,color:"var(--j-soft)",textTransform:"uppercase"}}>{s.label}</div><div style={{fontFamily:"'VT323',monospace",fontSize:20,color:s.color}}>{s.val}</div></div>))}
               </div>
-              <button onClick={()=>setShowLossAlert(false)} className="j-btn" style={{
-                width:"100%",padding:"13px",background:"var(--j-mint)",fontSize:14,
-                fontFamily:"'Fredoka',sans-serif"}}>
-                ✓ รับทราบ — พักก่อนแล้วกัน
+              <button onClick={()=>setShowAlert(false)} className="j-btn" style={{width:"100%",padding:"13px",background:alertColor,fontSize:14,fontFamily:"'Fredoka',sans-serif"}}>
+                {isHardStop?"✓ รับทราบ — หยุดแล้ว":"✓ โอเค — วันนี้เสร็จแล้ว"}
               </button>
-              <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",marginTop:8}}>
-                จะขึ้นอีกทุกครั้งที่เข้าหน้านี้จนกว่าจะหมดวัน
-              </div>
+              {isHardStop&&<div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",marginTop:8}}>จะขึ้นอีกทุกครั้งที่เปิดหน้านี้จนกว่าจะหมดวัน</div>}
             </div>
           </div>
         </div>
       )}
 
-      {lightbox&&(
-        <div onClick={()=>setLightbox(null)} style={{position:"fixed",inset:0,background:"rgba(90,77,66,.75)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:20,cursor:"zoom-out"}}>
-          <div style={{border:"3px solid var(--j-ink)",borderRadius:10,overflow:"hidden",boxShadow:"6px 6px 0 var(--j-ink)",maxWidth:"100%",maxHeight:"100%",background:"var(--j-win)"}}>
-            <div className="j-bar" style={{background:"var(--j-sky)"}}><span className="j-t">🖼 SCREENSHOT.bmp</span><span className="j-ctrl"><span>✕</span></span></div>
-            <img src={lightbox} alt="full" style={{display:"block",maxWidth:"90vw",maxHeight:"75vh",objectFit:"contain"}}/>
-          </div>
-        </div>
-      )}
+      {lightbox&&(<div onClick={()=>setLightbox(null)} style={{position:"fixed",inset:0,background:"rgba(90,77,66,.75)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:20,cursor:"zoom-out"}}><div style={{border:"3px solid var(--j-ink)",borderRadius:10,overflow:"hidden",boxShadow:"6px 6px 0 var(--j-ink)",maxWidth:"100%",maxHeight:"100%",background:"var(--j-win)"}}><div className="j-bar" style={{background:"var(--j-sky)"}}><span className="j-t">🖼 SCREENSHOT.bmp</span><span className="j-ctrl"><span>✕</span></span></div><img src={lightbox} alt="full" style={{display:"block",maxWidth:"90vw",maxHeight:"75vh",objectFit:"contain"}}/></div></div>)}
     </main>
   );
 }
