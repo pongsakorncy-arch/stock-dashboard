@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -536,11 +536,177 @@ function RoadmapWidget({ trades }: { trades: Trade[] }) {
 }
 
 
+// ─── Market Tools: Technical Gauge + Forex Sessions ───────────────────────────
+type ForexSessionInfo = {
+  name: Session | "Sydney";
+  emoji: string;
+  openUtc: number;
+  closeUtc: number;
+  color: string;
+  note: string;
+};
+
+const FOREX_SESSIONS: ForexSessionInfo[] = [
+  { name:"Sydney",   emoji:"🌏", openUtc:21, closeUtc:6,  color:"var(--j-peach)",  note:"Early liquidity" },
+  { name:"Tokyo",    emoji:"🌙", openUtc:0,  closeUtc:9,  color:"var(--j-lav)",    note:"Asian range" },
+  { name:"London",   emoji:"☀️", openUtc:7,  closeUtc:16, color:"var(--j-sky)",    note:"Main volatility" },
+  { name:"New York", emoji:"🗽", openUtc:12, closeUtc:21, color:"var(--j-mint)",   note:"XAUUSD active" },
+];
+
+function utcHourFloat(d: Date) {
+  return d.getUTCHours() + d.getUTCMinutes()/60 + d.getUTCSeconds()/3600;
+}
+
+function isForexSessionOpen(session: ForexSessionInfo, nowUtcHour: number) {
+  if (session.openUtc < session.closeUtc) return nowUtcHour >= session.openUtc && nowUtcHour < session.closeUtc;
+  return nowUtcHour >= session.openUtc || nowUtcHour < session.closeUtc;
+}
+
+function sessionProgress(session: ForexSessionInfo, nowUtcHour: number) {
+  const start = session.openUtc;
+  const end = session.closeUtc <= start ? session.closeUtc + 24 : session.closeUtc;
+  const now = nowUtcHour < start && session.closeUtc <= start ? nowUtcHour + 24 : nowUtcHour;
+  if (!isForexSessionOpen(session, nowUtcHour)) return 0;
+  return Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100));
+}
+
+function hoursUntil(openUtc: number, nowUtcHour: number) {
+  let diff = openUtc - nowUtcHour;
+  if (diff < 0) diff += 24;
+  return diff;
+}
+
+function fmtHours(v: number) {
+  const h = Math.floor(v);
+  const m = Math.round((v - h) * 60);
+  return `${h}h ${String(m).padStart(2,"0")}m`;
+}
+
+function localWindowText(openUtc: number, closeUtc: number) {
+  const toLocal = (h: number) => `${pad2((h + 7) % 24)}:00`;
+  return `${toLocal(openUtc)}–${toLocal(closeUtc)} TH`;
+}
+
+function TechnicalGaugeWidget() {
+  const boxRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    box.innerHTML = "";
+
+    const holder = document.createElement("div");
+    holder.className = "tradingview-widget-container__widget";
+    box.appendChild(holder);
+
+    const script = document.createElement("script");
+    script.src = "https://s3.tradingview.com/external-embedding/embed-widget-technical-analysis.js";
+    script.async = true;
+    script.innerHTML = JSON.stringify({
+      interval: "15m",
+      width: "100%",
+      isTransparent: true,
+      height: 340,
+      symbol: "OANDA:XAUUSD",
+      showIntervalTabs: true,
+      displayMode: "single",
+      locale: "en",
+      colorTheme: "light"
+    });
+    box.appendChild(script);
+
+    return () => { box.innerHTML = ""; };
+  }, []);
+
+  return <div ref={boxRef} className="j-tv-box" />;
+}
+
+function ForexSessionsTool() {
+  const [now,setNow]=useState(new Date());
+  useEffect(()=>{ const id=setInterval(()=>setNow(new Date()),1000); return ()=>clearInterval(id); },[]);
+
+  const nowUtc = utcHourFloat(now);
+  const openSessions = FOREX_SESSIONS.filter(s=>isForexSessionOpen(s,nowUtc));
+  const isOverlap = isForexSessionOpen(FOREX_SESSIONS[2],nowUtc) && isForexSessionOpen(FOREX_SESSIONS[3],nowUtc);
+  const nextSession = [...FOREX_SESSIONS].sort((a,b)=>hoursUntil(a.openUtc,nowUtc)-hoursUntil(b.openUtc,nowUtc))[0];
+
+  return (
+    <div className="j-tool-stack">
+      <div className="j-tool-hero">
+        <div>
+          <div className="j-tool-label">FOREX MARKET STATUS</div>
+          <div className="j-tool-title">{isOverlap ? "⚡ London / New York Overlap" : openSessions.length ? `${openSessions.map(s=>s.emoji).join(" ")} ${openSessions.map(s=>s.name).join(" + ")}` : "🔴 Market Quiet"}</div>
+          <div className="j-tool-sub">Local time: {now.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})} · UTC {pad2(now.getUTCHours())}:{pad2(now.getUTCMinutes())}</div>
+        </div>
+        <div className="j-tool-next">
+          <span>Next open</span>
+          <b>{nextSession.name}</b>
+          <small>{fmtHours(hoursUntil(nextSession.openUtc,nowUtc))}</small>
+        </div>
+      </div>
+
+      <div className="j-session-grid">
+        {FOREX_SESSIONS.map(s=>{
+          const open=isForexSessionOpen(s,nowUtc);
+          const pct=sessionProgress(s,nowUtc);
+          return (
+            <div key={s.name} className={`j-session-card ${open?"on":"off"}`}>
+              <div className="j-session-head">
+                <span className="j-session-icon" style={{background:s.color}}>{s.emoji}</span>
+                <div>
+                  <b>{s.name}</b>
+                  <small>{localWindowText(s.openUtc,s.closeUtc)}</small>
+                </div>
+                <em>{open?"OPEN":"CLOSED"}</em>
+              </div>
+              <div className="j-session-bar"><i style={{width:`${pct}%`,background:s.color}}/></div>
+              <div className="j-session-note">{open ? `${pct.toFixed(0)}% session progress` : s.note}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="j-tool-tip">
+        <b>Trade note:</b> XAUUSD มักขยับแรงช่วง London, New York และ Overlap · ใช้ Gauge เป็นตัวช่วยดู bias เท่านั้น ไม่ใช่สัญญาณเข้าไม้โดยตรง
+      </div>
+    </div>
+  );
+}
+
+function MarketToolsPanel() {
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <Win title="🧰 TOOLS.EXE — XAUUSD Market Helper" color="var(--j-butter)">
+        <div className="j-tools-intro">
+          <div>
+            <div className="j-tool-label">RETRO MARKET TOOLS</div>
+            <div className="j-tool-title">Technical Gauge + Forex Sessions</div>
+            <div className="j-tool-sub">โซนนี้อยู่ใน Journal แต่แยกแท็บไว้ ไม่ไปยุ่งกับ Dashboard / Calendar / Sessions เดิม</div>
+          </div>
+          <span className="j-tool-badge">XAUUSD</span>
+        </div>
+      </Win>
+
+      <div className="j-tools-layout">
+        <Win title="📡 XAUUSD Technical Gauge" color="var(--j-lav)">
+          <TechnicalGaugeWidget />
+          <p className="j-tool-caption">Data by TradingView widget · เลือก timeframe ในกล่องได้เลย</p>
+        </Win>
+
+        <Win title="🌍 Forex Market Sessions" color="var(--j-sky)">
+          <ForexSessionsTool />
+        </Win>
+      </div>
+    </div>
+  );
+}
+
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function JournalPage() {
   const [trades,setTrades]     = useState<Trade[]>([]);
   const [openTrade,setOpenTrade] = useState<Trade|null>(null);
-  const [view,setView]         = useState<"dashboard"|"list"|"checklist"|"exit"|"calendar">("dashboard");
+  const [view,setView]         = useState<"dashboard"|"list"|"checklist"|"exit"|"calendar"|"tools">("dashboard");
   const [filter,setFilter]     = useState<"ALL"|Result>("ALL");
   const [accountType,setAccountType] = useState<AccountType>("cent");
   const [lightbox,setLightbox] = useState<string|null>(null);
@@ -894,6 +1060,35 @@ export default function JournalPage() {
         .j-cal-trade-row:last-child{border-bottom:none;}
         @media(max-width:720px){.j-cal-grid{gap:5px}.j-cal-weekdays{gap:5px}.j-cal-cell{min-height:70px;padding:6px}.j-cal-pl{font-size:12px}.j-cal-count,.j-cal-mini{display:none}.j-cal-day{font-size:11px;top:5px;right:6px}.j-cal-trade-row{align-items:flex-start;flex-wrap:wrap}.j-cal-trade-row b{margin-left:auto}}
 
+
+        .j-tools-intro{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+        .j-tool-label{font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px;}
+        .j-tool-title{font-family:'VT323',monospace;font-size:28px;line-height:1;color:var(--j-ink);}
+        .j-tool-sub{font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);line-height:1.5;margin-top:4px;}
+        .j-tool-badge{font-family:'DM Mono',monospace;font-size:11px;font-weight:700;border:2px solid var(--j-ink);border-radius:8px;background:var(--j-mint);padding:7px 11px;box-shadow:2px 2px 0 var(--j-ink);}
+        .j-tools-layout{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:12px;align-items:start;}
+        .j-tv-box{min-height:340px;border:2px dashed #d9ceb9;border-radius:9px;background:#fbf6ea;overflow:hidden;}
+        .j-tool-caption{font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);text-align:center;margin-top:8px;}
+        .j-tool-stack{display:flex;flex-direction:column;gap:10px;}
+        .j-tool-hero{display:flex;justify-content:space-between;gap:10px;align-items:center;background:#fbf6ea;border:2px solid var(--j-ink);border-radius:9px;padding:12px;box-shadow:2px 2px 0 var(--j-ink);}
+        .j-tool-next{min-width:94px;text-align:center;border:2px solid var(--j-ink);border-radius:8px;background:var(--j-win);padding:7px 8px;font-family:'DM Mono',monospace;}
+        .j-tool-next span{display:block;font-size:8px;color:var(--j-soft);text-transform:uppercase;}
+        .j-tool-next b{display:block;font-size:12px;margin-top:2px;}
+        .j-tool-next small{display:block;font-size:9px;color:#3f9b73;margin-top:1px;}
+        .j-session-grid{display:grid;grid-template-columns:1fr;gap:8px;}
+        .j-session-card{border:2px solid var(--j-ink);border-radius:9px;background:var(--j-win);padding:10px;box-shadow:2px 2px 0 var(--j-ink);transition:.15s;}
+        .j-session-card.off{opacity:.72;box-shadow:none;background:#fbf6ea;}
+        .j-session-head{display:flex;align-items:center;gap:8px;}
+        .j-session-icon{width:30px;height:30px;border:2px solid var(--j-ink);border-radius:8px;display:flex;align-items:center;justify-content:center;box-shadow:1px 1px 0 var(--j-ink);}
+        .j-session-head b{display:block;font-family:'DM Mono',monospace;font-size:12px;line-height:1;color:var(--j-ink);}
+        .j-session-head small{display:block;font-family:'DM Mono',monospace;font-size:8px;color:var(--j-soft);margin-top:3px;}
+        .j-session-head em{margin-left:auto;font-style:normal;font-family:'DM Mono',monospace;font-size:8px;font-weight:700;border:1.5px solid var(--j-ink);border-radius:5px;padding:2px 5px;background:rgba(255,253,248,.65);}
+        .j-session-bar{height:8px;border:1.5px solid var(--j-ink);border-radius:5px;overflow:hidden;background:#e3d9c4;margin-top:9px;}
+        .j-session-bar i{display:block;height:100%;transition:width .4s;}
+        .j-session-note{font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);margin-top:6px;}
+        .j-tool-tip{font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);line-height:1.55;background:#fbf6ea;border:1.5px dashed var(--j-ink);border-radius:8px;padding:9px 10px;}
+        @media(max-width:820px){.j-tools-layout{grid-template-columns:1fr}.j-tool-title{font-size:24px}.j-tool-hero{align-items:flex-start;flex-direction:column}.j-tool-next{width:100%;}}
+
         .open-badge{animation:blink .8s step-end infinite;}
       `}</style>
 
@@ -932,6 +1127,7 @@ export default function JournalPage() {
             <button key={v} onClick={()=>setView(v)} className={`j-tab ${view===v?"on":""}`}>{label}</button>
           ))}
           <button onClick={()=>setView("calendar" as any)} className={`j-tab ${view==="calendar"?"on":""}`}>📅 Calendar</button>
+          <button onClick={()=>setView("tools")} className={`j-tab ${view==="tools"?"on":""}`}>🧰 Tools</button>
           {openTrade&&(
             <button onClick={()=>setView("exit")} className={`j-tab ${view==="exit"?"on":""}`} style={{color:"#d4a65f",fontWeight:600}}>
               🟡 OPEN TRADE
@@ -1426,6 +1622,10 @@ export default function JournalPage() {
             </div>
           );
         })()}
+
+
+        {/* ── TOOLS ── */}
+        {view==="tools"&&(<MarketToolsPanel />)}
 
       {/* Alert Popup */}
       {showAlert&&(dailyStatus.isHardStop||dailyStatus.isDayDone)&&(
