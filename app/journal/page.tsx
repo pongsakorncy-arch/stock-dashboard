@@ -675,18 +675,7 @@ function ForexSessionsTool() {
 
 function MarketToolsPanel() {
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:12}}>
-      <Win title="🧰 TOOLS.EXE — XAUUSD Market Helper" color="var(--j-butter)">
-        <div className="j-tools-intro">
-          <div>
-            <div className="j-tool-label">RETRO MARKET TOOLS</div>
-            <div className="j-tool-title">Technical Gauge + Forex Sessions</div>
-            <div className="j-tool-sub">โซนนี้อยู่ใน Journal แต่แยกแท็บไว้ ไม่ไปยุ่งกับ Dashboard / Calendar / Sessions เดิม</div>
-          </div>
-          <span className="j-tool-badge">XAUUSD</span>
-        </div>
-      </Win>
-
+   
       <div className="j-tools-layout">
         <Win title="📡 XAUUSD Technical Gauge" color="var(--j-lav)">
           <TechnicalGaugeWidget />
