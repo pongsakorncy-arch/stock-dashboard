@@ -536,7 +536,7 @@ function RoadmapWidget({ trades }: { trades: Trade[] }) {
 }
 
 
-// ─── Market Tools: Retro HP/MP Bars + Forex Sessions ─────────────────────────
+// ─── Market Tools: Trader RPG Coach + Retro HP/MP Bars ────────────────────────
 type ForexSessionInfo = {
   name: Session | "Sydney";
   emoji: string;
@@ -546,7 +546,8 @@ type ForexSessionInfo = {
   note: string;
 };
 
-type RetroBarTone = "mint" | "sky" | "lav" | "butter" | "coral" | "peach";
+type RetroBarTone = "mint" | "sky" | "lav" | "butter" | "coral" | "peach" | "ink";
+type StatRow = { key:string; label:string; trades:number; wins:number; losses:number; be:number; winRate:number; avgRR:number; totalPL:number };
 
 const FOREX_SESSIONS: ForexSessionInfo[] = [
   { name:"Sydney",   emoji:"🌏", openUtc:21, closeUtc:6,  color:"var(--j-peach)",  note:"Early liquidity" },
@@ -555,51 +556,74 @@ const FOREX_SESSIONS: ForexSessionInfo[] = [
   { name:"New York", emoji:"🗽", openUtc:12, closeUtc:21, color:"var(--j-mint)",   note:"XAUUSD active" },
 ];
 
-function utcHourFloat(d: Date) {
-  return d.getUTCHours() + d.getUTCMinutes()/60 + d.getUTCSeconds()/3600;
-}
-
+function clampNum(v:number,min=0,max=100){ return Math.min(max,Math.max(min,v)); }
+function pctText(v:number){ return `${Math.round(v)}%`; }
+function utcHourFloat(d: Date) { return d.getUTCHours() + d.getUTCMinutes()/60 + d.getUTCSeconds()/3600; }
 function isForexSessionOpen(session: ForexSessionInfo, nowUtcHour: number) {
   if (session.openUtc < session.closeUtc) return nowUtcHour >= session.openUtc && nowUtcHour < session.closeUtc;
   return nowUtcHour >= session.openUtc || nowUtcHour < session.closeUtc;
 }
-
 function sessionProgress(session: ForexSessionInfo, nowUtcHour: number) {
   const start = session.openUtc;
   const end = session.closeUtc <= start ? session.closeUtc + 24 : session.closeUtc;
   const now = nowUtcHour < start && session.closeUtc <= start ? nowUtcHour + 24 : nowUtcHour;
   if (!isForexSessionOpen(session, nowUtcHour)) return 0;
-  return Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100));
+  return clampNum(((now - start) / (end - start)) * 100);
 }
-
 function hoursUntil(openUtc: number, nowUtcHour: number) {
   let diff = openUtc - nowUtcHour;
   if (diff < 0) diff += 24;
   return diff;
 }
-
 function fmtHours(v: number) {
   const h = Math.floor(v);
   const m = Math.round((v - h) * 60);
   return `${h}h ${String(m).padStart(2,"0")}m`;
 }
-
 function localWindowText(openUtc: number, closeUtc: number) {
   const toLocal = (h: number) => `${pad2((h + 7) % 24)}:00`;
   return `${toLocal(openUtc)}–${toLocal(closeUtc)} TH`;
 }
+function toStatRows(trades: Trade[], keyGetter:(t:Trade)=>string, labelGetter?:(key:string)=>string): StatRow[] {
+  const closed = trades.filter(t=>t.status==="CLOSED");
+  const map:Record<string,Trade[]> = {};
+  closed.forEach(t=>{ const k=keyGetter(t)||"Unknown"; (map[k] ||= []).push(t); });
+  return Object.entries(map).map(([key,items])=>{
+    const wins=items.filter(t=>t.result==="WIN").length;
+    const losses=items.filter(t=>t.result==="LOSS").length;
+    const be=items.filter(t=>t.result==="BE").length;
+    const rrAvg=items.reduce((s,t)=>s+(Number(t.rr)||0),0)/(items.length||1);
+    return {
+      key,label:labelGetter?labelGetter(key):key,trades:items.length,wins,losses,be,
+      winRate: items.length ? wins/items.length*100 : 0,
+      avgRR: rrAvg,
+      totalPL: items.reduce((s,t)=>s+(Number(t.totalPL)||0),0),
+    };
+  }).sort((a,b)=>b.trades-a.trades);
+}
+function bestRow(rows: StatRow[], minTrades=3) {
+  const eligible=rows.filter(r=>r.trades>=minTrades);
+  return (eligible.length?eligible:rows).sort((a,b)=>b.winRate-a.winRate || b.avgRR-a.avgRR)[0];
+}
+function weakRow(rows: StatRow[], minTrades=3) {
+  const eligible=rows.filter(r=>r.trades>=minTrades);
+  return (eligible.length?eligible:rows).sort((a,b)=>a.winRate-b.winRate || a.avgRR-b.avgRR)[0];
+}
+function scoreFromRow(row?: StatRow) {
+  if(!row) return 50;
+  const rrScore=clampNum((row.avgRR+1)*28,0,100);
+  return clampNum(row.winRate*0.68 + rrScore*0.32);
+}
+function modeLabel(k:string){ return getModeInfo(k).label; }
 
-function RetroStatBar({label,value,max=100,tone="mint",right}:{label:string;value:number;max?:number;tone?:RetroBarTone;right?:string}) {
+function RetroStatBar({label,value,max=100,tone="mint",right,size="normal"}:{label:string;value:number;max?:number;tone?:RetroBarTone;right?:string;size?:"normal"|"big"}) {
   const safeMax = max <= 0 ? 100 : max;
-  const pct = Math.min(100, Math.max(0, (value / safeMax) * 100));
-  const blocks = 12;
+  const pct = clampNum((value / safeMax) * 100);
+  const blocks = size==="big" ? 16 : 12;
   const filled = Math.round((pct / 100) * blocks);
   return (
-    <div className={`j-rpg-line ${tone}`}>
-      <div className="j-rpg-meta">
-        <span>{label}</span>
-        <b>{right || `${Math.round(value)}/${safeMax}`}</b>
-      </div>
+    <div className={`j-rpg-line ${tone} ${size}`}>
+      <div className="j-rpg-meta"><span>{label}</span><b>{right || `${Math.round(value)}/${safeMax}`}</b></div>
       <div className="j-rpg-bar" aria-label={`${label} ${pct.toFixed(0)}%`}>
         <i style={{width:`${pct}%`}} />
         <div className="j-rpg-segments">
@@ -610,53 +634,95 @@ function RetroStatBar({label,value,max=100,tone="mint",right}:{label:string;valu
   );
 }
 
-function PixelSignalBadge({score}:{score:number}) {
-  const label = score >= 78 ? "STRONG BUY" : score >= 58 ? "BUY" : score >= 43 ? "NEUTRAL" : score >= 25 ? "SELL" : "STRONG SELL";
-  const tone = score >= 58 ? "mint" : score >= 43 ? "butter" : "coral";
-  const emoji = score >= 58 ? "🟢" : score >= 43 ? "🟡" : "🔴";
+function PixelSignalBadge({score,hardStop}:{score:number;hardStop?:boolean}) {
+  const label = hardStop ? "STOP TODAY" : score >= 78 ? "READY" : score >= 60 ? "WATCH" : score >= 43 ? "WAIT" : "NO TRADE";
+  const tone = hardStop ? "coral" : score >= 78 ? "mint" : score >= 60 ? "butter" : score >= 43 ? "lav" : "coral";
+  const emoji = hardStop ? "🛑" : score >= 78 ? "🟢" : score >= 60 ? "🟡" : score >= 43 ? "🟣" : "🔴";
   return <div className={`j-signal-badge ${tone}`}><span>{emoji}</span><b>{label}</b></div>;
 }
 
-function TechnicalGaugeWidget() {
-  // ตัวเลขชุดนี้เป็นตัวช่วย visual แบบ retro ก่อน ยังไม่ใช่สัญญาณเข้าเทรดจริง
-  const buyPower = 82;
-  const sellPressure = 28;
-  const momentum = 64;
-  const trend = 76;
-  const volatility = 58;
-  const risk = 34;
-  const score = Math.round((buyPower + momentum + trend + (100 - sellPressure) + (100 - risk)) / 5);
+function CoachChip({label,value,tone="mint"}:{label:string;value:string;tone?:RetroBarTone}) {
+  return <div className={`j-coach-chip ${tone}`}><span>{label}</span><b>{value}</b></div>;
+}
+
+function XauusdBattleCoach({trades,dailyStatus}:{trades:Trade[];dailyStatus:ReturnType<typeof calcDailyStatus>}) {
+  const closed = trades.filter(t=>t.status==="CLOSED");
+  const modeRows = toStatRows(closed,t=>t.mode,modeLabel);
+  const sessionRows = toStatRows(closed,t=>t.session);
+  const emotionRows = toStatRows(closed,t=>t.emotion);
+  const bestMode = bestRow(modeRows);
+  const weakMode = weakRow(modeRows);
+  const currentSession = autoSessionFromTime(nowTime24());
+  const currentSessionRow = sessionRows.find(r=>r.key===currentSession);
+  const bestSession = bestRow(sessionRows);
+  const badEmotion = emotionRows.sort((a,b)=>a.winRate-b.winRate || b.losses-a.losses)[0];
+  const allStats = calcStats(closed);
+
+  const dataPower = clampNum((closed.length/30)*100);
+  const setupPower = scoreFromRow(bestMode);
+  const sessionPower = scoreFromRow(currentSessionRow || bestSession);
+  const rrPower = clampNum((allStats.avgRR+1)*30);
+  const disciplinePower = dailyStatus.isHardStop ? 0 : dailyStatus.isDayDone ? 36 : clampNum(88 - dailyStatus.lossStreak*26 - dailyStatus.totalToday*7);
+  const readiness = closed.length < 3
+    ? 48
+    : Math.round(setupPower*0.32 + sessionPower*0.24 + rrPower*0.18 + disciplinePower*0.26);
+
+  const command = dailyStatus.isHardStop
+    ? "หยุดวันนี้ก่อน ระบบเจอ LOSS streak ถึงจุดเสี่ยงแล้ว"
+    : dailyStatus.isDayDone
+      ? "ครบจำนวนไม้วันนี้แล้ว ไม่ต้องฝืนเพิ่ม"
+      : closed.length < 3
+        ? "ข้อมูลยังน้อย ให้เก็บ Journal เพิ่มก่อน ระบบจะเริ่มแม่นขึ้นเมื่อมี 10–30 ไม้"
+        : readiness >= 78
+          ? `วันนี้ถ้าจะเล่น ให้โฟกัส ${bestMode?.label || "setup ที่ checklist ครบ"} และรอ confirmation เท่านั้น`
+          : readiness >= 60
+            ? "พอเทรดได้ แต่ต้องลดความถี่ รอจังหวะชัด และห้ามเข้าเพราะ FOMO"
+            : "ยังไม่ใช่สนามที่ได้เปรียบ รอ setup ชัดกว่านี้ก่อน";
 
   return (
     <div className="j-rpg-panel">
-      <div className="j-rpg-top">
+      <div className="j-rpg-top j-battle-top">
         <div>
-          <div className="j-tool-label">XAUUSD STATUS</div>
-          <div className="j-rpg-name">GOLD BOSS</div>
+          <div className="j-tool-label">TRADER RPG COACH</div>
+          <div className="j-rpg-name">XAUUSD BATTLE STATUS</div>
+          <div className="j-rpg-note">วิเคราะห์จาก Journal ที่บันทึกไว้ ไม่ใช่สัญญาณทำนายราคา</div>
         </div>
-        <PixelSignalBadge score={score}/>
+        <PixelSignalBadge score={readiness} hardStop={dailyStatus.isHardStop || dailyStatus.isDayDone}/>
+      </div>
+
+      <div className="j-readiness-card">
+        <div className="j-readiness-score">
+          <span>⚔️</span>
+          <div><small>BATTLE READINESS</small><b>{readiness}/100</b></div>
+        </div>
+        <RetroStatBar label="READY BAR" value={readiness} tone={readiness>=78?"mint":readiness>=60?"butter":readiness>=43?"lav":"coral"} right={pctText(readiness)} size="big" />
       </div>
 
       <div className="j-rpg-avatar-row">
-        <div className="j-rpg-avatar">⚔️</div>
+        <div className="j-rpg-avatar">🧙‍♂️</div>
         <div className="j-rpg-bars">
-          <RetroStatBar label="HP / BUY POWER" value={buyPower} tone="mint" right={`${buyPower}%`} />
-          <RetroStatBar label="MP / MOMENTUM" value={momentum} tone="sky" right={`${momentum}%`} />
-          <RetroStatBar label="TP / TREND" value={trend} tone="lav" right={`${trend}%`} />
+          <RetroStatBar label="HP / BEST SETUP" value={setupPower} tone="mint" right={bestMode ? `${bestMode.label} · ${bestMode.winRate.toFixed(0)}%` : "No data"} />
+          <RetroStatBar label="MP / SESSION EDGE" value={sessionPower} tone="sky" right={currentSessionRow ? `${currentSession} · ${currentSessionRow.winRate.toFixed(0)}%` : `${currentSession} · new`} />
+          <RetroStatBar label="EXP / DATA POWER" value={dataPower} tone="lav" right={`${closed.length} trades`} />
         </div>
       </div>
 
-      <div className="j-rpg-grid">
-        <RetroStatBar label="SELL PRESSURE" value={sellPressure} tone="coral" right={`${sellPressure}%`} />
-        <RetroStatBar label="VOLATILITY" value={volatility} tone="butter" right={`${volatility}%`} />
-        <RetroStatBar label="RISK" value={risk} tone="peach" right={`${risk}%`} />
+      <div className="j-rpg-grid coach-grid">
+        <RetroStatBar label="RR POWER" value={rrPower} tone="butter" right={`Avg RR ${allStats.avgRR.toFixed(2)}`} />
+        <RetroStatBar label="DISCIPLINE" value={disciplinePower} tone={disciplinePower>=70?"mint":disciplinePower>=45?"butter":"coral"} right={`${dailyStatus.totalToday}/${MAX_TRADES_PER_DAY} trades`} />
+        <RetroStatBar label="DANGER" value={dailyStatus.lossStreak*34} tone="coral" right={`LOSS streak ${dailyStatus.lossStreak}`} />
+      </div>
+
+      <div className="j-coach-chips">
+        <CoachChip label="Best setup" value={bestMode ? `${bestMode.label} (${bestMode.trades})` : "Need data"} tone="mint" />
+        <CoachChip label="Best session" value={bestSession ? `${bestSession.label} ${bestSession.winRate.toFixed(0)}%` : "Need data"} tone="sky" />
+        <CoachChip label="Weak point" value={weakMode ? `${weakMode.label} ${weakMode.winRate.toFixed(0)}%` : "Need data"} tone="coral" />
+        <CoachChip label="Emotion trap" value={badEmotion ? badEmotion.label.replace(/^.*? /,"") : "Need data"} tone="peach" />
       </div>
 
       <div className="j-rpg-command-box">
         <div className="j-rpg-command-title">COMMAND</div>
-        <div className="j-rpg-command-text">
-          รอแท่งยืนยันก่อนเข้าไม้ · ถ้า HP สูงแต่ RISK สูง ให้ลด lot / รอ pullback · ใช้คู่กับ Checklist ก่อนกดบันทึก Entry
-        </div>
+        <div className="j-rpg-command-text">{command}</div>
       </div>
     </div>
   );
@@ -665,7 +731,6 @@ function TechnicalGaugeWidget() {
 function ForexSessionsTool() {
   const [now,setNow]=useState(new Date());
   useEffect(()=>{ const id=setInterval(()=>setNow(new Date()),1000); return ()=>clearInterval(id); },[]);
-
   const nowUtc = utcHourFloat(now);
   const openSessions = FOREX_SESSIONS.filter(s=>isForexSessionOpen(s,nowUtc));
   const isOverlap = isForexSessionOpen(FOREX_SESSIONS[2],nowUtc) && isForexSessionOpen(FOREX_SESSIONS[3],nowUtc);
@@ -680,14 +745,10 @@ function ForexSessionsTool() {
           <div className="j-rpg-title-sm">{isOverlap ? "⚡ OVERLAP MODE" : openSessions.length ? `${openSessions.map(s=>s.name).join(" + ")}` : "MARKET QUIET"}</div>
           <div className="j-tool-sub">TH {now.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})} · UTC {pad2(now.getUTCHours())}:{pad2(now.getUTCMinutes())}</div>
         </div>
-        <div className="j-tool-next">
-          <span>Next</span>
-          <b>{nextSession.name}</b>
-          <small>{fmtHours(hoursUntil(nextSession.openUtc,nowUtc))}</small>
-        </div>
+        <div className="j-tool-next"><span>Next</span><b>{nextSession.name}</b><small>{fmtHours(hoursUntil(nextSession.openUtc,nowUtc))}</small></div>
       </div>
 
-      <RetroStatBar label="SP / SESSION POWER" value={activity} tone={activity >= 75 ? "mint" : activity >= 45 ? "butter" : "coral"} right={`${activity}%`} />
+      <RetroStatBar label="SP / SESSION POWER" value={activity} tone={activity >= 75 ? "mint" : activity >= 45 ? "butter" : "coral"} right={`${activity}%`} size="big" />
 
       <div className="j-session-grid hp-style">
         {FOREX_SESSIONS.map(s=>{
@@ -698,36 +759,50 @@ function ForexSessionsTool() {
             <div key={s.name} className={`j-session-card ${open?"on":"off"}`}>
               <div className="j-session-head">
                 <span className="j-session-icon" style={{background:s.color}}>{s.emoji}</span>
-                <div>
-                  <b>{s.name}</b>
-                  <small>{localWindowText(s.openUtc,s.closeUtc)}</small>
-                </div>
+                <div><b>{s.name}</b><small>{localWindowText(s.openUtc,s.closeUtc)}</small></div>
                 <em>{open?"OPEN":"CLOSED"}</em>
               </div>
-              <RetroStatBar label={open ? "TIME LEFT / ACTIVE" : "WAIT"} value={open ? pct : 0} tone={tone} right={open ? `${pct.toFixed(0)}%` : s.note} />
+              <RetroStatBar label={open ? "TIME / ACTIVE" : "WAIT"} value={open ? pct : 0} tone={tone} right={open ? `${pct.toFixed(0)}%` : s.note} />
             </div>
           );
         })}
       </div>
 
-      <div className="j-tool-tip">
-        <b>Trade note:</b> XAUUSD มักขยับแรงช่วง London, New York และ Overlap · แถบ HP/MP เป็นตัวช่วยอ่านสถานะตลาด ไม่ใช่สัญญาณเข้าไม้โดยตรง
-      </div>
+      <div className="j-tool-tip"><b>Trade note:</b> XAUUSD มักขยับแรงช่วง London, New York และ Overlap · ใช้คู่กับ Checklist / Journal Stats ก่อนเข้าไม้</div>
     </div>
   );
 }
 
-function MarketToolsPanel() {
+function MissionPanel({dailyStatus}:{dailyStatus:ReturnType<typeof calcDailyStatus>}) {
+  const missions = [
+    {label:"ไม่ Revenge", ok:dailyStatus.lossStreak<2},
+    {label:"ไม่เกิน 3 ไม้", ok:dailyStatus.totalToday<MAX_TRADES_PER_DAY},
+    {label:"พักหลังแพ้ติด", ok:dailyStatus.lossStreak===0},
+    {label:"รอ Checklist ครบ", ok:false},
+  ];
+  return (
+    <Win title="🎯 TODAY QUEST" color="var(--j-mint)">
+      <div className="j-quest-list">
+        {missions.map((m,i)=><div key={i} className={m.ok?"done":""}><span>{m.ok?"☑":"☐"}</span><b>{m.label}</b></div>)}
+      </div>
+    </Win>
+  );
+}
+
+function MarketToolsPanel({trades,dailyStatus}:{trades:Trade[];dailyStatus:ReturnType<typeof calcDailyStatus>}) {
   return (
     <div className="j-tools-screen">
-      <div className="j-tools-layout">
-        <Win title="⚔️ XAUUSD Battle Gauge" color="var(--j-lav)">
-          <TechnicalGaugeWidget />
+      <div className="j-tools-layout advanced">
+        <Win title="⚔️ XAUUSD Battle Coach" color="var(--j-lav)">
+          <XauusdBattleCoach trades={trades} dailyStatus={dailyStatus} />
         </Win>
 
-        <Win title="🌍 Session HP / MP" color="var(--j-sky)">
-          <ForexSessionsTool />
-        </Win>
+        <div className="j-tools-side">
+          <Win title="🌍 Session HP / MP" color="var(--j-sky)">
+            <ForexSessionsTool />
+          </Win>
+          <MissionPanel dailyStatus={dailyStatus} />
+        </div>
       </div>
     </div>
   );
@@ -1093,7 +1168,9 @@ export default function JournalPage() {
 
 
         .j-tools-screen{display:flex;flex-direction:column;gap:12px;}
-        .j-tools-layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:12px;align-items:start;}
+        .j-tools-layout{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:12px;align-items:start;}
+        .j-tools-layout.advanced{grid-template-columns:minmax(0,1.18fr) minmax(330px,.82fr);}
+        .j-tools-side{display:flex;flex-direction:column;gap:12px;}
         .j-tool-label{font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px;}
         .j-tool-sub{font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);line-height:1.5;margin-top:4px;}
         .j-tool-stack{display:flex;flex-direction:column;gap:10px;}
@@ -1104,6 +1181,7 @@ export default function JournalPage() {
         .j-tool-tip{font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);line-height:1.55;background:#fbf6ea;border:1.5px dashed var(--j-ink);border-radius:8px;padding:9px 10px;}
         .j-rpg-panel{display:flex;flex-direction:column;gap:12px;}
         .j-rpg-top{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fbf6ea;border:2px solid var(--j-ink);border-radius:9px;padding:12px;box-shadow:2px 2px 0 var(--j-ink);}
+        .j-battle-top{background:linear-gradient(135deg,#fffdf8,#f6e6ac55);}
         .j-rpg-name{font-family:'VT323',monospace;font-size:34px;line-height:1;color:var(--j-ink);letter-spacing:1px;}
         .j-rpg-title-sm{font-family:'VT323',monospace;font-size:26px;line-height:1;color:var(--j-ink);letter-spacing:.5px;}
         .j-signal-badge{border:2px solid var(--j-ink);border-radius:9px;padding:8px 10px;box-shadow:2px 2px 0 var(--j-ink);font-family:'DM Mono',monospace;display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;white-space:nowrap;}
@@ -1115,12 +1193,13 @@ export default function JournalPage() {
         .j-rpg-line{display:flex;flex-direction:column;gap:5px;min-width:0;}
         .j-rpg-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);text-transform:uppercase;}
         .j-rpg-meta b{color:var(--j-ink);font-size:9px;white-space:nowrap;}
-        .j-rpg-bar{height:18px;position:relative;border:2px solid var(--j-ink);border-radius:6px;background:#e3d9c4;box-shadow:2px 2px 0 var(--j-ink);overflow:hidden;}
-        .j-rpg-bar i{position:absolute;inset:0 auto 0 0;width:0%;transition:width .45s steps(8,end);background:var(--j-mint);}
-        .j-rpg-line.sky .j-rpg-bar i{background:var(--j-sky);}.j-rpg-line.lav .j-rpg-bar i{background:var(--j-lav);}.j-rpg-line.butter .j-rpg-bar i{background:var(--j-butter);}.j-rpg-line.coral .j-rpg-bar i{background:var(--j-coral);}.j-rpg-line.peach .j-rpg-bar i{background:var(--j-peach);}
+        .j-rpg-bar{height:20px;position:relative;border:2px solid var(--j-ink);border-radius:6px;background:#5a4d42;box-shadow:2px 2px 0 var(--j-ink), inset 0 0 0 2px rgba(255,253,248,.18);overflow:hidden;}
+        .j-rpg-line.big .j-rpg-bar{height:26px;border-width:2.5px;}
+        .j-rpg-bar i{position:absolute;inset:0 auto 0 0;width:0%;transition:width .45s steps(8,end);background:#4fce8a;box-shadow:inset 0 -5px 0 rgba(0,0,0,.14), inset 0 5px 0 rgba(255,255,255,.24);}
+        .j-rpg-line.sky .j-rpg-bar i{background:#68b7e8;}.j-rpg-line.lav .j-rpg-bar i{background:#a985e8;}.j-rpg-line.butter .j-rpg-bar i{background:#e4c650;}.j-rpg-line.coral .j-rpg-bar i{background:#e86f66;}.j-rpg-line.peach .j-rpg-bar i{background:#e99b5d;}.j-rpg-line.ink .j-rpg-bar i{background:#5a4d42;}
         .j-rpg-segments{position:absolute;inset:2px;display:grid;grid-template-columns:repeat(12,1fr);gap:2px;}
-        .j-rpg-segments span{border-right:1px solid rgba(90,77,66,.28);background:rgba(255,253,248,.22);}
-        .j-rpg-segments span.fill{background:rgba(255,253,248,.06);}
+        .j-rpg-segments span{border-right:1px solid rgba(255,253,248,.35);background:rgba(255,253,248,.10);}
+        .j-rpg-segments span.fill{background:rgba(255,255,255,.20);}
         .j-rpg-command-box{border:2px solid var(--j-ink);border-radius:9px;background:var(--j-win);padding:10px 12px;box-shadow:2px 2px 0 var(--j-ink);}
         .j-rpg-command-title{font-family:'VT323',monospace;font-size:20px;line-height:1;margin-bottom:4px;}
         .j-rpg-command-text{font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);line-height:1.6;}
@@ -1133,7 +1212,22 @@ export default function JournalPage() {
         .j-session-head b{display:block;font-family:'DM Mono',monospace;font-size:12px;line-height:1;color:var(--j-ink);}
         .j-session-head small{display:block;font-family:'DM Mono',monospace;font-size:8px;color:var(--j-soft);margin-top:3px;}
         .j-session-head em{margin-left:auto;font-style:normal;font-family:'DM Mono',monospace;font-size:8px;font-weight:700;border:1.5px solid var(--j-ink);border-radius:5px;padding:2px 5px;background:rgba(255,253,248,.65);}
-        @media(max-width:820px){.j-tools-layout{grid-template-columns:1fr}.j-rpg-avatar-row{grid-template-columns:1fr}.j-rpg-avatar{min-height:76px}.j-rpg-grid{grid-template-columns:1fr}.j-rpg-mini-header{align-items:flex-start;flex-direction:column}.j-tool-next{width:100%;}.j-rpg-top{align-items:flex-start;flex-direction:column}.j-signal-badge{width:100%;justify-content:center;}} 
+        .j-readiness-card{border:2.5px solid var(--j-ink);border-radius:12px;background:#fffdf8;padding:12px;box-shadow:3px 3px 0 var(--j-ink);display:flex;flex-direction:column;gap:8px;}
+        .j-readiness-score{display:flex;align-items:center;gap:10px;}
+        .j-readiness-score>span{width:42px;height:42px;border:2px solid var(--j-ink);border-radius:10px;background:var(--j-butter);display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:2px 2px 0 var(--j-ink);}
+        .j-readiness-score small{display:block;font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);letter-spacing:1px;}
+        .j-readiness-score b{display:block;font-family:'VT323',monospace;font-size:34px;line-height:.9;color:var(--j-ink);}
+        .j-rpg-note{font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);margin-top:4px;}
+        .j-coach-chips{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+        .j-coach-chip{border:2px solid var(--j-ink);border-radius:8px;background:#fffdf8;padding:8px;box-shadow:2px 2px 0 var(--j-ink);min-width:0;}
+        .j-coach-chip span{display:block;font-family:'DM Mono',monospace;font-size:8px;color:var(--j-soft);text-transform:uppercase;margin-bottom:3px;}
+        .j-coach-chip b{display:block;font-family:'DM Mono',monospace;font-size:10px;color:var(--j-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .j-coach-chip.mint{background:#c0e6d455}.j-coach-chip.sky{background:#c6def055}.j-coach-chip.coral{background:#f3b0a855}.j-coach-chip.peach{background:#f8d6ba66}.j-coach-chip.butter{background:#f6e6ac66}.j-coach-chip.lav{background:#ddccf066}
+        .j-quest-list{display:flex;flex-direction:column;gap:8px;}
+        .j-quest-list div{display:flex;align-items:center;gap:9px;border:2px solid var(--j-ink);border-radius:8px;background:#fbf6ea;padding:8px 10px;font-family:'DM Mono',monospace;font-size:11px;color:var(--j-soft);}
+        .j-quest-list div.done{background:var(--j-mint);color:var(--j-ink);box-shadow:2px 2px 0 var(--j-ink);}
+        .j-quest-list span{font-size:15px;line-height:1;}
+        @media(max-width:920px){.j-tools-layout,.j-tools-layout.advanced{grid-template-columns:1fr}.j-rpg-avatar-row{grid-template-columns:1fr}.j-rpg-avatar{min-height:76px}.j-rpg-grid,.coach-grid{grid-template-columns:1fr}.j-coach-chips{grid-template-columns:1fr 1fr}.j-rpg-mini-header{align-items:flex-start;flex-direction:column}.j-tool-next{width:100%;}.j-rpg-top{align-items:flex-start;flex-direction:column}.j-signal-badge{width:100%;justify-content:center;}} 
 
         .open-badge{animation:blink .8s step-end infinite;}
       `}</style>
@@ -1671,7 +1765,7 @@ export default function JournalPage() {
 
 
         {/* ── TOOLS ── */}
-        {view==="tools"&&(<MarketToolsPanel />)}
+        {view==="tools"&&(<MarketToolsPanel trades={trades} dailyStatus={dailyStatus} />)}
 
       {/* Alert Popup */}
       {showAlert&&(dailyStatus.isHardStop||dailyStatus.isDayDone)&&(
