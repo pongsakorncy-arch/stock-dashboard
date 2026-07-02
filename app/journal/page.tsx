@@ -88,9 +88,37 @@ const money = (v: number) => {
   return v >= 0 ? `+$${abs}` : `-$${abs}`;
 };
 const uid  = () => Math.random().toString(36).slice(2, 10);
-const KEY  = "yok_journal_v4";
+const KEY   = "yok_journal_v4";
+const KEY_OLD = "yok_journal_v3";
 const KOPEN = "yok_open_trade";
-const load = (): Trade[] => { try { return JSON.parse(localStorage.getItem(KEY)||"[]"); } catch { return []; } };
+
+// migrate ข้อมูลจาก v3 → v4 (เพิ่ม status/mode/checklistJson/exitReason ให้ของเก่า)
+function migrateOldTrades(rawTrades: any[]): Trade[] {
+  return rawTrades.map((t: any) => ({
+    ...t,
+    status:        t.status       || "CLOSED",
+    mode:          t.mode         || "SMC",
+    checklistJson: t.checklistJson|| "{}",
+    exitReason:    t.exitReason   || "",
+    screenshotUrl: t.screenshotUrl|| t.screenshot_url || "",
+  }));
+}
+
+const load = (): Trade[] => {
+  try {
+    // ลองโหลด v4 ก่อน
+    const v4 = localStorage.getItem(KEY);
+    if (v4) return JSON.parse(v4);
+    // ถ้าไม่มี v4 ลองโหลด v3 แล้ว migrate
+    const v3 = localStorage.getItem(KEY_OLD);
+    if (v3) {
+      const migrated = migrateOldTrades(JSON.parse(v3));
+      localStorage.setItem(KEY, JSON.stringify(migrated)); // save เป็น v4
+      return migrated;
+    }
+    return [];
+  } catch { return []; }
+};
 const save = (t: Trade[]) => localStorage.setItem(KEY, JSON.stringify(t));
 const loadOpen = (): Trade|null => { try { const s=localStorage.getItem(KOPEN); return s?JSON.parse(s):null; } catch { return null; } };
 const saveOpen = (t: Trade|null) => { if(t) localStorage.setItem(KOPEN,JSON.stringify(t)); else localStorage.removeItem(KOPEN); };
@@ -293,18 +321,179 @@ const defSWBreak   = ():ChecklistSWBreakout=> ({c1_sw:false,c2_close:false,c3_re
 const defPullback  = ():ChecklistPullback  => ({c1_trend:false,c2_dzsz:false,c3_pa:false,c4_short:false});
 const defM5Rev     = ():ChecklistM5Rev     => ({c1_pa2:false,c2_dir:false,c3_plan:false});
 
-const STARTING_CAPITAL=50, TOTAL_TARGET=20000;
+const STARTING_CAPITAL=50, MONTHLY_GOAL=2000, TOTAL_TARGET=20000;
 const PHASES=[
-  {id:1,from:50,to:1000,color:"var(--j-coral)",label:"Phase 1"},
-  {id:2,from:1000,to:12000,color:"var(--j-butter)",label:"Phase 2"},
-  {id:3,from:12000,to:20000,color:"var(--j-mint)",label:"Phase 3"},
+  {id:1,label:"Phase 1",months:"Month 1–8",from:50,to:1000,color:"var(--j-coral)",risk:"$5/trade",focus:"No lot increase · journal every trade",reminder:"✦ Phase 1 : No FOMO · Journal every trade · R:R ≥ 1:2 only ✦"},
+  {id:2,label:"Phase 2",months:"Month 9–18",from:1000,to:12000,color:"var(--j-butter)",risk:"$20–150/trade",focus:"Add $500/mo · win rate ≥ 55%",reminder:"✦ Phase 2 : Add capital regularly · Win rate ≥ 55% · No overtrade ✦"},
+  {id:3,label:"Phase 3",months:"Month 19–24",from:12000,to:20000,color:"var(--j-mint)",risk:"$150–200/trade",focus:"Withdraw $2,000/mo · control DD",reminder:"✦ Phase 3 : Withdraw $2,000/mo · Control DD · You are almost there ✦"},
 ];
+
+
+const WEEKLY_GOALS = [
+  { id:"w1", label:"Win 3 trades",        check:(t:Trade[])=>t.filter(x=>x.result==="WIN").length>=3 },
+  { id:"w2", label:"R:R ≥ 2 × 3 trades", check:(t:Trade[])=>t.filter(x=>x.rr>=2).length>=3 },
+  { id:"w3", label:"No LOSS streak >2",   check:(t:Trade[])=>{ let streak=0,max=0; [...t].sort((a,b)=>a.date.localeCompare(b.date)).forEach(x=>{ if(x.result==="LOSS"){streak++;max=Math.max(max,streak);}else streak=0; }); return max<=2; }},
+  { id:"w4", label:"Journal 5 sessions",  check:(t:Trade[])=>t.length>=5 },
+  { id:"w5", label:"Win Rate ≥ 60%",      check:(t:Trade[])=>t.length>=3&&t.filter(x=>x.result==="WIN").length/t.length>=0.6 },
+];
+
+function WeeklyGoals({ trades }: { trades: Trade[] }) {
+  const now = new Date();
+  const dow = now.getDay();
+  const monday = new Date(now); monday.setDate(now.getDate()-(dow===0?6:dow-1)); monday.setHours(0,0,0,0);
+  const weekStr = monday.toISOString().split("T")[0];
+  const weekTrades = trades.filter(t=>t.date>=weekStr);
+  const done = WEEKLY_GOALS.filter(g=>g.check(weekTrades)).length;
+  return (
+    <div className="j-win">
+      <div className="j-bar" style={{background:"var(--j-butter)"}}>
+        <span className="j-t">🎯 WEEKLY GOALS</span>
+        <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-ink)",fontWeight:600}}>{done}/{WEEKLY_GOALS.length} done</span>
+        <span className="j-ctrl"><span>_</span><span>▢</span><span>✕</span></span>
+      </div>
+      <div className="j-body" style={{display:"flex",flexDirection:"column",gap:7}}>
+        <div>
+          <div style={{height:10,border:"2px solid var(--j-ink)",borderRadius:6,overflow:"hidden",background:"var(--j-win)",display:"flex",marginBottom:6}}>
+            <div style={{background:"var(--j-mint)",width:`${(done/WEEKLY_GOALS.length)*100}%`,transition:"width .4s"}}/>
+          </div>
+          <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)"}}>Week of {weekStr} · {weekTrades.length} sessions logged</div>
+        </div>
+        {WEEKLY_GOALS.map(g=>{ const ok=g.check(weekTrades); return (
+          <div key={g.id} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 10px",border:"2px solid var(--j-ink)",borderRadius:8,background:ok?"var(--j-mint)":"var(--j-win)",boxShadow:ok?"2px 2px 0 var(--j-ink)":"none",transition:"all .2s"}}>
+            <div style={{width:22,height:22,border:"2px solid var(--j-ink)",borderRadius:5,background:ok?"var(--j-ink)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontFamily:"'VT323',monospace",fontSize:14,color:"var(--j-win)",boxShadow:ok?"none":"1px 1px 0 var(--j-ink)"}}>{ok?"✓":""}</div>
+            <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:ok?"var(--j-ink)":"var(--j-soft)",textDecoration:ok?"line-through":"none",fontWeight:ok?600:400}}>{g.label}</span>
+            {ok&&<span style={{marginLeft:"auto",fontSize:14}}>⭐</span>}
+          </div>
+        ); })}
+        {done===WEEKLY_GOALS.length&&(<div style={{background:"var(--j-lav)",border:"2px solid var(--j-ink)",borderRadius:8,padding:"10px",textAlign:"center",fontFamily:"'VT323',monospace",fontSize:22,boxShadow:"2px 2px 0 var(--j-ink)"}}>🏆 PERFECT WEEK! ALL GOALS DONE!</div>)}
+      </div>
+    </div>
+  );
+}
+
+
+const BADGES = [
+  { id:"b01", icon:"🔥", label:"First Blood",    desc:"First WIN trade",                 check:(t:Trade[])=>t.some(x=>x.result==="WIN") },
+  { id:"b02", icon:"⚡", label:"Hat Trick",       desc:"3 WIN streak",                    check:(t:Trade[])=>{ let s=0,mx=0; [...t].sort((a,b)=>a.date.localeCompare(b.date)).forEach(x=>{if(x.result==="WIN"){s++;mx=Math.max(mx,s);}else s=0;}); return mx>=3; }},
+  { id:"b03", icon:"💎", label:"Diamond Hands",   desc:"5 WIN streak",                    check:(t:Trade[])=>{ let s=0,mx=0; [...t].sort((a,b)=>a.date.localeCompare(b.date)).forEach(x=>{if(x.result==="WIN"){s++;mx=Math.max(mx,s);}else s=0;}); return mx>=5; }},
+  { id:"b04", icon:"📐", label:"R:R Master",      desc:"R:R ≥ 2 five times",             check:(t:Trade[])=>t.filter(x=>x.rr>=2).length>=5 },
+  { id:"b05", icon:"🎯", label:"Sniper",          desc:"R:R ≥ 3 three times",            check:(t:Trade[])=>t.filter(x=>x.rr>=3).length>=3 },
+  { id:"b06", icon:"📓", label:"Loyal Logger",    desc:"10 sessions journaled",           check:(t:Trade[])=>t.length>=10 },
+  { id:"b07", icon:"📚", label:"Veteran",         desc:"50 sessions journaled",           check:(t:Trade[])=>t.length>=50 },
+  { id:"b08", icon:"💰", label:"First $50",       desc:"Cumulative profit ≥ $50",         check:(t:Trade[])=>t.filter(x=>x.status==="CLOSED").reduce((s,x)=>s+x.totalPL,0)>=50 },
+  { id:"b09", icon:"💵", label:"Century Club",    desc:"Cumulative profit ≥ $100",        check:(t:Trade[])=>t.filter(x=>x.status==="CLOSED").reduce((s,x)=>s+x.totalPL,0)>=100 },
+  { id:"b10", icon:"🏦", label:"Phase 1 Clear",   desc:"Equity reached $1,000",           check:(t:Trade[])=>STARTING_CAPITAL+t.filter(x=>x.status==="CLOSED").reduce((s,x)=>s+x.totalPL,0)>=1000 },
+  { id:"b11", icon:"📊", label:"Win Machine",     desc:"Win rate ≥ 60% (min 10 trades)", check:(t:Trade[])=>t.length>=10&&t.filter(x=>x.result==="WIN").length/t.length>=0.6 },
+  { id:"b12", icon:"🛡", label:"DD Guardian",     desc:"Max DD ≤ 10% (min 5 trades)",    check:(t:Trade[])=>{ if(t.length<5) return false; const {maxDDPct}=calcDD(t); return maxDDPct<=10; }},
+  { id:"b13", icon:"🌙", label:"Night Owl",       desc:"5 Tokyo session trades",          check:(t:Trade[])=>t.filter(x=>x.session==="Tokyo").length>=5 },
+  { id:"b14", icon:"☀️", label:"London Caller",  desc:"5 London session trades",         check:(t:Trade[])=>t.filter(x=>x.session==="London").length>=5 },
+  { id:"b15", icon:"🗺", label:"Session Master",  desc:"Trade all 4 sessions",            check:(t:Trade[])=>["Tokyo","London","New York","Overlap"].every(s=>t.some(x=>x.session===s)) },
+  { id:"b16", icon:"🧘", label:"Iron Mind",       desc:"หยุดได้หลัง LOSS 3 ติด ×3 ครั้ง",
+    check:(t:Trade[])=>{
+      const byDate: Record<string,Trade[]> = {};
+      t.forEach(x=>{ (byDate[x.date]||=[]).push(x); });
+      let ironCount = 0;
+      Object.values(byDate).forEach(dayTrades=>{
+        const sorted = [...dayTrades].sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
+        let lStreak=0;
+        for(const x of sorted){ if(x.result==="LOSS") lStreak++; else lStreak=0; }
+        if(lStreak>=3 && sorted.length<=3) ironCount++;
+      });
+      return ironCount>=3;
+    }},
+];
+
+function AchievementBadges({ trades }: { trades: Trade[] }) {
+  const [expand, setExpand] = useState(false);
+  const unlocked = BADGES.filter(b=>b.check(trades));
+  const locked   = BADGES.filter(b=>!b.check(trades));
+  return (
+    <div className="j-win">
+      <div className="j-bar" style={{background:"var(--j-lav)"}}>
+        <span className="j-t">🏆 ACHIEVEMENTS</span>
+        <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-ink)",fontWeight:600}}>{unlocked.length}/{BADGES.length} unlocked</span>
+        <span className="j-ctrl"><span>_</span><span>▢</span><span>✕</span></span>
+      </div>
+      <div className="j-body">
+        <div style={{marginBottom:12}}>
+          <div style={{height:8,border:"2px solid var(--j-ink)",borderRadius:5,overflow:"hidden",background:"var(--j-win)",marginBottom:4}}>
+            <div style={{height:"100%",background:"var(--j-lav)",width:`${(unlocked.length/BADGES.length)*100}%`,transition:"width .4s"}}/>
+          </div>
+          <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)"}}>{unlocked.length} unlocked · {locked.length} remaining</div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+          {(expand?BADGES:BADGES.slice(0,9)).map(b=>{ const ok=b.check(trades); return (
+            <div key={b.id} title={b.desc} style={{border:"2px solid var(--j-ink)",borderRadius:9,padding:"10px 8px",textAlign:"center",cursor:"default",background:ok?"var(--j-win)":"#f1e9da",boxShadow:ok?"3px 3px 0 var(--j-ink)":"none",opacity:ok?1:0.45,transition:"all .2s",position:"relative"}}>
+              {ok&&<div style={{position:"absolute",top:4,right:5,width:7,height:7,borderRadius:"50%",background:"#5fae89",border:"1.5px solid var(--j-ink)"}}/>}
+              <div style={{fontSize:22,marginBottom:4,filter:ok?"none":"grayscale(1)"}}>{b.icon}</div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,fontWeight:600,color:"var(--j-ink)",lineHeight:1.2}}>{b.label}</div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:8,color:"var(--j-soft)",marginTop:2,lineHeight:1.2}}>{b.desc}</div>
+            </div>
+          ); })}
+        </div>
+        <button onClick={()=>setExpand(!expand)} className="j-chip off" style={{width:"100%",marginTop:10,fontSize:10,textAlign:"center"}}>
+          {expand?"▲ Show less":`▼ Show all ${BADGES.length} badges`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+function RoadmapWidget({ trades }: { trades: Trade[] }) {
+  const totalPL=trades.reduce((s,t)=>s+t.totalPL,0);
+  const currentEquity=Math.max(0,STARTING_CAPITAL+totalPL);
+  const currentPhase=PHASES.find(p=>currentEquity<p.to)||PHASES[PHASES.length-1];
+  const phaseProgress=Math.min(100,Math.max(0,((currentEquity-currentPhase.from)/(currentPhase.to-currentPhase.from))*100));
+  const overallPct=Math.min(100,(currentEquity/TOTAL_TARGET)*100);
+  const now=new Date();
+  const thisMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+  const monthlyPL=trades.filter(t=>t.date.startsWith(thisMonth)).reduce((s,t)=>s+t.totalPL,0);
+  const fmt=(v:number)=>`$${Math.abs(v).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+  const sign=(v:number)=>v>=0?"+":"-";
+  return (
+    <div className="j-win">
+      <div className="j-bar" style={{background:"var(--j-lav)"}}>
+        <span className="j-t">🎯 ROADMAP — 2 YEAR PLAN</span>
+        <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)"}}>target: {fmt(MONTHLY_GOAL)}/mo</span>
+      </div>
+      <div className="j-body" style={{display:"flex",flexDirection:"column",gap:12}}>
+        <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between"}}>
+          <div><div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",marginBottom:2}}>CURRENT EQUITY</div><div style={{fontFamily:"'VT323',monospace",fontSize:36,lineHeight:1}}>{fmt(currentEquity)}</div></div>
+          <div style={{textAlign:"right"}}><div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",marginBottom:2}}>THIS MONTH</div><div style={{fontFamily:"'VT323',monospace",fontSize:24,lineHeight:1,color:monthlyPL>=0?"#5fae89":"#e08a82"}}>{sign(monthlyPL)}{fmt(monthlyPL)}</div></div>
+        </div>
+        <div>
+          <div style={{display:"flex",justifyContent:"space-between",fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",marginBottom:4}}><span>$50</span><span style={{color:"var(--j-ink)",fontWeight:500}}>{overallPct.toFixed(1)}% to {fmt(TOTAL_TARGET)}</span><span>{fmt(TOTAL_TARGET)}</span></div>
+          <div style={{height:12,border:"2px solid var(--j-ink)",borderRadius:6,overflow:"hidden",background:"var(--j-win)",display:"flex"}}>
+            {PHASES.map(p=>{ const segW=((p.to-p.from)/TOTAL_TARGET)*100; const filled=Math.min(100,Math.max(0,((currentEquity-p.from)/(p.to-p.from))*100)); return (<div key={p.id} style={{width:`${segW}%`,position:"relative",overflow:"hidden"}}><div style={{position:"absolute",inset:0,background:"#e3d9c4"}}/><div style={{position:"absolute",top:0,left:0,height:"100%",width:`${filled}%`,background:p.color,transition:"width .4s"}}/></div>); })}
+          </div>
+          <div style={{display:"flex",marginTop:3}}>{PHASES.map(p=>(<div key={p.id} style={{width:`${((p.to-p.from)/TOTAL_TARGET)*100}%`,textAlign:"center",fontFamily:"'DM Mono',monospace",fontSize:8,color:"var(--j-soft)"}}>P{p.id}</div>))}</div>
+        </div>
+        <div style={{background:currentPhase.color+"55",border:"2px solid var(--j-ink)",borderRadius:8,padding:"10px 12px"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+            <div><span style={{fontFamily:"'DM Mono',monospace",fontSize:11,fontWeight:600,background:currentPhase.color,border:"1.5px solid var(--j-ink)",borderRadius:5,padding:"2px 7px",marginRight:6}}>{currentPhase.label}</span><span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)"}}>{currentPhase.months}</span></div>
+            <span style={{fontFamily:"'VT323',monospace",fontSize:20}}>{phaseProgress.toFixed(0)}%</span>
+          </div>
+          <div style={{height:8,border:"1.5px solid var(--j-ink)",borderRadius:5,overflow:"hidden",background:"var(--j-win)",marginBottom:8}}><div style={{height:"100%",width:`${phaseProgress}%`,background:currentPhase.color,transition:"width .4s"}}/></div>
+          <div style={{display:"flex",justifyContent:"space-between",fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",marginBottom:6}}><span>{fmt(currentPhase.from)}</span><span style={{color:"var(--j-ink)",fontSize:10}}>{fmt(currentEquity)} → {fmt(currentPhase.to)}</span><span>{fmt(currentPhase.to)}</span></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}><div style={{fontFamily:"'DM Mono',monospace",fontSize:10}}><span style={{color:"var(--j-soft)"}}>Risk </span><b>{currentPhase.risk}</b></div><div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)"}}>{currentPhase.focus}</div></div>
+        </div>
+        <div style={{display:"flex",gap:6}}>
+          {PHASES.map(p=>{ const done=currentEquity>=p.to,cur=p.id===currentPhase.id; return (<div key={p.id} style={{flex:1,border:"2px solid var(--j-ink)",borderRadius:7,background:done?p.color:cur?p.color+"44":"var(--j-win)",padding:"7px 6px",textAlign:"center",boxShadow:cur?"2px 2px 0 var(--j-ink)":"none"}}><div style={{fontFamily:"'VT323',monospace",fontSize:11,color:done?"#3a3028":"var(--j-soft)"}}>{done?"✓":cur?"▶":"○"}</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:8,fontWeight:600}}>P{p.id}</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:7,color:"var(--j-soft)"}}>{fmt(p.to)}</div></div>); })}
+          <div style={{flex:1,border:"2px solid var(--j-ink)",borderRadius:7,background:currentEquity>=TOTAL_TARGET?"var(--j-mint)":"var(--j-win)",padding:"7px 6px",textAlign:"center"}}><div style={{fontFamily:"'VT323',monospace",fontSize:11,color:"var(--j-soft)"}}>{currentEquity>=TOTAL_TARGET?"★":"◎"}</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:8,fontWeight:600}}>GOAL</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:7,color:"var(--j-soft)"}}>$2K/mo</div></div>
+        </div>
+        <div style={{background:"#fbf6ea",border:"1.5px dashed var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",lineHeight:1.6,textAlign:"center"}}>{currentPhase.reminder}</div>
+      </div>
+    </div>
+  );
+}
+
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function JournalPage() {
   const [trades,setTrades]     = useState<Trade[]>([]);
   const [openTrade,setOpenTrade] = useState<Trade|null>(null);
-  const [view,setView]         = useState<"dashboard"|"list"|"checklist"|"exit">("dashboard");
+  const [view,setView]         = useState<"dashboard"|"list"|"checklist"|"exit"|"calendar">("dashboard");
   const [filter,setFilter]     = useState<"ALL"|Result>("ALL");
   const [accountType,setAccountType] = useState<AccountType>("cent");
   const [lightbox,setLightbox] = useState<string|null>(null);
@@ -315,6 +504,10 @@ export default function JournalPage() {
   const [saving,setSaving]     = useState(false);
   const [showAlert,setShowAlert] = useState(false);
   const [uploading,setUploading] = useState(false);
+
+  // ── Calendar states ────────────────────────────────────────────────────────
+  const [calRef,setCalRef]           = useState(()=>{ const d=new Date(); return new Date(d.getFullYear(),d.getMonth(),1); });
+  const [calSelected,setCalSelected] = useState<string|null>(null);
 
   // ── Checklist Phase state ──────────────────────────────────────────────────
   const [step,setStep]         = useState<"mode"|"checklist"|"entry">("mode");
@@ -363,7 +556,36 @@ export default function JournalPage() {
 
   // ── Load trades ───────────────────────────────────────────────────────────
   useEffect(()=>{
-    const t=load(); setTrades(t);
+    const loadData = async () => {
+      // โหลด localStorage ก่อน (เร็ว + migrate v3→v4 อัตโนมัติ)
+      const local = load();
+      if (local.length > 0) { setTrades(local); }
+
+      // ถ้า login ให้ดึงจาก Supabase ด้วย
+      try {
+        const { data:{user} } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data, error } = await supabase.from("journal_trades")
+          .select("*").eq("user_id", user.id).order("created_at",{ascending:false});
+        if (error || !data?.length) return;
+        const mapped: Trade[] = migrateOldTrades(data.map((r:any) => ({
+          id: r.id, status: "CLOSED" as TradeStatus,
+          mode: (r.entry_model as TradeMode) || "SMC",
+          date: r.date, time: r.time, session: r.session,
+          direction: r.direction, entryPrice: Number(r.entry_price),
+          slPrice: Number(r.sl_price), lotPerOrder: Number(r.lot_per_order),
+          lotInput: String(r.lot_per_order), riskAmount: Number(r.risk_amount)||5,
+          emotion: "😌 Calm" as Emotion, checklistJson: "{}",
+          exitPrices: r.exit_prices||[], avgExit: Number(r.avg_exit),
+          orderCount: Number(r.order_count), totalLot: Number(r.total_lot),
+          totalPL: Number(r.total_pl), rr: Number(r.rr), result: r.result,
+          exitReason: "" as ExitReason|"", notes: r.notes||"",
+          screenshotUrl: r.screenshot_url||"", createdAt: r.created_at,
+        })));
+        setTrades(mapped); save(mapped);
+      } catch(e) { console.error("Supabase load error:", e); }
+    };
+    loadData();
     const op=loadOpen(); setOpenTrade(op);
   },[]);
 
@@ -476,6 +698,11 @@ export default function JournalPage() {
     if(ns.length){setExitPrices(p=>[...p,...ns]);setPasteInput("");}
   };
 
+  const editTrade=(t:Trade)=>{
+    // calendar → กดแก้ไข trade ที่ปิดแล้ว (เปิด exit view)
+    setOpenTrade(t); saveOpen(t); setView("exit");
+  };
+
   const filtered=filter==="ALL"?trades.filter(t=>t.status==="CLOSED"):trades.filter(t=>t.status==="CLOSED"&&t.result===filter);
 
   // ── P/L preview ───────────────────────────────────────────────────────────
@@ -569,6 +796,7 @@ export default function JournalPage() {
           {([["dashboard","📊 Dashboard"],["list","📋 Sessions"]] as const).map(([v,label])=>(
             <button key={v} onClick={()=>setView(v)} className={`j-tab ${view===v?"on":""}`}>{label}</button>
           ))}
+          <button onClick={()=>setView("calendar" as any)} className={`j-tab ${view==="calendar"?"on":""}`}>📅 Calendar</button>
           {openTrade&&(
             <button onClick={()=>setView("exit")} className={`j-tab ${view==="exit"?"on":""}`} style={{color:"#d4a65f",fontWeight:600}}>
               🟡 OPEN TRADE
@@ -615,6 +843,9 @@ export default function JournalPage() {
                 </Win>
               );
             })()}
+            <WeeklyGoals trades={trades}/>
+            <AchievementBadges trades={trades}/>
+            <RoadmapWidget trades={trades}/>
             <Win title="🕘 RECENT" color="var(--j-peach)">
               {trades.filter(t=>t.status==="CLOSED").slice(0,5).map(t=>(
                 <div key={t.id} className="flex items-center gap-2 py-2" style={{borderBottom:"1.5px dashed #e3d9c4"}}>
@@ -898,6 +1129,28 @@ export default function JournalPage() {
         )}
 
       </div>
+
+        {/* ── CALENDAR ── */}
+        {(view as string)==="calendar"&&(()=>{
+                    const y=calRef.getFullYear(),m=calRef.getMonth();
+                    const startDow=new Date(y,m,1).getDay(), daysInMonth=new Date(y,m+1,0).getDate();
+                    const byDate:Record<string,Trade[]>={};
+                    trades.forEach(t=>{ (byDate[t.date]||=[]).push(t); });
+                    const cells:(number|null)[]=[];
+                    for(let i=0;i<startDow;i++) cells.push(null);
+                    for(let d=1;d<=daysInMonth;d++) cells.push(d);
+                    const pad=(n:number)=>String(n).padStart(2,"0");
+                    const key=(d:number)=>`${y}-${pad(m+1)}-${pad(d)}`;
+                    const monthName=new Date(y,m,1).toLocaleString("en-US",{month:"long",year:"numeric"});
+                    const selTrades=calSelected?(byDate[calSelected]||[]):[];
+                    return (
+                      <div className="space-y-3">
+                        <div className="j-win"><div className="j-bar" style={{background:"var(--j-sky)"}}><button onClick={()=>setCalRef(new Date(y,m-1,1))} className="j-ctrl"><span>◀</span></button><span className="j-t" style={{justifyContent:"center",fontSize:13}}>📅 {monthName}</span><button onClick={()=>setCalRef(new Date(y,m+1,1))} className="j-ctrl"><span>▶</span></button></div><div className="j-body"><div className="grid grid-cols-7 gap-1.5 mb-1.5" style={{textAlign:"center",fontFamily:"'DM Mono'",fontSize:9,color:"var(--j-soft)"}}>{["S","M","T","W","T","F","S"].map((d,i)=><div key={i}>{d}</div>)}</div><div className="grid grid-cols-7 gap-1.5">{cells.map((d,i)=>{ if(d===null) return <div key={i} className="j-cell empty"/>; const k=key(d),dayTrades=byDate[k]||[],net=dayTrades.reduce((s,t)=>s+t.totalPL,0),has=dayTrades.length>0; const netTxt=net>0?`+${Math.round(net)}`:net<0?`${Math.round(net)}`:"0"; return (<div key={i} className={`j-cell ${calSelected===k?"sel":""}`} onClick={()=>setCalSelected(k===calSelected?null:k)} style={has?{background:net>0?"var(--j-mint)":net<0?"var(--j-pink)":"var(--j-lav)"}:{}}><span className="j-day">{d}</span>{has&&<span className="j-pl" style={{color:net>0?"#3f9b73":net<0?"#d4685f":"var(--j-soft)"}}>{netTxt}</span>}</div>); })}</div><div className="flex gap-3 justify-center mt-3" style={{fontSize:10,fontFamily:"'DM Mono'",color:"var(--j-soft)"}}><span><span style={{display:"inline-block",width:8,height:8,borderRadius:4,background:"#8fd3b4",border:"1px solid var(--j-ink)",marginRight:4}}/>Win day</span><span><span style={{display:"inline-block",width:8,height:8,borderRadius:4,background:"#eda9a1",border:"1px solid var(--j-ink)",marginRight:4}}/>Loss day</span></div></div></div>
+                        {calSelected&&(<Win title={`📋 ${calSelected} (${selTrades.length})`} color="var(--j-peach)">{selTrades.length===0?<p className="text-center py-4" style={{color:"var(--j-soft)",fontSize:13}}>No trades this day</p>:selTrades.map(t=>(<div key={t.id} className="flex items-center gap-2 py-2" style={{borderBottom:"1.5px dashed #e3d9c4"}}><span className="j-mini" style={{background:t.direction==="LONG"?"var(--j-mint)":"var(--j-coral)"}}>{t.direction}</span><div className="flex-1 min-w-0"><div style={{fontSize:12,fontWeight:600}}>{t.time} · {t.session}</div><div style={{fontSize:10,color:"var(--j-soft)",fontFamily:"'DM Mono'"}}>{t.entryPrice}→{t.avgExit} · {t.orderCount} ord</div></div>{t.screenshotUrl&&<span onClick={()=>setLightbox(t.screenshotUrl)} style={{cursor:"zoom-in"}}>🖼</span>}<b style={{fontFamily:"'DM Mono'",color:t.totalPL>=0?"#5fae89":"#e08a82"}}>{money(t.totalPL)}</b><button onClick={()=>editTrade(t)} className="j-chip off" style={{fontSize:10,padding:"3px 7px"}}>✎</button></div>))}</Win>)}
+                        {!calSelected&&<p className="text-center py-2" style={{color:"var(--j-soft)",fontSize:12,fontFamily:"'DM Mono'"}}>tap a colored day to see trades</p>}
+                      </div>
+                    );
+        })()}
 
       {/* Alert Popup */}
       {showAlert&&(dailyStatus.isHardStop||dailyStatus.isDayDone)&&(
