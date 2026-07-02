@@ -1,3 +1,6 @@
+
+// TRADER OS V4.1 PREVIEW
+// TODO integrated battle coach...
 "use client";
 
 import Link from "next/link";
