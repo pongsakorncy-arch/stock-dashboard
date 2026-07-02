@@ -797,6 +797,29 @@ export default function JournalPage() {
         .j-tabcontent{animation:tabslide .15s steps(2,end) both;}
         .j-pixel{position:absolute;width:8px;height:8px;border:1.5px solid var(--j-ink);pointer-events:none;animation:pixelfly .7s steps(4,end) forwards;}
         @keyframes pixelfly{0%{opacity:1;transform:translate(0,0) scale(1)}50%{opacity:1;transform:translate(var(--px),var(--py)) scale(1.2)}100%{opacity:0;transform:translate(var(--px),calc(var(--py) + 20px)) scale(0)}}
+
+        .j-cal-nav{width:24px;height:24px;border:2px solid var(--j-ink);border-radius:5px;background:var(--j-win);color:var(--j-ink);font-family:'DM Mono',monospace;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:1px 1px 0 var(--j-ink);}
+        .j-cal-nav:active{transform:translate(1px,1px);box-shadow:none;}
+        .j-cal-weekdays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;margin-bottom:8px;text-align:center;font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);letter-spacing:1px;}
+        .j-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;}
+        .j-cal-cell{position:relative;min-height:86px;border:2px solid var(--j-ink);border-radius:8px;background:#fbf6ea;color:var(--j-ink);padding:8px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;cursor:pointer;text-align:left;font-family:'Fredoka','Noto Sans Thai',sans-serif;box-shadow:2px 2px 0 var(--j-ink);overflow:hidden;}
+        .j-cal-cell.empty{visibility:hidden;box-shadow:none;cursor:default;}
+        .j-cal-cell.has.win{background:var(--j-mint);}
+        .j-cal-cell.has.loss{background:var(--j-pink);}
+        .j-cal-cell.has.be{background:var(--j-lav);}
+        .j-cal-cell.selected{outline:3px solid var(--j-butter);transform:translate(1px,1px);box-shadow:1px 1px 0 var(--j-ink);}
+        .j-cal-day{position:absolute;top:6px;right:8px;font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--j-ink);line-height:1;}
+        .j-cal-content{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding-top:8px;}
+        .j-cal-pl{font-family:'DM Mono',monospace;font-size:15px;line-height:1;white-space:nowrap;color:var(--j-ink);}
+        .j-cal-count{font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);white-space:nowrap;}
+        .j-cal-mini{display:flex;gap:4px;flex-wrap:wrap;justify-content:center;font-family:'DM Mono',monospace;font-size:8px;color:var(--j-soft);}
+        .j-cal-mini span{border:1px solid var(--j-ink);border-radius:4px;background:rgba(255,253,248,.55);padding:1px 4px;}
+        .j-cal-legend{display:flex;gap:14px;justify-content:center;align-items:center;margin-top:12px;flex-wrap:wrap;font-size:10px;font-family:'DM Mono',monospace;color:var(--j-soft);}
+        .j-cal-legend i{display:inline-block;width:9px;height:9px;border-radius:50%;border:1px solid var(--j-ink);margin-right:5px;vertical-align:-1px;}
+        .j-cal-trade-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1.5px dashed #e3d9c4;}
+        .j-cal-trade-row:last-child{border-bottom:none;}
+        @media(max-width:720px){.j-cal-grid{gap:5px}.j-cal-weekdays{gap:5px}.j-cal-cell{min-height:70px;padding:6px}.j-cal-pl{font-size:12px}.j-cal-count,.j-cal-mini{display:none}.j-cal-day{font-size:11px;top:5px;right:6px}.j-cal-trade-row{align-items:flex-start;flex-wrap:wrap}.j-cal-trade-row b{margin-left:auto}}
+
         .open-badge{animation:blink .8s step-end infinite;}
       `}</style>
 
@@ -1170,24 +1193,134 @@ export default function JournalPage() {
 
         {/* ── CALENDAR ── */}
         {(view as string)==="calendar"&&(()=>{
-                    const y=calRef.getFullYear(),m=calRef.getMonth();
-                    const startDow=new Date(y,m,1).getDay(), daysInMonth=new Date(y,m+1,0).getDate();
-                    const byDate:Record<string,Trade[]>={};
-                    trades.forEach(t=>{ (byDate[t.date]||=[]).push(t); });
-                    const cells:(number|null)[]=[];
-                    for(let i=0;i<startDow;i++) cells.push(null);
-                    for(let d=1;d<=daysInMonth;d++) cells.push(d);
-                    const pad=(n:number)=>String(n).padStart(2,"0");
-                    const key=(d:number)=>`${y}-${pad(m+1)}-${pad(d)}`;
-                    const monthName=new Date(y,m,1).toLocaleString("en-US",{month:"long",year:"numeric"});
-                    const selTrades=calSelected?(byDate[calSelected]||[]):[];
-                    return (
-                      <div className="space-y-3">
-                        <div className="j-win"><div className="j-bar" style={{background:"var(--j-sky)"}}><button onClick={()=>setCalRef(new Date(y,m-1,1))} className="j-ctrl"><span>◀</span></button><span className="j-t" style={{justifyContent:"center",fontSize:13}}>📅 {monthName}</span><button onClick={()=>setCalRef(new Date(y,m+1,1))} className="j-ctrl"><span>▶</span></button></div><div className="j-body"><div className="grid grid-cols-7 gap-1.5 mb-1.5" style={{textAlign:"center",fontFamily:"'DM Mono'",fontSize:9,color:"var(--j-soft)"}}>{["S","M","T","W","T","F","S"].map((d,i)=><div key={i}>{d}</div>)}</div><div className="grid grid-cols-7 gap-1.5">{cells.map((d,i)=>{ if(d===null) return <div key={i} className="j-cell empty"/>; const k=key(d),dayTrades=byDate[k]||[],net=dayTrades.reduce((s,t)=>s+t.totalPL,0),has=dayTrades.length>0; const netTxt=net>0?`+${Math.round(net)}`:net<0?`${Math.round(net)}`:"0"; return (<div key={i} className={`j-cell ${calSelected===k?"sel":""}`} onClick={()=>setCalSelected(k===calSelected?null:k)} style={has?{background:net>0?"var(--j-mint)":net<0?"var(--j-pink)":"var(--j-lav)"}:{}}><span className="j-day">{d}</span>{has&&<span className="j-pl" style={{color:net>0?"#3f9b73":net<0?"#d4685f":"var(--j-soft)"}}>{netTxt}</span>}</div>); })}</div><div className="flex gap-3 justify-center mt-3" style={{fontSize:10,fontFamily:"'DM Mono'",color:"var(--j-soft)"}}><span><span style={{display:"inline-block",width:8,height:8,borderRadius:4,background:"#8fd3b4",border:"1px solid var(--j-ink)",marginRight:4}}/>Win day</span><span><span style={{display:"inline-block",width:8,height:8,borderRadius:4,background:"#eda9a1",border:"1px solid var(--j-ink)",marginRight:4}}/>Loss day</span></div></div></div>
-                        {calSelected&&(<Win title={`📋 ${calSelected} (${selTrades.length})`} color="var(--j-peach)">{selTrades.length===0?<p className="text-center py-4" style={{color:"var(--j-soft)",fontSize:13}}>No trades this day</p>:selTrades.map(t=>(<div key={t.id} className="flex items-center gap-2 py-2" style={{borderBottom:"1.5px dashed #e3d9c4"}}><span className="j-mini" style={{background:t.direction==="LONG"?"var(--j-mint)":"var(--j-coral)"}}>{t.direction}</span><div className="flex-1 min-w-0"><div style={{fontSize:12,fontWeight:600}}>{t.time} · {t.session}</div><div style={{fontSize:10,color:"var(--j-soft)",fontFamily:"'DM Mono'"}}>{t.entryPrice}→{t.avgExit} · {t.orderCount} ord</div></div>{t.screenshotUrl&&<span onClick={()=>setLightbox(t.screenshotUrl)} style={{cursor:"zoom-in"}}>🖼</span>}<b style={{fontFamily:"'DM Mono'",color:t.totalPL>=0?"#5fae89":"#e08a82"}}>{money(t.totalPL)}</b><button onClick={()=>editTrade(t)} className="j-chip off" style={{fontSize:10,padding:"3px 7px"}}>✎</button></div>))}</Win>)}
-                        {!calSelected&&<p className="text-center py-2" style={{color:"var(--j-soft)",fontSize:12,fontFamily:"'DM Mono'"}}>tap a colored day to see trades</p>}
-                      </div>
-                    );
+          const y = calRef.getFullYear();
+          const m = calRef.getMonth();
+          const startDow = new Date(y, m, 1).getDay();
+          const daysInMonth = new Date(y, m + 1, 0).getDate();
+          const pad = (n:number) => String(n).padStart(2,"0");
+          const key = (d:number) => `${y}-${pad(m+1)}-${pad(d)}`;
+          const monthName = new Date(y,m,1).toLocaleString("en-US",{month:"long",year:"numeric"});
+
+          const byDate: Record<string, Trade[]> = {};
+          trades.filter(t=>t.status==="CLOSED").forEach(t=>{
+            const safeDate = String(t.date || "").slice(0,10);
+            if(!safeDate) return;
+            (byDate[safeDate] ||= []).push(t);
+          });
+
+          const cells: (number|null)[] = [];
+          for(let i=0;i<startDow;i++) cells.push(null);
+          for(let d=1; d<=daysInMonth; d++) cells.push(d);
+          while(cells.length % 7 !== 0) cells.push(null);
+
+          const selTrades = calSelected ? (byDate[calSelected] || []) : [];
+          const selectedPL = selTrades.reduce((s,t)=>s + Number(t.totalPL || 0),0);
+
+          return (
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              <div className="j-win">
+                <div className="j-bar" style={{background:"var(--j-sky)",alignItems:"center"}}>
+                  <button onClick={()=>setCalRef(new Date(y,m-1,1))} className="j-cal-nav" aria-label="Previous month">◀</button>
+                  <span className="j-t" style={{justifyContent:"center",fontSize:13}}>📅 {monthName}</span>
+                  <button onClick={()=>setCalRef(new Date(y,m+1,1))} className="j-cal-nav" aria-label="Next month">▶</button>
+                </div>
+
+                <div className="j-body">
+                  <div className="j-cal-weekdays">
+                    {[
+                      ["S","Sun"],["M","Mon"],["T","Tue"],["W","Wed"],["T","Thu"],["F","Fri"],["S","Sat"]
+                    ].map(([short,full],i)=><div key={i} title={full}>{short}</div>)}
+                  </div>
+
+                  <div className="j-cal-grid">
+                    {cells.map((d,i)=>{
+                      if(d===null) return <div key={i} className="j-cal-cell empty" />;
+
+                      const k = key(d);
+                      const dayTrades = byDate[k] || [];
+                      const has = dayTrades.length > 0;
+                      const net = dayTrades.reduce((s,t)=>s + Number(t.totalPL || 0),0);
+                      const wins = dayTrades.filter(t=>t.result==="WIN").length;
+                      const losses = dayTrades.filter(t=>t.result==="LOSS").length;
+                      const bes = dayTrades.filter(t=>t.result==="BE").length;
+                      const isWin = net > 0.0001;
+                      const isLoss = net < -0.0001;
+                      const isSelected = calSelected === k;
+                      const plText = `${net>=0?"+":"-"}$${Math.abs(net).toFixed(2)}`;
+
+                      return (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={()=>setCalSelected(isSelected ? null : k)}
+                          className={`j-cal-cell ${has?"has":""} ${isWin?"win":isLoss?"loss":"be"} ${isSelected?"selected":""}`}
+                          title={has ? `${k} · ${plText} · ${dayTrades.length} trades` : k}
+                        >
+                          <span className="j-cal-day">{d}</span>
+                          {has&&(
+                            <span className="j-cal-content">
+                              <b className="j-cal-pl">{plText}</b>
+                              <span className="j-cal-count">
+                                {dayTrades.length} trade{dayTrades.length>1?"s":""}
+                              </span>
+                              <span className="j-cal-mini">
+                                {wins>0&&<span>W{wins}</span>}
+                                {losses>0&&<span>L{losses}</span>}
+                                {bes>0&&<span>BE{bes}</span>}
+                              </span>
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="j-cal-legend">
+                    <span><i style={{background:"var(--j-mint)"}}/> Win day</span>
+                    <span><i style={{background:"var(--j-pink)"}}/> Loss day</span>
+                    <span><i style={{background:"var(--j-lav)"}}/> BE day</span>
+                  </div>
+                </div>
+              </div>
+
+              {calSelected&&(
+                <Win title={`📋 ${calSelected} · ${selTrades.length} trade${selTrades.length>1?"s":""} · ${selectedPL>=0?"+":"-"}$${Math.abs(selectedPL).toFixed(2)}`} color="var(--j-peach)">
+                  {selTrades.length===0 ? (
+                    <p className="text-center py-4" style={{color:"var(--j-soft)",fontSize:13}}>No trades this day</p>
+                  ) : (
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                      {selTrades.map(t=>{
+                        const info = getModeInfo(t.mode);
+                        return (
+                          <div key={t.id} className="j-cal-trade-row">
+                            <span className="j-mini" style={{background:t.direction==="LONG"?"var(--j-mint)":"var(--j-coral)",minWidth:54,textAlign:"center"}}>{t.direction}</span>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:12,fontWeight:700,display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                                <span>{t.time}</span>
+                                <span>·</span>
+                                <span>{t.session}</span>
+                                <span style={{background:info.color,border:"1.5px solid var(--j-ink)",borderRadius:6,padding:"1px 6px",fontSize:10}}>{info.label}</span>
+                              </div>
+                              <div style={{fontSize:10,color:"var(--j-soft)",fontFamily:"'DM Mono',monospace",marginTop:2}}>
+                                Entry {t.entryPrice} → Exit {t.avgExit} · {t.orderCount} order{t.orderCount>1?"s":""} · RR {Number(t.rr||0).toFixed(2)}
+                              </div>
+                            </div>
+                            {t.screenshotUrl&&<button onClick={()=>setLightbox(t.screenshotUrl)} className="j-chip off" style={{fontSize:10,padding:"3px 7px"}}>🖼</button>}
+                            <b style={{fontFamily:"'DM Mono',monospace",fontSize:13,color:t.totalPL>=0?"#3f9b73":"#d4685f",minWidth:76,textAlign:"right"}}>{money(t.totalPL)}</b>
+                            <button onClick={()=>editTrade(t)} className="j-chip off" style={{fontSize:10,padding:"3px 7px"}}>✎</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </Win>
+              )}
+
+              {!calSelected&&(
+                <p className="text-center py-2" style={{color:"var(--j-soft)",fontSize:12,fontFamily:"'DM Mono',monospace"}}>tap a colored day to see trades</p>
+              )}
+            </div>
+          );
         })()}
 
       {/* Alert Popup */}
