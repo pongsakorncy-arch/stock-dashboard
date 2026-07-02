@@ -97,7 +97,7 @@ function migrateOldTrades(rawTrades: any[]): Trade[] {
   return (rawTrades || []).map((t: any) => ({
     id: t.id || uid(),
     status: t.status || "CLOSED",
-    mode: (t.mode || t.entry_model || "SMC") as TradeMode,
+    mode: (["SMC","SW_RANGE","SW_BREAKOUT","PULLBACK","M5_REVERSAL"].includes(String(t.mode || t.entry_model)) ? String(t.mode || t.entry_model) : "SMC") as TradeMode,
     date: t.date || new Date().toISOString().split("T")[0],
     time: t.time || "00:00",
     session: (t.session || "Tokyo") as Session,
@@ -341,6 +341,10 @@ const MODE_INFO: Record<TradeMode,{label:string;color:string;emoji:string;desc:s
   M5_REVERSAL:  {label:"M5 Reversal",     color:"var(--j-mint)",   emoji:"🟢",desc:"Pa2 ยืนยัน · Buy=ยกโลว์ / Sell=กดไฮ"},
 };
 
+const getModeInfo = (mode?: string | null) => {
+  return MODE_INFO[mode as TradeMode] || MODE_INFO.SMC;
+};
+
 // ─── Default checklists ───────────────────────────────────────────────────────
 const defSMC       = ():ChecklistSMC       => ({c1_trend:false,c2_bos:false,c3_dzsz:false,c4_ob:false,c5_liq:false,c6_reject:false,c7_retest:false,c8_mss:false});
 const defSWRange   = ():ChecklistSWRange   => ({c1_sw:false,c2_level:false,c3_near:false,c4_pa:false,c5_rr:false});
@@ -531,6 +535,7 @@ export default function JournalPage() {
   const [saving,setSaving]     = useState(false);
   const [showAlert,setShowAlert] = useState(false);
   const [uploading,setUploading] = useState(false);
+  const [mounted,setMounted] = useState(false);
 
   // ── Calendar states ────────────────────────────────────────────────────────
   const [calRef,setCalRef]           = useState(()=>{ const d=new Date(); return new Date(d.getFullYear(),d.getMonth(),1); });
@@ -568,6 +573,8 @@ export default function JournalPage() {
   const dailyStatus = calcDailyStatus(trades, todayStr);
   const isCent      = accountType==="cent";
   const stats       = calcStats(trades);
+
+  useEffect(()=>{ setMounted(true); },[]);
 
   // ── Boot ──────────────────────────────────────────────────────────────────
   useEffect(()=>{
@@ -740,6 +747,10 @@ export default function JournalPage() {
   const totalPages = openTrade&&exitPrices.length
     ? Math.round(previewPL*100)/100 : 0;
 
+  if (!mounted) {
+    return <main style={{minHeight:"100vh",background:"#f1e9da"}} />;
+  }
+
   return (
     <main className="j-root">
       <style>{`
@@ -876,7 +887,7 @@ export default function JournalPage() {
             <Win title="🕘 RECENT" color="var(--j-peach)">
               {trades.filter(t=>t.status==="CLOSED").slice(0,5).map(t=>(
                 <div key={t.id} className="flex items-center gap-2 py-2" style={{borderBottom:"1.5px dashed #e3d9c4"}}>
-                  <span className="j-mini" style={{background:MODE_INFO[t.mode].color,fontSize:10}}>{MODE_INFO[t.mode].emoji} {t.mode.replace("_"," ")}</span>
+                  <span className="j-mini" style={{background:getModeInfo(t.mode).color,fontSize:10}}>{getModeInfo(t.mode).emoji} {t.mode.replace("_"," ")}</span>
                   <span className="j-mini" style={{background:t.direction==="LONG"?"var(--j-mint)":"var(--j-coral)",fontSize:10}}>{t.direction}</span>
                   <div className="flex-1 min-w-0"><div style={{fontSize:11,fontWeight:600}}>{t.date} · {t.session}</div></div>
                   {t.screenshotUrl&&<span title="screenshot" style={{cursor:"zoom-in"}} onClick={()=>setLightbox(t.screenshotUrl)}>🖼</span>}
@@ -898,7 +909,7 @@ export default function JournalPage() {
             {filtered.map(t=>(
               <div key={t.id} className="j-win">
                 <div className="j-bar" style={{background:t.result==="WIN"?"var(--j-mint)":t.result==="LOSS"?"var(--j-pink)":"var(--j-lav)"}}>
-                  <span className="j-t">{MODE_INFO[t.mode].emoji} {MODE_INFO[t.mode].label} · {t.direction}</span>
+                  <span className="j-t">{getModeInfo(t.mode).emoji} {getModeInfo(t.mode).label} · {t.direction}</span>
                   <span style={{fontFamily:"'DM Mono'",fontSize:10}}>{t.date}</span>
                 </div>
                 <div className="j-body">
@@ -1073,8 +1084,8 @@ export default function JournalPage() {
           <div className="space-y-4 j-tabcontent" style={{maxWidth:560,margin:"0 auto"}}>
             {/* Open trade summary */}
             <div className="j-win">
-              <div className="j-bar" style={{background:MODE_INFO[openTrade.mode].color}}>
-                <span className="j-t">🟡 OPEN: {MODE_INFO[openTrade.mode].emoji} {MODE_INFO[openTrade.mode].label} · {openTrade.direction}</span>
+              <div className="j-bar" style={{background:getModeInfo(openTrade.mode).color}}>
+                <span className="j-t">🟡 OPEN: {getModeInfo(openTrade.mode).emoji} {getModeInfo(openTrade.mode).label} · {openTrade.direction}</span>
               </div>
               <div className="j-body">
                 <div className="grid grid-cols-3 gap-3" style={{fontFamily:"'DM Mono',monospace",fontSize:12}}>
