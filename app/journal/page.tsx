@@ -94,30 +94,57 @@ const KOPEN = "yok_open_trade";
 
 // migrate ข้อมูลจาก v3 → v4 (เพิ่ม status/mode/checklistJson/exitReason ให้ของเก่า)
 function migrateOldTrades(rawTrades: any[]): Trade[] {
-  return rawTrades.map((t: any) => ({
-    ...t,
-    status:        t.status       || "CLOSED",
-    mode:          t.mode         || "SMC",
-    checklistJson: t.checklistJson|| "{}",
-    exitReason:    t.exitReason   || "",
-    screenshotUrl: t.screenshotUrl|| t.screenshot_url || "",
+  return (rawTrades || []).map((t: any) => ({
+    id: t.id || uid(),
+    status: t.status || "CLOSED",
+    mode: (t.mode || t.entry_model || "SMC") as TradeMode,
+    date: t.date || new Date().toISOString().split("T")[0],
+    time: t.time || "00:00",
+    session: (t.session || "Tokyo") as Session,
+    direction: (t.direction || "SHORT") as Direction,
+    entryPrice: Number(t.entryPrice ?? t.entry_price ?? 0),
+    slPrice: Number(t.slPrice ?? t.sl_price ?? 0),
+    lotPerOrder: Number(t.lotPerOrder ?? t.lot_per_order ?? 0.1),
+    lotInput: String(t.lotInput ?? t.lot_per_order ?? "0.10"),
+    riskAmount: Number(t.riskAmount ?? t.risk_amount ?? 5),
+    emotion: (t.emotion || "😌 Calm") as Emotion,
+    checklistJson: t.checklistJson || "{}",
+    exitPrices: t.exitPrices || t.exit_prices || [],
+    avgExit: Number(t.avgExit ?? t.avg_exit ?? 0),
+    orderCount: Number(t.orderCount ?? t.order_count ?? 0),
+    totalLot: Number(t.totalLot ?? t.total_lot ?? 0),
+    totalPL: Number(t.totalPL ?? t.total_pl ?? 0),
+    rr: Number(t.rr ?? 0),
+    result: (t.result || "BE") as Result,
+    exitReason: (t.exitReason || "") as ExitReason | "",
+    notes: t.notes || "",
+    screenshotUrl: t.screenshotUrl || t.screenshot_url || "",
+    createdAt: t.createdAt || t.created_at || new Date().toISOString(),
   }));
 }
 
 const load = (): Trade[] => {
   try {
-    // ลองโหลด v4 ก่อน
     const v4 = localStorage.getItem(KEY);
-    if (v4) return JSON.parse(v4);
-    // ถ้าไม่มี v4 ลองโหลด v3 แล้ว migrate
+    if (v4) {
+      const migrated = migrateOldTrades(JSON.parse(v4));
+      localStorage.setItem(KEY, JSON.stringify(migrated));
+      return migrated;
+    }
+
     const v3 = localStorage.getItem(KEY_OLD);
     if (v3) {
       const migrated = migrateOldTrades(JSON.parse(v3));
-      localStorage.setItem(KEY, JSON.stringify(migrated)); // save เป็น v4
+      localStorage.setItem(KEY, JSON.stringify(migrated));
       return migrated;
     }
+
     return [];
-  } catch { return []; }
+  } catch {
+    localStorage.removeItem(KEY);
+    localStorage.removeItem(KOPEN);
+    return [];
+  }
 };
 const save = (t: Trade[]) => localStorage.setItem(KEY, JSON.stringify(t));
 const loadOpen = (): Trade|null => { try { const s=localStorage.getItem(KOPEN); return s?JSON.parse(s):null; } catch { return null; } };
