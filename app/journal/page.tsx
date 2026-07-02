@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -536,7 +536,7 @@ function RoadmapWidget({ trades }: { trades: Trade[] }) {
 }
 
 
-// ─── Market Tools: Technical Gauge + Forex Sessions ───────────────────────────
+// ─── Market Tools: Retro HP/MP Bars + Forex Sessions ─────────────────────────
 type ForexSessionInfo = {
   name: Session | "Sydney";
   emoji: string;
@@ -545,6 +545,8 @@ type ForexSessionInfo = {
   color: string;
   note: string;
 };
+
+type RetroBarTone = "mint" | "sky" | "lav" | "butter" | "coral" | "peach";
 
 const FOREX_SESSIONS: ForexSessionInfo[] = [
   { name:"Sydney",   emoji:"🌏", openUtc:21, closeUtc:6,  color:"var(--j-peach)",  note:"Early liquidity" },
@@ -587,38 +589,77 @@ function localWindowText(openUtc: number, closeUtc: number) {
   return `${toLocal(openUtc)}–${toLocal(closeUtc)} TH`;
 }
 
+function RetroStatBar({label,value,max=100,tone="mint",right}:{label:string;value:number;max?:number;tone?:RetroBarTone;right?:string}) {
+  const safeMax = max <= 0 ? 100 : max;
+  const pct = Math.min(100, Math.max(0, (value / safeMax) * 100));
+  const blocks = 12;
+  const filled = Math.round((pct / 100) * blocks);
+  return (
+    <div className={`j-rpg-line ${tone}`}>
+      <div className="j-rpg-meta">
+        <span>{label}</span>
+        <b>{right || `${Math.round(value)}/${safeMax}`}</b>
+      </div>
+      <div className="j-rpg-bar" aria-label={`${label} ${pct.toFixed(0)}%`}>
+        <i style={{width:`${pct}%`}} />
+        <div className="j-rpg-segments">
+          {Array.from({length:blocks}).map((_,i)=><span key={i} className={i < filled ? "fill" : ""}/>) }
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PixelSignalBadge({score}:{score:number}) {
+  const label = score >= 78 ? "STRONG BUY" : score >= 58 ? "BUY" : score >= 43 ? "NEUTRAL" : score >= 25 ? "SELL" : "STRONG SELL";
+  const tone = score >= 58 ? "mint" : score >= 43 ? "butter" : "coral";
+  const emoji = score >= 58 ? "🟢" : score >= 43 ? "🟡" : "🔴";
+  return <div className={`j-signal-badge ${tone}`}><span>{emoji}</span><b>{label}</b></div>;
+}
+
 function TechnicalGaugeWidget() {
-  const boxRef = useRef<HTMLDivElement | null>(null);
+  // ตัวเลขชุดนี้เป็นตัวช่วย visual แบบ retro ก่อน ยังไม่ใช่สัญญาณเข้าเทรดจริง
+  const buyPower = 82;
+  const sellPressure = 28;
+  const momentum = 64;
+  const trend = 76;
+  const volatility = 58;
+  const risk = 34;
+  const score = Math.round((buyPower + momentum + trend + (100 - sellPressure) + (100 - risk)) / 5);
 
-  useEffect(() => {
-    const box = boxRef.current;
-    if (!box) return;
-    box.innerHTML = "";
+  return (
+    <div className="j-rpg-panel">
+      <div className="j-rpg-top">
+        <div>
+          <div className="j-tool-label">XAUUSD STATUS</div>
+          <div className="j-rpg-name">GOLD BOSS</div>
+        </div>
+        <PixelSignalBadge score={score}/>
+      </div>
 
-    const holder = document.createElement("div");
-    holder.className = "tradingview-widget-container__widget";
-    box.appendChild(holder);
+      <div className="j-rpg-avatar-row">
+        <div className="j-rpg-avatar">⚔️</div>
+        <div className="j-rpg-bars">
+          <RetroStatBar label="HP / BUY POWER" value={buyPower} tone="mint" right={`${buyPower}%`} />
+          <RetroStatBar label="MP / MOMENTUM" value={momentum} tone="sky" right={`${momentum}%`} />
+          <RetroStatBar label="TP / TREND" value={trend} tone="lav" right={`${trend}%`} />
+        </div>
+      </div>
 
-    const script = document.createElement("script");
-    script.src = "https://s3.tradingview.com/external-embedding/embed-widget-technical-analysis.js";
-    script.async = true;
-    script.innerHTML = JSON.stringify({
-      interval: "15m",
-      width: "100%",
-      isTransparent: true,
-      height: 340,
-      symbol: "OANDA:XAUUSD",
-      showIntervalTabs: true,
-      displayMode: "single",
-      locale: "en",
-      colorTheme: "light"
-    });
-    box.appendChild(script);
+      <div className="j-rpg-grid">
+        <RetroStatBar label="SELL PRESSURE" value={sellPressure} tone="coral" right={`${sellPressure}%`} />
+        <RetroStatBar label="VOLATILITY" value={volatility} tone="butter" right={`${volatility}%`} />
+        <RetroStatBar label="RISK" value={risk} tone="peach" right={`${risk}%`} />
+      </div>
 
-    return () => { box.innerHTML = ""; };
-  }, []);
-
-  return <div ref={boxRef} className="j-tv-box" />;
+      <div className="j-rpg-command-box">
+        <div className="j-rpg-command-title">COMMAND</div>
+        <div className="j-rpg-command-text">
+          รอแท่งยืนยันก่อนเข้าไม้ · ถ้า HP สูงแต่ RISK สูง ให้ลด lot / รอ pullback · ใช้คู่กับ Checklist ก่อนกดบันทึก Entry
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ForexSessionsTool() {
@@ -629,26 +670,30 @@ function ForexSessionsTool() {
   const openSessions = FOREX_SESSIONS.filter(s=>isForexSessionOpen(s,nowUtc));
   const isOverlap = isForexSessionOpen(FOREX_SESSIONS[2],nowUtc) && isForexSessionOpen(FOREX_SESSIONS[3],nowUtc);
   const nextSession = [...FOREX_SESSIONS].sort((a,b)=>hoursUntil(a.openUtc,nowUtc)-hoursUntil(b.openUtc,nowUtc))[0];
+  const activity = isOverlap ? 92 : openSessions.length >= 2 ? 76 : openSessions.length === 1 ? 54 : 20;
 
   return (
     <div className="j-tool-stack">
-      <div className="j-tool-hero">
+      <div className="j-rpg-mini-header">
         <div>
-          <div className="j-tool-label">FOREX MARKET STATUS</div>
-          <div className="j-tool-title">{isOverlap ? "⚡ London / New York Overlap" : openSessions.length ? `${openSessions.map(s=>s.emoji).join(" ")} ${openSessions.map(s=>s.name).join(" + ")}` : "🔴 Market Quiet"}</div>
-          <div className="j-tool-sub">Local time: {now.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})} · UTC {pad2(now.getUTCHours())}:{pad2(now.getUTCMinutes())}</div>
+          <div className="j-tool-label">FOREX SESSIONS</div>
+          <div className="j-rpg-title-sm">{isOverlap ? "⚡ OVERLAP MODE" : openSessions.length ? `${openSessions.map(s=>s.name).join(" + ")}` : "MARKET QUIET"}</div>
+          <div className="j-tool-sub">TH {now.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})} · UTC {pad2(now.getUTCHours())}:{pad2(now.getUTCMinutes())}</div>
         </div>
         <div className="j-tool-next">
-          <span>Next open</span>
+          <span>Next</span>
           <b>{nextSession.name}</b>
           <small>{fmtHours(hoursUntil(nextSession.openUtc,nowUtc))}</small>
         </div>
       </div>
 
-      <div className="j-session-grid">
+      <RetroStatBar label="SP / SESSION POWER" value={activity} tone={activity >= 75 ? "mint" : activity >= 45 ? "butter" : "coral"} right={`${activity}%`} />
+
+      <div className="j-session-grid hp-style">
         {FOREX_SESSIONS.map(s=>{
           const open=isForexSessionOpen(s,nowUtc);
           const pct=sessionProgress(s,nowUtc);
+          const tone: RetroBarTone = s.name === "London" ? "sky" : s.name === "New York" ? "mint" : s.name === "Tokyo" ? "lav" : "peach";
           return (
             <div key={s.name} className={`j-session-card ${open?"on":"off"}`}>
               <div className="j-session-head">
@@ -659,15 +704,14 @@ function ForexSessionsTool() {
                 </div>
                 <em>{open?"OPEN":"CLOSED"}</em>
               </div>
-              <div className="j-session-bar"><i style={{width:`${pct}%`,background:s.color}}/></div>
-              <div className="j-session-note">{open ? `${pct.toFixed(0)}% session progress` : s.note}</div>
+              <RetroStatBar label={open ? "TIME LEFT / ACTIVE" : "WAIT"} value={open ? pct : 0} tone={tone} right={open ? `${pct.toFixed(0)}%` : s.note} />
             </div>
           );
         })}
       </div>
 
       <div className="j-tool-tip">
-        <b>Trade note:</b> XAUUSD มักขยับแรงช่วง London, New York และ Overlap · ใช้ Gauge เป็นตัวช่วยดู bias เท่านั้น ไม่ใช่สัญญาณเข้าไม้โดยตรง
+        <b>Trade note:</b> XAUUSD มักขยับแรงช่วง London, New York และ Overlap · แถบ HP/MP เป็นตัวช่วยอ่านสถานะตลาด ไม่ใช่สัญญาณเข้าไม้โดยตรง
       </div>
     </div>
   );
@@ -675,20 +719,19 @@ function ForexSessionsTool() {
 
 function MarketToolsPanel() {
   return (
+    <div className="j-tools-screen">
       <div className="j-tools-layout">
-        <Win title="📡 XAUUSD Technical Gauge" color="var(--j-lav)">
+        <Win title="⚔️ XAUUSD Battle Gauge" color="var(--j-lav)">
           <TechnicalGaugeWidget />
-          <p className="j-tool-caption">Data by TradingView widget · เลือก timeframe ในกล่องได้เลย</p>
         </Win>
 
-        <Win title="🌍 Forex Market Sessions" color="var(--j-sky)">
+        <Win title="🌍 Session HP / MP" color="var(--j-sky)">
           <ForexSessionsTool />
         </Win>
       </div>
     </div>
   );
 }
-
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function JournalPage() {
@@ -1049,33 +1092,48 @@ export default function JournalPage() {
         @media(max-width:720px){.j-cal-grid{gap:5px}.j-cal-weekdays{gap:5px}.j-cal-cell{min-height:70px;padding:6px}.j-cal-pl{font-size:12px}.j-cal-count,.j-cal-mini{display:none}.j-cal-day{font-size:11px;top:5px;right:6px}.j-cal-trade-row{align-items:flex-start;flex-wrap:wrap}.j-cal-trade-row b{margin-left:auto}}
 
 
-        .j-tools-intro{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+        .j-tools-screen{display:flex;flex-direction:column;gap:12px;}
+        .j-tools-layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:12px;align-items:start;}
         .j-tool-label{font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px;}
-        .j-tool-title{font-family:'VT323',monospace;font-size:28px;line-height:1;color:var(--j-ink);}
         .j-tool-sub{font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);line-height:1.5;margin-top:4px;}
-        .j-tool-badge{font-family:'DM Mono',monospace;font-size:11px;font-weight:700;border:2px solid var(--j-ink);border-radius:8px;background:var(--j-mint);padding:7px 11px;box-shadow:2px 2px 0 var(--j-ink);}
-        .j-tools-layout{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:12px;align-items:start;}
-        .j-tv-box{min-height:340px;border:2px dashed #d9ceb9;border-radius:9px;background:#fbf6ea;overflow:hidden;}
-        .j-tool-caption{font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);text-align:center;margin-top:8px;}
         .j-tool-stack{display:flex;flex-direction:column;gap:10px;}
-        .j-tool-hero{display:flex;justify-content:space-between;gap:10px;align-items:center;background:#fbf6ea;border:2px solid var(--j-ink);border-radius:9px;padding:12px;box-shadow:2px 2px 0 var(--j-ink);}
-        .j-tool-next{min-width:94px;text-align:center;border:2px solid var(--j-ink);border-radius:8px;background:var(--j-win);padding:7px 8px;font-family:'DM Mono',monospace;}
+        .j-tool-next{min-width:94px;text-align:center;border:2px solid var(--j-ink);border-radius:8px;background:var(--j-win);padding:7px 8px;font-family:'DM Mono',monospace;box-shadow:2px 2px 0 var(--j-ink);}
         .j-tool-next span{display:block;font-size:8px;color:var(--j-soft);text-transform:uppercase;}
         .j-tool-next b{display:block;font-size:12px;margin-top:2px;}
         .j-tool-next small{display:block;font-size:9px;color:#3f9b73;margin-top:1px;}
-        .j-session-grid{display:grid;grid-template-columns:1fr;gap:8px;}
+        .j-tool-tip{font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);line-height:1.55;background:#fbf6ea;border:1.5px dashed var(--j-ink);border-radius:8px;padding:9px 10px;}
+        .j-rpg-panel{display:flex;flex-direction:column;gap:12px;}
+        .j-rpg-top{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fbf6ea;border:2px solid var(--j-ink);border-radius:9px;padding:12px;box-shadow:2px 2px 0 var(--j-ink);}
+        .j-rpg-name{font-family:'VT323',monospace;font-size:34px;line-height:1;color:var(--j-ink);letter-spacing:1px;}
+        .j-rpg-title-sm{font-family:'VT323',monospace;font-size:26px;line-height:1;color:var(--j-ink);letter-spacing:.5px;}
+        .j-signal-badge{border:2px solid var(--j-ink);border-radius:9px;padding:8px 10px;box-shadow:2px 2px 0 var(--j-ink);font-family:'DM Mono',monospace;display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;white-space:nowrap;}
+        .j-signal-badge.mint{background:var(--j-mint);}.j-signal-badge.butter{background:var(--j-butter);}.j-signal-badge.coral{background:var(--j-coral);}
+        .j-rpg-avatar-row{display:grid;grid-template-columns:92px minmax(0,1fr);gap:12px;align-items:stretch;}
+        .j-rpg-avatar{border:3px solid var(--j-ink);border-radius:12px;background:linear-gradient(180deg,var(--j-butter),var(--j-peach));box-shadow:3px 3px 0 var(--j-ink);display:flex;align-items:center;justify-content:center;font-size:42px;min-height:112px;image-rendering:pixelated;}
+        .j-rpg-bars{display:flex;flex-direction:column;gap:9px;justify-content:center;}
+        .j-rpg-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;}
+        .j-rpg-line{display:flex;flex-direction:column;gap:5px;min-width:0;}
+        .j-rpg-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);text-transform:uppercase;}
+        .j-rpg-meta b{color:var(--j-ink);font-size:9px;white-space:nowrap;}
+        .j-rpg-bar{height:18px;position:relative;border:2px solid var(--j-ink);border-radius:6px;background:#e3d9c4;box-shadow:2px 2px 0 var(--j-ink);overflow:hidden;}
+        .j-rpg-bar i{position:absolute;inset:0 auto 0 0;width:0%;transition:width .45s steps(8,end);background:var(--j-mint);}
+        .j-rpg-line.sky .j-rpg-bar i{background:var(--j-sky);}.j-rpg-line.lav .j-rpg-bar i{background:var(--j-lav);}.j-rpg-line.butter .j-rpg-bar i{background:var(--j-butter);}.j-rpg-line.coral .j-rpg-bar i{background:var(--j-coral);}.j-rpg-line.peach .j-rpg-bar i{background:var(--j-peach);}
+        .j-rpg-segments{position:absolute;inset:2px;display:grid;grid-template-columns:repeat(12,1fr);gap:2px;}
+        .j-rpg-segments span{border-right:1px solid rgba(90,77,66,.28);background:rgba(255,253,248,.22);}
+        .j-rpg-segments span.fill{background:rgba(255,253,248,.06);}
+        .j-rpg-command-box{border:2px solid var(--j-ink);border-radius:9px;background:var(--j-win);padding:10px 12px;box-shadow:2px 2px 0 var(--j-ink);}
+        .j-rpg-command-title{font-family:'VT323',monospace;font-size:20px;line-height:1;margin-bottom:4px;}
+        .j-rpg-command-text{font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);line-height:1.6;}
+        .j-rpg-mini-header{display:flex;justify-content:space-between;gap:10px;align-items:center;background:#fbf6ea;border:2px solid var(--j-ink);border-radius:9px;padding:12px;box-shadow:2px 2px 0 var(--j-ink);}
+        .j-session-grid{display:grid;grid-template-columns:1fr;gap:9px;}
         .j-session-card{border:2px solid var(--j-ink);border-radius:9px;background:var(--j-win);padding:10px;box-shadow:2px 2px 0 var(--j-ink);transition:.15s;}
         .j-session-card.off{opacity:.72;box-shadow:none;background:#fbf6ea;}
-        .j-session-head{display:flex;align-items:center;gap:8px;}
+        .j-session-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
         .j-session-icon{width:30px;height:30px;border:2px solid var(--j-ink);border-radius:8px;display:flex;align-items:center;justify-content:center;box-shadow:1px 1px 0 var(--j-ink);}
         .j-session-head b{display:block;font-family:'DM Mono',monospace;font-size:12px;line-height:1;color:var(--j-ink);}
         .j-session-head small{display:block;font-family:'DM Mono',monospace;font-size:8px;color:var(--j-soft);margin-top:3px;}
         .j-session-head em{margin-left:auto;font-style:normal;font-family:'DM Mono',monospace;font-size:8px;font-weight:700;border:1.5px solid var(--j-ink);border-radius:5px;padding:2px 5px;background:rgba(255,253,248,.65);}
-        .j-session-bar{height:8px;border:1.5px solid var(--j-ink);border-radius:5px;overflow:hidden;background:#e3d9c4;margin-top:9px;}
-        .j-session-bar i{display:block;height:100%;transition:width .4s;}
-        .j-session-note{font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);margin-top:6px;}
-        .j-tool-tip{font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);line-height:1.55;background:#fbf6ea;border:1.5px dashed var(--j-ink);border-radius:8px;padding:9px 10px;}
-        @media(max-width:820px){.j-tools-layout{grid-template-columns:1fr}.j-tool-title{font-size:24px}.j-tool-hero{align-items:flex-start;flex-direction:column}.j-tool-next{width:100%;}}
+        @media(max-width:820px){.j-tools-layout{grid-template-columns:1fr}.j-rpg-avatar-row{grid-template-columns:1fr}.j-rpg-avatar{min-height:76px}.j-rpg-grid{grid-template-columns:1fr}.j-rpg-mini-header{align-items:flex-start;flex-direction:column}.j-tool-next{width:100%;}.j-rpg-top{align-items:flex-start;flex-direction:column}.j-signal-badge{width:100%;justify-content:center;}} 
 
         .open-badge{animation:blink .8s step-end infinite;}
       `}</style>
