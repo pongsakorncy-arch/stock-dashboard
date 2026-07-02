@@ -675,7 +675,6 @@ function ForexSessionsTool() {
 
 function MarketToolsPanel() {
   return (
-   
       <div className="j-tools-layout">
         <Win title="📡 XAUUSD Technical Gauge" color="var(--j-lav)">
           <TechnicalGaugeWidget />
