@@ -91,6 +91,7 @@ const uid  = () => Math.random().toString(36).slice(2, 10);
 const KEY   = "yok_journal_v4";
 const KEY_OLD = "yok_journal_v3";
 const KOPEN = "yok_open_trade";
+const ALERT_ACK_KEY = "yok_journal_alert_ack_date";
 
 // migrate ข้อมูลจาก v3 → v4 (เพิ่ม status/mode/checklistJson/exitReason ให้ของเก่า)
 function migrateOldTrades(rawTrades: any[]): Trade[] {
@@ -155,6 +156,21 @@ const EMOTIONS: Emotion[] = ["😌 Calm","😎 Confident","😤 FOMO","😰 Fear
 const EXIT_REASONS: ExitReason[] = ["TP Hit","SL Hit","Manual","Rejection","MSS Failed","Other"];
 
 const MAX_TRADES_PER_DAY = 3;
+
+function pad2(n: number) { return String(n).padStart(2, "0"); }
+
+function nowTime24() {
+  const d = new Date();
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function autoSessionFromTime(time: string): Session {
+  const hour = Number((time || "00:00").split(":")[0]);
+  if (hour >= 0 && hour < 8) return "Tokyo";
+  if (hour >= 8 && hour < 14) return "London";
+  if (hour >= 14 && hour < 20) return "New York";
+  return "Overlap";
+}
 
 function calcPL(direction: Direction, entry: number, exit: number, lot: number, isCent: boolean): number {
   const diff = direction==="LONG" ? exit-entry : entry-exit;
@@ -552,8 +568,9 @@ export default function JournalPage() {
 
   // ── Entry form ─────────────────────────────────────────────────────────────
   const [entryDate,setEntryDate]   = useState(new Date().toISOString().split("T")[0]);
-  const [entryTime,setEntryTime]   = useState(new Date().toTimeString().slice(0,5));
-  const [session,setSession]       = useState<Session>("Tokyo");
+  const [entryTime,setEntryTime]   = useState(nowTime24());
+  const [session,setSession]       = useState<Session>(()=>autoSessionFromTime(nowTime24()));
+  const [sessionManual,setSessionManual] = useState(false);
   const [direction,setDirection]   = useState<Direction>("SHORT");
   const [entryPrice,setEntryPrice] = useState<number|"">("");
   const [slPrice,setSlPrice]       = useState<number|"">("");
@@ -573,6 +590,21 @@ export default function JournalPage() {
   const dailyStatus = calcDailyStatus(trades, todayStr);
   const isCent      = accountType==="cent";
   const stats       = calcStats(trades);
+
+  const setEntryTimeAuto = (time: string) => {
+    const clean = time.slice(0,5);
+    setEntryTime(clean);
+    if (!sessionManual) setSession(autoSessionFromTime(clean));
+  };
+
+  const setNowEntryTime = () => {
+    const d = new Date();
+    const t = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    setEntryDate(d.toISOString().split("T")[0]);
+    setEntryTime(t);
+    setSession(autoSessionFromTime(t));
+    setSessionManual(false);
+  };
 
   useEffect(()=>{ setMounted(true); },[]);
 
@@ -624,9 +656,22 @@ export default function JournalPage() {
   },[]);
 
   // ── Loss alert ────────────────────────────────────────────────────────────
+  // แจ้งเตือนวันละ 1 ครั้ง หลังผู้ใช้กดรับทราบแล้วจะไม่เด้งซ้ำ
+  // และจะรีเซ็ตอัตโนมัติเมื่อขึ้นวันใหม่หลังเที่ยงคืน
   useEffect(()=>{
-    if(dailyStatus.isHardStop||dailyStatus.isDayDone) setShowAlert(true);
-  },[trades,view]);
+    const shouldAlert = dailyStatus.isHardStop || dailyStatus.isDayDone;
+    if (!shouldAlert) {
+      setShowAlert(false);
+      return;
+    }
+
+    try {
+      const ackDate = localStorage.getItem(ALERT_ACK_KEY);
+      setShowAlert(ackDate !== todayStr);
+    } catch {
+      setShowAlert(true);
+    }
+  },[trades,view,todayStr,dailyStatus.isHardStop,dailyStatus.isDayDone]);
 
   // ── Sparkle ───────────────────────────────────────────────────────────────
   const sparkle=()=>{
@@ -670,7 +715,7 @@ export default function JournalPage() {
     setOpenTrade(trade); saveOpen(trade);
     // reset form
     setStep("mode"); setSelMode(null); setClSMC(defSMC()); setClSWR(defSWRange()); setClSWB(defSWBreak()); setClPB(defPullback()); setClM5(defM5Rev());
-    setEntryPrice(""); setSlPrice(""); setLotInput("0.10"); setEmotion("😌 Calm");
+    setEntryPrice(""); setSlPrice(""); setLotInput("0.10"); setEmotion("😌 Calm"); setSessionManual(false);
     setView("dashboard");
   };
 
@@ -689,7 +734,7 @@ export default function JournalPage() {
       orderCount:exitPrices.length, totalLot:exitPrices.length*lot,
       totalPL, rr, result, exitReason, notes:exitNotes, screenshotUrl,
     };
-    const updated=[closed,...trades];
+    const updated=[closed,...trades.filter(t=>t.id!==closed.id)];
     setTrades(updated); save(updated);
     setOpenTrade(null); saveOpen(null);
     // supabase
@@ -733,8 +778,37 @@ export default function JournalPage() {
   };
 
   const editTrade=(t:Trade)=>{
-    // calendar → กดแก้ไข trade ที่ปิดแล้ว (เปิด exit view)
-    setOpenTrade(t); saveOpen(t); setView("exit");
+    // calendar / session → กดแก้ไข trade ที่ปิดแล้ว (เปิด exit view)
+    setOpenTrade(t);
+    setExitPrices(Array.isArray(t.exitPrices) ? t.exitPrices : []);
+    setExitReason(t.exitReason || "");
+    setExitNotes(t.notes || "");
+    setScreenshotUrl(t.screenshotUrl || "");
+    saveOpen(t);
+    setView("exit");
+  };
+
+  const deleteTrade=async(t:Trade)=>{
+    const ok = window.confirm(`ลบการเทรดวันที่ ${t.date} เวลา ${t.time} ใช่ไหม?`);
+    if(!ok) return;
+
+    const updated = trades.filter(x=>x.id!==t.id);
+    setTrades(updated);
+    save(updated);
+
+    if(openTrade?.id===t.id){
+      setOpenTrade(null);
+      saveOpen(null);
+    }
+
+    try{
+      const {data:{user}} = await supabase.auth.getUser();
+      if(user){
+        await supabase.from("journal_trades").delete().eq("id",t.id).eq("user_id",user.id);
+      }
+    }catch(e){
+      console.error("Supabase delete error:",e);
+    }
   };
 
   const filtered=filter==="ALL"?trades.filter(t=>t.status==="CLOSED"):trades.filter(t=>t.status==="CLOSED"&&t.result===filter);
@@ -952,6 +1026,10 @@ export default function JournalPage() {
                   </div>
                   {t.screenshotUrl&&(<img src={t.screenshotUrl} alt="ss" onClick={()=>setLightbox(t.screenshotUrl)} style={{width:"100%",maxHeight:160,objectFit:"cover",border:"2px solid var(--j-ink)",borderRadius:7,cursor:"zoom-in",marginBottom:8,boxShadow:"2px 2px 0 var(--j-ink)"}}/>)}
                   {t.notes&&<p style={{fontFamily:"'DM Mono'",fontSize:12,borderTop:"1.5px dashed #d8cdbd",paddingTop:8}}>"{t.notes}"</p>}
+                  <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:10,paddingTop:10,borderTop:"1.5px dashed #e3d9c4"}}>
+                    <button onClick={()=>editTrade(t)} className="j-chip" style={{fontSize:11,background:"var(--j-butter)",padding:"5px 10px"}}>✎ แก้ไข</button>
+                    <button onClick={()=>deleteTrade(t)} className="j-chip" style={{fontSize:11,background:"var(--j-coral)",padding:"5px 10px"}}>🗑 ลบ</button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -1047,15 +1125,40 @@ export default function JournalPage() {
 
             {/* STEP 3: Entry Details */}
             {step==="entry"&&selMode&&(
-              <Win title={`${MODE_INFO[selMode].emoji} STEP 3 — Entry Details`} color={MODE_INFO[selMode].color}>
-                <div className="grid grid-cols-3 gap-2 mb-3">
-                  <div><label className="j-lab">Date</label><input type="date" value={entryDate} onChange={e=>setEntryDate(e.target.value)} className="j-in" style={{fontSize:11}}/></div>
-                  <div><label className="j-lab">Time</label><input type="time" value={entryTime} onChange={e=>setEntryTime(e.target.value)} className="j-in" style={{fontSize:11}}/></div>
-                  <div><label className="j-lab">Session</label>
-                    <select value={session} onChange={e=>setSession(e.target.value as Session)} className="j-in" style={{fontSize:11}}>
+              <Win title={`${getModeInfo(selMode).emoji} STEP 3 — Entry Details`} color={getModeInfo(selMode).color}>
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  <div>
+                    <label className="j-lab">Date</label>
+                    <input type="date" value={entryDate} onChange={e=>setEntryDate(e.target.value)} className="j-in" style={{fontSize:11}}/>
+                  </div>
+                  <div>
+                    <label className="j-lab">Time 24H</label>
+                    <div style={{display:"flex",gap:6}}>
+                      <input
+                        type="time"
+                        lang="en-GB"
+                        step="60"
+                        value={entryTime}
+                        onChange={e=>setEntryTimeAuto(e.target.value)}
+                        className="j-in"
+                        style={{fontSize:14,fontWeight:700}}
+                      />
+                      <button type="button" onClick={setNowEntryTime} className="j-chip" style={{fontSize:10,padding:"6px 8px",boxShadow:"none",whiteSpace:"nowrap"}}>NOW</button>
+                    </div>
+                  </div>
+                  <div><label className="j-lab">Session {sessionManual?"Manual":"Auto"}</label>
+                    <select
+                      value={session}
+                      onChange={e=>{setSession(e.target.value as Session);setSessionManual(true);}}
+                      className="j-in"
+                      style={{fontSize:11,fontWeight:700}}
+                    >
                       {SESSIONS.map(s=><option key={s}>{s}</option>)}
                     </select>
                   </div>
+                </div>
+                <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",marginBottom:10}}>
+                  เวลาใช้รูปแบบ 24 ชั่วโมง เช่น 09:30 / 14:45 · Session ตั้งให้อัตโนมัติตามเวลา แต่เลือกเองได้
                 </div>
                 <label className="j-lab">Direction</label>
                 <div className="flex gap-2 mb-3">
@@ -1308,6 +1411,7 @@ export default function JournalPage() {
                             {t.screenshotUrl&&<button onClick={()=>setLightbox(t.screenshotUrl)} className="j-chip off" style={{fontSize:10,padding:"3px 7px"}}>🖼</button>}
                             <b style={{fontFamily:"'DM Mono',monospace",fontSize:13,color:t.totalPL>=0?"#3f9b73":"#d4685f",minWidth:76,textAlign:"right"}}>{money(t.totalPL)}</b>
                             <button onClick={()=>editTrade(t)} className="j-chip off" style={{fontSize:10,padding:"3px 7px"}}>✎</button>
+                            <button onClick={()=>deleteTrade(t)} className="j-chip off" style={{fontSize:10,padding:"3px 7px",color:"#d4685f"}}>🗑</button>
                           </div>
                         );
                       })}
@@ -1347,10 +1451,10 @@ export default function JournalPage() {
                   </div>
                 ))}
               </div>
-              <button onClick={()=>setShowAlert(false)} className="j-btn" style={{width:"100%",padding:"13px",background:dailyStatus.isHardStop?"var(--j-coral)":"var(--j-mint)",fontSize:14}}>
+              <button onClick={()=>{try{localStorage.setItem(ALERT_ACK_KEY,todayStr);}catch{} setShowAlert(false);}} className="j-btn" style={{width:"100%",padding:"13px",background:dailyStatus.isHardStop?"var(--j-coral)":"var(--j-mint)",fontSize:14}}>
                 {dailyStatus.isHardStop?"✓ รับทราบ — หยุดแล้ว":"✓ โอเค"}
               </button>
-              <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",marginTop:8}}>จะขึ้นอีกทุกครั้งที่เปิดหน้านี้</div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",marginTop:8}}>กดรับทราบแล้วจะไม่เด้งซ้ำวันนี้ และจะรีเซ็ตหลังเที่ยงคืน</div>
             </div>
           </div>
         </div>
