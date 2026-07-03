@@ -2,122 +2,192 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-function imagePart(dataUrl: string) {
-  return {
-    type: "image_url",
-    image_url: {
-      url: dataUrl,
-    },
-  };
+type Bias = "Bull" | "Bear" | "Neutral";
+type Cycle = "Trend" | "Pullback" | "Sideway" | "Unknown";
+
+function score10(v: number) {
+  return Math.max(0, Math.min(10, Math.round(v * 10) / 10));
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { htfImage, ltfImage, lossesToday = 0 } = await req.json();
+    const {
+      direction = "BUY",
+      bias = "Neutral",
+      cycle = "Unknown",
+      lossesToday = 0,
+      checklist = {},
+      plan = {},
+    } = await req.json();
 
-    if (!htfImage || !ltfImage) {
-      return NextResponse.json({ error: "Missing HTF or LTF image" }, { status: 400 });
+    const biasMatch =
+      bias === "Neutral" ? 0.5 :
+      direction === "BUY" && bias === "Bull" ? 1 :
+      direction === "SELL" && bias === "Bear" ? 1 : 0;
+
+    const c = {
+      htfZone: !!checklist.htfZone,
+      liquidity: !!checklist.liquidity,
+      bosChoch: !!checklist.bosChoch,
+      obDzSz: !!checklist.obDzSz,
+      mss: !!checklist.mss,
+      retest: !!checklist.retest,
+      rejection: !!checklist.rejection,
+      volumeConfirm: !!checklist.volumeConfirm,
+      breakoutClose: !!checklist.breakoutClose,
+      noFomo: checklist.noFomo !== false,
+      rrGood: !!checklist.rrGood,
+      nearRange: !!checklist.nearRange,
+      pa2: !!checklist.pa2,
+      dirConfirm: !!checklist.dirConfirm,
+    };
+
+    const penalty = lossesToday >= 3 ? 1.2 : lossesToday >= 2 ? 0.7 : 0;
+
+    const smcProMax = score10(
+      biasMatch * 1.2 +
+      (cycle === "Trend" || cycle === "Pullback" ? 1 : 0) +
+      (c.htfZone ? 1 : 0) +
+      (c.bosChoch ? 1 : 0) +
+      (c.obDzSz ? 1 : 0) +
+      (c.liquidity ? 1.2 : 0) +
+      (c.mss ? 1.4 : 0) +
+      (c.retest ? 1.2 : 0) +
+      (c.rejection ? 0.8 : 0) +
+      (c.volumeConfirm ? 0.7 : 0) +
+      (c.rrGood ? 0.5 : 0) -
+      penalty
+    );
+
+    const pullback = score10(
+      biasMatch * 1.3 +
+      (cycle === "Pullback" ? 2 : 0) +
+      (c.htfZone ? 1.4 : 0) +
+      (c.obDzSz ? 1 : 0) +
+      (c.rejection ? 1 : 0) +
+      (c.mss ? 1 : 0) +
+      (c.retest ? 1 : 0) +
+      (c.volumeConfirm ? 0.7 : 0) +
+      (c.rrGood ? 0.6 : 0) -
+      penalty
+    );
+
+    const sidewayRange = score10(
+      (cycle === "Sideway" ? 2.5 : 0) +
+      (c.nearRange ? 2 : 0) +
+      (c.rejection ? 1.2 : 0) +
+      (c.pa2 ? 1 : 0) +
+      (c.rrGood ? 1 : 0) +
+      (c.noFomo ? 0.6 : -1) -
+      penalty
+    );
+
+    const breakoutRunTrend = score10(
+      (cycle === "Sideway" ? 1 : 0) +
+      (c.breakoutClose ? 3 : 0) +
+      (c.retest ? 1.5 : 0) +
+      (c.volumeConfirm ? 1.5 : 0) +
+      (c.noFomo ? 1 : -1.5) +
+      (c.rrGood ? 0.8 : 0) -
+      penalty
+    );
+
+    const m1m5Reversal = score10(
+      (c.pa2 ? 1.7 : 0) +
+      (c.dirConfirm ? 1.5 : 0) +
+      (c.mss ? 1.5 : 0) +
+      (c.rejection ? 1.2 : 0) +
+      (c.volumeConfirm ? 1 : 0) +
+      (c.liquidity ? 1 : 0) +
+      (c.noFomo ? 0.8 : -1.2) -
+      penalty
+    );
+
+    const scores = {
+      smcProMax,
+      pullback,
+      sidewayRange,
+      breakoutRunTrend,
+      m1m5Reversal,
+    };
+
+    const entries = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+    const bestKey = entries[0][0];
+    const bestScore = entries[0][1];
+
+    const setupNameMap: Record<string, string> = {
+      smcProMax: "SMC Pro Max",
+      pullback: "Pullback",
+      sidewayRange: "Sideway Range",
+      breakoutRunTrend: "Breakout / Run Trend",
+      m1m5Reversal: "M1/M5 Reversal",
+    };
+
+    let verdict: "เข้า" | "รอ" | "ไม่เข้า" = "ไม่เข้า";
+
+    if (lossesToday >= 3) verdict = "ไม่เข้า";
+    else if (bestScore >= 8.5 && c.noFomo) verdict = "เข้า";
+    else if (bestScore >= 6.5) verdict = "รอ";
+    else verdict = "ไม่เข้า";
+
+    const reasons: string[] = [];
+
+    if (lossesToday >= 3) reasons.push("วันนี้แพ้ 3 ไม้ขึ้นไป ระบบให้หยุดก่อน");
+    if (!c.liquidity && bestKey === "smcProMax") reasons.push("SMC ยังขาด Liquidity $$$");
+    if (!c.mss && ["smcProMax", "pullback", "m1m5Reversal"].includes(bestKey)) reasons.push("ยังไม่มี MSS ชัด");
+    if (!c.retest && ["smcProMax", "pullback", "breakoutRunTrend"].includes(bestKey)) reasons.push("ยังไม่มี Retest ตามกฎ");
+    if (!c.volumeConfirm) reasons.push("Volume ยังไม่ช่วยยืนยัน");
+    if (!c.rrGood) reasons.push("RR ยังไม่ผ่านเกณฑ์");
+
+    if (reasons.length === 0) {
+      reasons.push("เงื่อนไขหลักครบ เล่นตามแผนได้");
     }
 
-    const apiKey = process.env.OPENROUTER_API_KEY;
+    const waitFor = [
+      !c.liquidity ? `รอเคลียร์ $$$ ที่ ${plan.liquidityTarget || "High/Low สำคัญก่อน"}` : "",
+      !c.htfZone ? `รอราคาเข้าโซน ${plan.interestZone || "Demand/Supply ที่วางไว้"}` : "",
+      !c.mss ? "รอ MSS บน LTF" : "",
+      !c.retest ? "รอ Retest หลัง MSS" : "",
+      !c.volumeConfirm ? "รอ Volume Confirm" : "",
+    ].filter(Boolean);
 
-    if (!apiKey) {
-      return NextResponse.json({ error: "Missing OPENROUTER_API_KEY in Vercel" }, { status: 500 });
-    }
-
-    const prompt = `
-คุณคือ Yokimura AI Coach วิเคราะห์กราฟ XAUUSD ตามระบบของผู้ใช้เท่านั้น
-
-มี 5 ท่า:
-1. SMC Pro Max
-2. Pullback
-3. Sideway Range
-4. Breakout / Run Trend
-5. M1/M5 Reversal
-
-กฎ:
-- ถ้าไม่เห็นชัด ให้ false
-- ไม่มี MSS ชัด = ไม่ให้เข้า SMC
-- ไม่มี Retest ตามกฎ = ให้รอ
-- Breakout ต้องปิดหลุดกรอบ ไม่ใช่แค่ไส้
-- ถ้าแพ้วันนี้เยอะ ให้เข้มงวดขึ้น
-- วันนี้แพ้แล้ว ${lossesToday} ไม้
-- ห้ามรับประกันกำไร
-
-ตอบ JSON เท่านั้น:
-{
-  "bias": "Bull | Bear | Neutral",
-  "cycle": "Trend | Pullback | Sideway | Unknown",
-  "recommendedSetup": "SMC Pro Max | Pullback | Sideway Range | Breakout / Run Trend | M1/M5 Reversal",
-  "scores": {
-    "smcProMax": 0,
-    "pullback": 0,
-    "sidewayRange": 0,
-    "breakoutRunTrend": 0,
-    "m1m5Reversal": 0
-  },
-  "verdict": "เข้า | รอ | ไม่เข้า",
-  "reasons": ["", "", ""],
-  "checklist": {
-    "htfZone": false,
-    "liquidity": false,
-    "bosChoch": false,
-    "obDzSz": false,
-    "mss": false,
-    "retest": false,
-    "rejection": false,
-    "volumeConfirm": false,
-    "breakoutClose": false,
-    "noFomo": true
-  }
-}
-`;
-
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://adminamericano.vercel.app",
-        "X-OpenRouter-Title": "Yokimura Trading Journal",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: prompt },
-              imagePart(htfImage),
-              imagePart(ltfImage),
-            ],
-          },
+    const response = {
+      bias,
+      cycle,
+      recommendedSetup: setupNameMap[bestKey],
+      scores,
+      verdict,
+      confidence: Math.round(bestScore * 10),
+      reasons: reasons.slice(0, 3),
+      checklist: c,
+      actionPlan: {
+        liquidityTarget: plan.liquidityTarget || "",
+        interestZone: plan.interestZone || "",
+        entryZone: plan.entryZone || "",
+        stopLoss: plan.stopLoss || "",
+        takeProfit1: plan.takeProfit1 || "",
+        takeProfit2: plan.takeProfit2 || "",
+        invalidation: plan.invalidation || "",
+        waitFor,
+        next3Candles: [
+          "ถ้าปิดผ่าน MSS พร้อมแรง ให้เตรียมหา Retest",
+          "ถ้าหลุดโซนสำคัญ ให้ยกเลิก Setup",
+          "ถ้า Volume ไม่มา อย่าไล่ราคา",
         ],
-        temperature: 0.2,
-      }),
-    });
+      },
+      coach:
+        verdict === "เข้า"
+          ? "Setup ผ่าน เล่นตามแผนได้ แต่อย่าเพิ่มความเสี่ยง"
+          : verdict === "รอ"
+          ? "ยังไม่ต้องรีบ รอเงื่อนไขที่ขาดให้ครบก่อน"
+          : "ไม่เข้า Setup ยังไม่คุ้ม หรือความเสี่ยงวันนี้สูงเกินไป",
+    };
 
-    const data = await res.json();
-
-    if (!res.ok) {
-      return NextResponse.json(
-        {
-          error: "OpenRouter API error",
-          status: res.status,
-          detail: data,
-        },
-        { status: 500 }
-      );
-    }
-
-    const text = data?.choices?.[0]?.message?.content || "{}";
-    const clean = text.replace(/```json|```/g, "").trim();
-
-    return NextResponse.json(JSON.parse(clean));
+    return NextResponse.json(response);
   } catch (err: any) {
     return NextResponse.json(
       {
-        error: "Route crashed",
+        error: "Rule Engine crashed",
         message: err?.message || String(err),
       },
       { status: 500 }
