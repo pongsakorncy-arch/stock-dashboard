@@ -1133,6 +1133,15 @@ export default function JournalPage() {
     if(ns.length){setExitPrices(p=>[...p,...ns]);setPasteInput("");}
   };
 
+  const updateOpenTradePatch = (patch: Partial<Trade>) => {
+    setOpenTrade(prev => {
+      if(!prev) return prev;
+      const next: Trade = { ...prev, ...patch };
+      saveOpen(next);
+      return next;
+    });
+  };
+
   const editTrade=(t:Trade)=>{
     // calendar / session → กดแก้ไข trade ที่ปิดแล้ว (เปิด exit view)
     setOpenTrade(t);
@@ -1248,7 +1257,18 @@ export default function JournalPage() {
         .j-cal-legend i{display:inline-block;width:9px;height:9px;border-radius:50%;border:1px solid var(--j-ink);margin-right:5px;vertical-align:-1px;}
         .j-cal-trade-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1.5px dashed #e3d9c4;}
         .j-cal-trade-row:last-child{border-bottom:none;}
-        @media(max-width:720px){.j-cal-grid{gap:5px}.j-cal-weekdays{gap:5px}.j-cal-cell{min-height:70px;padding:6px}.j-cal-pl{font-size:12px}.j-cal-count,.j-cal-mini{display:none}.j-cal-day{font-size:11px;top:5px;right:6px}.j-cal-trade-row{align-items:flex-start;flex-wrap:wrap}.j-cal-trade-row b{margin-left:auto}}
+        .j-cal-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;}
+        .j-cal-summary-card{background:#fbf6ea;border:2px solid var(--j-ink);border-radius:8px;padding:9px 8px;box-shadow:2px 2px 0 var(--j-ink);text-align:center;}
+        .j-cal-summary-card span{display:block;font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1px;color:var(--j-soft);text-transform:uppercase;margin-bottom:3px;}
+        .j-cal-summary-card b{display:block;font-family:'VT323',monospace;font-size:24px;line-height:1;color:var(--j-ink);}
+        .j-cal-summary-card.win b{color:#3f9b73}.j-cal-summary-card.loss b{color:#d4685f}
+        .j-cal-cell.today:after{content:'TODAY';position:absolute;left:6px;top:6px;font-family:'DM Mono',monospace;font-size:7px;font-weight:800;color:#d4a65f;background:var(--j-butter);border:1px solid var(--j-ink);border-radius:4px;padding:1px 4px;}
+        .j-cal-cell.today .j-cal-day{color:#d4a65f;}
+        .j-cal-empty-note{background:#fbf6ea;border:1.5px dashed var(--j-ink);border-radius:8px;padding:10px;text-align:center;font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);}
+        .j-open-edit-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+        .j-open-edit-grid.two{grid-template-columns:repeat(2,1fr);}
+        .j-open-edit-note{margin-top:10px;background:#fbf6ea;border:1.5px dashed var(--j-ink);border-radius:8px;padding:8px 10px;font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);line-height:1.5;}
+        @media(max-width:720px){.j-cal-grid{gap:5px}.j-cal-weekdays{gap:5px}.j-cal-cell{min-height:70px;padding:6px}.j-cal-pl{font-size:12px}.j-cal-count,.j-cal-mini{display:none}.j-cal-day{font-size:11px;top:5px;right:6px}.j-cal-trade-row{align-items:flex-start;flex-wrap:wrap}.j-cal-trade-row b{margin-left:auto}.j-cal-summary-grid,.j-open-edit-grid,.j-open-edit-grid.two{grid-template-columns:1fr 1fr}}
 
 
         .j-tools-screen{display:flex;flex-direction:column;gap:12px;}
@@ -1634,19 +1654,69 @@ export default function JournalPage() {
         {/* ── EXIT (Post-Exit) ── */}
         {view==="exit"&&openTrade&&(
           <div className="space-y-4 j-tabcontent" style={{maxWidth:560,margin:"0 auto"}}>
-            {/* Open trade summary */}
+            {/* Open trade editor */}
             <div className="j-win">
               <div className="j-bar" style={{background:getModeInfo(openTrade.mode).color}}>
-                <span className="j-t">🟡 OPEN: {getModeInfo(openTrade.mode).emoji} {getModeInfo(openTrade.mode).label} · {openTrade.direction}</span>
+                <span className="j-t">🟡 OPEN EDIT: {getModeInfo(openTrade.mode).emoji} {getModeInfo(openTrade.mode).label} · {openTrade.direction}</span>
+                <span className="j-ctrl"><span>✎</span></span>
               </div>
               <div className="j-body">
-                <div className="grid grid-cols-3 gap-3" style={{fontFamily:"'DM Mono',monospace",fontSize:12}}>
-                  <div><span style={{color:"var(--j-soft)"}}>Entry</span><br/><b style={{fontSize:15}}>{openTrade.entryPrice}</b></div>
-                  <div><span style={{color:"var(--j-soft)"}}>SL</span><br/><b style={{fontSize:15,color:"#d4685f"}}>{openTrade.slPrice}</b></div>
-                  <div><span style={{color:"var(--j-soft)"}}>Lot</span><br/><b style={{fontSize:15}}>{openTrade.lotPerOrder}</b></div>
+                <div className="j-open-edit-grid">
+                  <div>
+                    <label className="j-lab">Date</label>
+                    <input type="date" value={openTrade.date} onChange={e=>updateOpenTradePatch({date:e.target.value})} className="j-in" style={{fontSize:11}}/>
+                  </div>
+                  <div>
+                    <label className="j-lab">Time 24H</label>
+                    <input type="time" step="60" value={String(openTrade.time||"00:00").slice(0,5)} onChange={e=>{const t=e.target.value.slice(0,5); updateOpenTradePatch({time:t,session:autoSessionFromTime(t)});}} className="j-in" style={{fontSize:11}}/>
+                  </div>
+                  <div>
+                    <label className="j-lab">Session</label>
+                    <select value={openTrade.session} onChange={e=>updateOpenTradePatch({session:e.target.value as Session})} className="j-in" style={{fontSize:11}}>
+                      {SESSIONS.map(s=><option key={s}>{s}</option>)}
+                    </select>
+                  </div>
                 </div>
-                <div style={{marginTop:8,fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)"}}>
-                  {openTrade.date} · {openTrade.time} · {openTrade.session} · {openTrade.emotion}
+
+                <div className="j-open-edit-grid" style={{marginTop:10}}>
+                  <div>
+                    <label className="j-lab">Direction</label>
+                    <select value={openTrade.direction} onChange={e=>updateOpenTradePatch({direction:e.target.value as Direction})} className="j-in" style={{fontSize:11}}>
+                      <option value="LONG">LONG</option>
+                      <option value="SHORT">SHORT</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="j-lab">Mode</label>
+                    <select value={openTrade.mode} onChange={e=>updateOpenTradePatch({mode:e.target.value as TradeMode})} className="j-in" style={{fontSize:11}}>
+                      {(Object.keys(MODE_INFO) as TradeMode[]).map(m=><option key={m} value={m}>{MODE_INFO[m].label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="j-lab">Emotion</label>
+                    <select value={openTrade.emotion} onChange={e=>updateOpenTradePatch({emotion:e.target.value as Emotion})} className="j-in" style={{fontSize:11}}>
+                      {EMOTIONS.map(e=><option key={e}>{e}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="j-open-edit-grid" style={{marginTop:10}}>
+                  <div>
+                    <label className="j-lab">Entry</label>
+                    <input type="number" step="0.001" value={openTrade.entryPrice || ""} onChange={e=>updateOpenTradePatch({entryPrice:Number(e.target.value||0)})} className="j-in"/>
+                  </div>
+                  <div>
+                    <label className="j-lab">SL</label>
+                    <input type="number" step="0.001" value={openTrade.slPrice || ""} onChange={e=>updateOpenTradePatch({slPrice:Number(e.target.value||0)})} className="j-in" style={{color:"#d4685f",fontWeight:700}}/>
+                  </div>
+                  <div>
+                    <label className="j-lab">Lot / Order</label>
+                    <input type="number" step="0.01" value={openTrade.lotPerOrder || ""} onChange={e=>{const lot=Number(e.target.value||0); updateOpenTradePatch({lotPerOrder:lot,lotInput:String(e.target.value||"")});}} className="j-in"/>
+                  </div>
+                </div>
+
+                <div className="j-open-edit-note">
+                  แก้ตรงนี้แล้วบันทึกทันทีในเครื่อง · ถ้าใส่ Exit price ไว้แล้ว ค่า P/L preview จะคำนวณใหม่ตาม Entry / SL / Lot ล่าสุด
                 </div>
               </div>
             </div>
@@ -1744,6 +1814,14 @@ export default function JournalPage() {
 
           const selTrades = calSelected ? (byDate[calSelected] || []) : [];
           const selectedPL = selTrades.reduce((s,t)=>s + Number(t.totalPL || 0),0);
+          const monthKey = `${y}-${pad(m+1)}`;
+          const monthTrades = trades.filter(t=>t.status==="CLOSED" && String(t.date||"").startsWith(monthKey));
+          const monthPL = monthTrades.reduce((s,t)=>s+Number(t.totalPL||0),0);
+          const monthWins = monthTrades.filter(t=>t.result==="WIN").length;
+          const monthLosses = monthTrades.filter(t=>t.result==="LOSS").length;
+          const monthWinRate = monthTrades.length ? (monthWins/monthTrades.length)*100 : 0;
+          const monthAvgRR = monthTrades.length ? monthTrades.reduce((s,t)=>s+Number(t.rr||0),0)/monthTrades.length : 0;
+          const todayKey = new Date().toISOString().split("T")[0];
 
           return (
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -1751,10 +1829,17 @@ export default function JournalPage() {
                 <div className="j-bar" style={{background:"var(--j-sky)",alignItems:"center"}}>
                   <button onClick={()=>setCalRef(new Date(y,m-1,1))} className="j-cal-nav" aria-label="Previous month">◀</button>
                   <span className="j-t" style={{justifyContent:"center",fontSize:13}}>📅 {monthName}</span>
+                  <button onClick={()=>setCalRef(new Date())} className="j-chip off" style={{fontSize:10,padding:"3px 8px",borderStyle:"solid"}}>Today</button>
                   <button onClick={()=>setCalRef(new Date(y,m+1,1))} className="j-cal-nav" aria-label="Next month">▶</button>
                 </div>
 
                 <div className="j-body">
+                  <div className="j-cal-summary-grid">
+                    <div className={`j-cal-summary-card ${monthPL>=0?"win":"loss"}`}><span>Month P/L</span><b>{monthPL>=0?"+":"-"}${Math.abs(monthPL).toFixed(2)}</b></div>
+                    <div className="j-cal-summary-card"><span>Trades</span><b>{monthTrades.length}</b></div>
+                    <div className="j-cal-summary-card win"><span>Win Rate</span><b>{monthWinRate.toFixed(0)}%</b></div>
+                    <div className="j-cal-summary-card"><span>Avg RR</span><b>{monthAvgRR.toFixed(2)}</b></div>
+                  </div>
                   <div className="j-cal-weekdays">
                     {[
                       ["S","Sun"],["M","Mon"],["T","Tue"],["W","Wed"],["T","Thu"],["F","Fri"],["S","Sat"]
@@ -1775,6 +1860,7 @@ export default function JournalPage() {
                       const isWin = net > 0.0001;
                       const isLoss = net < -0.0001;
                       const isSelected = calSelected === k;
+                      const isToday = todayKey === k;
                       const plText = `${net>=0?"+":"-"}$${Math.abs(net).toFixed(2)}`;
 
                       return (
@@ -1782,7 +1868,7 @@ export default function JournalPage() {
                           key={i}
                           type="button"
                           onClick={()=>setCalSelected(isSelected ? null : k)}
-                          className={`j-cal-cell ${has?"has":""} ${isWin?"win":isLoss?"loss":"be"} ${isSelected?"selected":""}`}
+                          className={`j-cal-cell ${has?"has":""} ${isWin?"win":isLoss?"loss":"be"} ${isSelected?"selected":""} ${isToday?"today":""}`}
                           title={has ? `${k} · ${plText} · ${dayTrades.length} trades` : k}
                         >
                           <span className="j-cal-day">{d}</span>
@@ -1847,7 +1933,9 @@ export default function JournalPage() {
               )}
 
               {!calSelected&&(
-                <p className="text-center py-2" style={{color:"var(--j-soft)",fontSize:12,fontFamily:"'DM Mono',monospace"}}>tap a colored day to see trades</p>
+                <div className="j-cal-empty-note">
+                  แตะวันที่มีสีเพื่อดูรายการเทรด · ปุ่ม Today จะพากลับมาที่เดือนปัจจุบัน · สีเขียว/ชมพู/ม่วง = วันกำไร/ขาดทุน/BE
+                </div>
               )}
             </div>
           );
