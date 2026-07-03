@@ -99,7 +99,7 @@ function migrateOldTrades(rawTrades: any[]): Trade[] {
     id: t.id || uid(),
     status: t.status || "CLOSED",
     mode: (["SMC","SW_RANGE","SW_BREAKOUT","PULLBACK","M5_REVERSAL"].includes(String(t.mode || t.entry_model)) ? String(t.mode || t.entry_model) : "SMC") as TradeMode,
-    date: t.date || localDateString(),
+    date: t.date || new Date().toISOString().split("T")[0],
     time: t.time || "00:00",
     session: (t.session || "Tokyo") as Session,
     direction: (t.direction || "SHORT") as Direction,
@@ -158,7 +158,6 @@ const EXIT_REASONS: ExitReason[] = ["TP Hit","SL Hit","Manual","Rejection","MSS 
 const MAX_TRADES_PER_DAY = 3;
 
 function pad2(n: number) { return String(n).padStart(2, "0"); }
-function localDateString(d = new Date()) { return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
 
 function nowTime24() {
   const d = new Date();
@@ -537,7 +536,7 @@ function RoadmapWidget({ trades }: { trades: Trade[] }) {
 }
 
 
-// ─── Market Tools: Trader RPG Coach + Retro HP/MP Bars ────────────────────────
+// ─── Battle Coach: Retro RPG Bars + Forex Sessions ───────────────────────────
 type ForexSessionInfo = {
   name: Session | "Sydney";
   emoji: string;
@@ -547,8 +546,23 @@ type ForexSessionInfo = {
   note: string;
 };
 
-type RetroBarTone = "mint" | "sky" | "lav" | "butter" | "coral" | "peach" | "ink";
-type StatRow = { key:string; label:string; trades:number; wins:number; losses:number; be:number; winRate:number; avgRR:number; totalPL:number };
+type RetroBarTone = "mint" | "sky" | "lav" | "butter" | "coral" | "peach";
+
+type BattleCoachMetrics = {
+  score: number;
+  status: "READY" | "CAUTION" | "STAND DOWN";
+  tone: RetroBarTone;
+  setupName: string;
+  setupPower: number;
+  sessionName: string;
+  sessionEdge: number;
+  discipline: number;
+  rrPower: number;
+  riskToday: number;
+  winRateToday: number;
+  avgRR: number;
+  notes: string[];
+};
 
 const FOREX_SESSIONS: ForexSessionInfo[] = [
   { name:"Sydney",   emoji:"🌏", openUtc:21, closeUtc:6,  color:"var(--j-peach)",  note:"Early liquidity" },
@@ -557,74 +571,157 @@ const FOREX_SESSIONS: ForexSessionInfo[] = [
   { name:"New York", emoji:"🗽", openUtc:12, closeUtc:21, color:"var(--j-mint)",   note:"XAUUSD active" },
 ];
 
-function clampNum(v:number,min=0,max=100){ return Math.min(max,Math.max(min,v)); }
-function pctText(v:number){ return `${Math.round(v)}%`; }
-function utcHourFloat(d: Date) { return d.getUTCHours() + d.getUTCMinutes()/60 + d.getUTCSeconds()/3600; }
+function clampNum(v: number, min = 0, max = 100) {
+  return Math.min(max, Math.max(min, Number.isFinite(v) ? v : 0));
+}
+
+function utcHourFloat(d: Date) {
+  return d.getUTCHours() + d.getUTCMinutes()/60 + d.getUTCSeconds()/3600;
+}
+
 function isForexSessionOpen(session: ForexSessionInfo, nowUtcHour: number) {
   if (session.openUtc < session.closeUtc) return nowUtcHour >= session.openUtc && nowUtcHour < session.closeUtc;
   return nowUtcHour >= session.openUtc || nowUtcHour < session.closeUtc;
 }
+
 function sessionProgress(session: ForexSessionInfo, nowUtcHour: number) {
   const start = session.openUtc;
   const end = session.closeUtc <= start ? session.closeUtc + 24 : session.closeUtc;
   const now = nowUtcHour < start && session.closeUtc <= start ? nowUtcHour + 24 : nowUtcHour;
   if (!isForexSessionOpen(session, nowUtcHour)) return 0;
-  return clampNum(((now - start) / (end - start)) * 100);
+  return Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100));
 }
+
 function hoursUntil(openUtc: number, nowUtcHour: number) {
   let diff = openUtc - nowUtcHour;
   if (diff < 0) diff += 24;
   return diff;
 }
+
 function fmtHours(v: number) {
   const h = Math.floor(v);
   const m = Math.round((v - h) * 60);
   return `${h}h ${String(m).padStart(2,"0")}m`;
 }
+
 function localWindowText(openUtc: number, closeUtc: number) {
   const toLocal = (h: number) => `${pad2((h + 7) % 24)}:00`;
   return `${toLocal(openUtc)}–${toLocal(closeUtc)} TH`;
 }
-function toStatRows(trades: Trade[], keyGetter:(t:Trade)=>string, labelGetter?:(key:string)=>string): StatRow[] {
-  const closed = trades.filter(t=>t.status==="CLOSED");
-  const map:Record<string,Trade[]> = {};
-  closed.forEach(t=>{ const k=keyGetter(t)||"Unknown"; (map[k] ||= []).push(t); });
-  return Object.entries(map).map(([key,items])=>{
-    const wins=items.filter(t=>t.result==="WIN").length;
-    const losses=items.filter(t=>t.result==="LOSS").length;
-    const be=items.filter(t=>t.result==="BE").length;
-    const rrAvg=items.reduce((s,t)=>s+(Number(t.rr)||0),0)/(items.length||1);
-    return {
-      key,label:labelGetter?labelGetter(key):key,trades:items.length,wins,losses,be,
-      winRate: items.length ? wins/items.length*100 : 0,
-      avgRR: rrAvg,
-      totalPL: items.reduce((s,t)=>s+(Number(t.totalPL)||0),0),
-    };
-  }).sort((a,b)=>b.trades-a.trades);
-}
-function bestRow(rows: StatRow[], minTrades=3) {
-  const eligible=rows.filter(r=>r.trades>=minTrades);
-  return (eligible.length?eligible:rows).sort((a,b)=>b.winRate-a.winRate || b.avgRR-a.avgRR)[0];
-}
-function weakRow(rows: StatRow[], minTrades=3) {
-  const eligible=rows.filter(r=>r.trades>=minTrades);
-  return (eligible.length?eligible:rows).sort((a,b)=>a.winRate-b.winRate || a.avgRR-b.avgRR)[0];
-}
-function scoreFromRow(row?: StatRow) {
-  if(!row) return 50;
-  const rrScore=clampNum((row.avgRR+1)*28,0,100);
-  return clampNum(row.winRate*0.68 + rrScore*0.32);
-}
-function modeLabel(k:string){ return getModeInfo(k).label; }
 
-function RetroStatBar({label,value,max=100,tone="mint",right,size="normal"}:{label:string;value:number;max?:number;tone?:RetroBarTone;right?:string;size?:"normal"|"big"}) {
+function modeLabel(mode: TradeMode | string) {
+  return getModeInfo(mode).label.replace(" Pro Max", "");
+}
+
+function calcModeWinRate(trades: Trade[], mode: TradeMode) {
+  const list = trades.filter(t=>t.status==="CLOSED" && t.mode===mode);
+  if (!list.length) return 0;
+  return list.filter(t=>t.result==="WIN").length / list.length * 100;
+}
+
+function calcSessionWinRate(trades: Trade[], session: Session) {
+  const list = trades.filter(t=>t.status==="CLOSED" && t.session===session);
+  if (!list.length) return 0;
+  return list.filter(t=>t.result==="WIN").length / list.length * 100;
+}
+
+function bestBy<T extends string>(items: readonly T[], scoreFn: (item:T)=>number, fallback:T) {
+  let best = fallback;
+  let bestScore = -1;
+  for (const item of items) {
+    const score = scoreFn(item);
+    if (score > bestScore) {
+      best = item;
+      bestScore = score;
+    }
+  }
+  return { item: best, score: Math.max(0, bestScore) };
+}
+
+function calcDiscipline(trades: Trade[], dailyStatus: ReturnType<typeof calcDailyStatus>) {
+  const recent = trades.filter(t=>t.status==="CLOSED").slice(0, 12);
+  if (!recent.length) return 72;
+  const fomo = recent.filter(t=>t.emotion?.includes("FOMO") || t.emotion?.includes("Revenge")).length;
+  const beOrWin = recent.filter(t=>t.result!=="LOSS").length;
+  const base = 65 + (beOrWin / recent.length) * 25 - fomo * 6 - dailyStatus.lossStreak * 8;
+  return clampNum(base);
+}
+
+function calcBattleCoach(trades: Trade[], dailyStatus: ReturnType<typeof calcDailyStatus>, stats: ReturnType<typeof calcStats>): BattleCoachMetrics {
+  const closed = trades.filter(t=>t.status==="CLOSED");
+  const modes: TradeMode[] = ["SMC","SW_RANGE","SW_BREAKOUT","PULLBACK","M5_REVERSAL"];
+  const bestMode = bestBy(modes, m=>calcModeWinRate(closed, m), "SMC");
+  const bestSession = bestBy(SESSIONS, s=>calcSessionWinRate(closed, s), "London");
+
+  const avgRR = Number(stats.avgRR || 0);
+  const rrPower = clampNum(avgRR <= 0 ? 25 : Math.min(100, avgRR * 28));
+  const setupPower = closed.length ? clampNum(bestMode.score || stats.winRate) : 65;
+  const sessionEdge = closed.length ? clampNum(bestSession.score || 55) : 60;
+  const discipline = calcDiscipline(closed, dailyStatus);
+  const todayLossPenalty = dailyStatus.todayLosses * 12 + dailyStatus.lossStreak * 8;
+  const overTradePenalty = dailyStatus.totalToday >= MAX_TRADES_PER_DAY ? 20 : 0;
+  const hardStopPenalty = dailyStatus.isHardStop ? 45 : 0;
+  const dayDonePenalty = dailyStatus.isDayDone ? 18 : 0;
+  const riskToday = clampNum((dailyStatus.todayLosses / MAX_TRADES_PER_DAY) * 100);
+  const winRateToday = dailyStatus.totalToday ? (dailyStatus.todayWins / dailyStatus.totalToday) * 100 : 0;
+
+  let score = 48;
+  score += setupPower * 0.18;
+  score += sessionEdge * 0.14;
+  score += discipline * 0.22;
+  score += rrPower * 0.16;
+  score += dailyStatus.todayWins * 5;
+  score -= todayLossPenalty + overTradePenalty + hardStopPenalty + dayDonePenalty;
+  score = clampNum(score);
+
+  const status = score >= 80 ? "READY" : score >= 50 ? "CAUTION" : "STAND DOWN";
+  const tone: RetroBarTone = score >= 80 ? "mint" : score >= 50 ? "butter" : "coral";
+
+  const notes: string[] = [];
+  if (dailyStatus.isHardStop) notes.push("LOSS streak ถึงจุด Hard Stop แล้ว — วันนี้ควรปิดโหมดเทรด");
+  else if (dailyStatus.isDayDone) notes.push("ครบจำนวนไม้ของวันแล้ว — เหลือหน้าที่แค่ review");
+  else if (dailyStatus.lossStreak === 2) notes.push("LOSS 2 ติด — พักก่อนหนึ่งรอบ อย่ารีบเอาคืน");
+  else if (score >= 80) notes.push("สภาพรวมพร้อม แต่ยังต้องให้ Checklist ผ่านก่อนเข้าไม้");
+  else notes.push("ยังมีจุดที่ต้องเช็กเพิ่มก่อนเข้าเทรด");
+
+  if (closed.length >= 3) {
+    notes.push(`${modeLabel(bestMode.item)} เป็น setup ที่สถิติดีสุดใน Journal (${bestMode.score.toFixed(0)}% WR)`);
+    notes.push(`${bestSession.item} เป็น session ที่มี edge สูงสุด (${bestSession.score.toFixed(0)}% WR)`);
+  } else {
+    notes.push("ข้อมูล Journal ยังน้อย — คะแนนบางส่วนเป็นค่าเริ่มต้นชั่วคราว");
+  }
+
+  if (avgRR < 1 && closed.length >= 3) notes.push("Avg RR ยังต่ำกว่า 1R — เน้นเข้าเฉพาะไม้ที่คุ้มความเสี่ยง");
+  if (dailyStatus.todayPL < 0) notes.push(`วันนี้ติดลบ ${money(dailyStatus.todayPL)} — ลด lot และเลิกไล่ราคา`);
+
+  return {
+    score: Math.round(score),
+    status,
+    tone,
+    setupName: modeLabel(bestMode.item),
+    setupPower: Math.round(setupPower),
+    sessionName: bestSession.item,
+    sessionEdge: Math.round(sessionEdge),
+    discipline: Math.round(discipline),
+    rrPower: Math.round(rrPower),
+    riskToday: Math.round(riskToday),
+    winRateToday: Math.round(winRateToday),
+    avgRR,
+    notes,
+  };
+}
+
+function RetroStatBar({label,value,max=100,tone="mint",right}:{label:string;value:number;max?:number;tone?:RetroBarTone;right?:string}) {
   const safeMax = max <= 0 ? 100 : max;
-  const pct = clampNum((value / safeMax) * 100);
-  const blocks = size==="big" ? 16 : 12;
+  const pct = Math.min(100, Math.max(0, (value / safeMax) * 100));
+  const blocks = 12;
   const filled = Math.round((pct / 100) * blocks);
   return (
-    <div className={`j-rpg-line ${tone} ${size}`}>
-      <div className="j-rpg-meta"><span>{label}</span><b>{right || `${Math.round(value)}/${safeMax}`}</b></div>
+    <div className={`j-rpg-line ${tone}`}>
+      <div className="j-rpg-meta">
+        <span>{label}</span>
+        <b>{right || `${Math.round(value)}/${safeMax}`}</b>
+      </div>
       <div className="j-rpg-bar" aria-label={`${label} ${pct.toFixed(0)}%`}>
         <i style={{width:`${pct}%`}} />
         <div className="j-rpg-segments">
@@ -635,136 +732,69 @@ function RetroStatBar({label,value,max=100,tone="mint",right,size="normal"}:{lab
   );
 }
 
-function PixelSignalBadge({score,hardStop}:{score:number;hardStop?:boolean}) {
-  const label = hardStop ? "STOP TODAY" : score >= 78 ? "READY" : score >= 60 ? "WATCH" : score >= 43 ? "WAIT" : "NO TRADE";
-  const tone = hardStop ? "coral" : score >= 78 ? "mint" : score >= 60 ? "butter" : score >= 43 ? "lav" : "coral";
-  const emoji = hardStop ? "🛑" : score >= 78 ? "🟢" : score >= 60 ? "🟡" : score >= 43 ? "🟣" : "🔴";
-  return <div className={`j-signal-badge ${tone}`}><span>{emoji}</span><b>{label}</b></div>;
+function BattleStatusBadge({metrics}:{metrics:BattleCoachMetrics}) {
+  const emoji = metrics.status === "READY" ? "🟢" : metrics.status === "CAUTION" ? "🟡" : "🔴";
+  return <div className={`j-signal-badge ${metrics.tone}`}><span>{emoji}</span><b>{metrics.status}</b></div>;
 }
 
-function CoachChip({label,value,tone="mint"}:{label:string;value:string;tone?:RetroBarTone}) {
-  return <div className={`j-coach-chip ${tone}`}><span>{label}</span><b>{value}</b></div>;
-}
-
-function XauusdBattleCoach({trades,dailyStatus}:{trades:Trade[];dailyStatus:ReturnType<typeof calcDailyStatus>}) {
-  const closed = trades.filter(t=>t.status==="CLOSED");
-  const recent = [...closed].sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,30);
-  const modeRows = toStatRows(closed,t=>t.mode,modeLabel);
-  const sessionRows = toStatRows(closed,t=>t.session);
-  const emotionRows = toStatRows(closed,t=>t.emotion);
-  const bestMode = bestRow(modeRows);
-  const weakMode = weakRow(modeRows);
-  const currentSession = autoSessionFromTime(nowTime24());
-  const currentSessionRow = sessionRows.find(r=>r.key===currentSession);
-  const bestSession = bestRow(sessionRows);
-  const badEmotion = emotionRows.sort((a,b)=>a.winRate-b.winRate || b.losses-a.losses)[0];
-  const allStats = calcStats(closed);
-
-  const todayTradeCount = dailyStatus.totalToday;
-  const todayLossStreak = dailyStatus.lossStreak;
-  const todayHardStop = todayLossStreak >= 3;
-  const todayDone = todayTradeCount >= MAX_TRADES_PER_DAY;
-
-  // V4.1 scoring: คำนวณใหม่ทุกวันจาก todayStr/dailyStatus แต่สถิติหลักยังอิงประวัติสะสม
-  const dataPower = clampNum((closed.length/30)*100);
-  const setupPower = scoreFromRow(bestMode);
-  const sessionPower = scoreFromRow(currentSessionRow || bestSession);
-  const rrPower = clampNum((allStats.avgRR+1)*30);
-  const baseDiscipline = 92;
-  const disciplinePower = todayHardStop ? 0 : todayDone ? 34 : clampNum(baseDiscipline - todayLossStreak*28 - todayTradeCount*8);
-  const riskPenalty = todayHardStop ? 100 : todayDone ? 34 : todayLossStreak*30;
-  const dataPenalty = closed.length < 3 ? 18 : 0;
-
-  let readiness = Math.round(setupPower*0.29 + sessionPower*0.24 + rrPower*0.17 + disciplinePower*0.24 + dataPower*0.06 - dataPenalty);
-  readiness = clampNum(readiness);
-  if (todayTradeCount === 0 && !todayHardStop) readiness = Math.max(readiness, closed.length < 3 ? 52 : 64);
-  if (todayHardStop) readiness = Math.min(readiness, 22);
-  if (todayDone && !todayHardStop) readiness = Math.min(readiness, 42);
-
-  const stopSignal = todayHardStop;
-  const doneSignal = todayDone && !todayHardStop;
-  const signalScore = doneSignal ? 44 : readiness;
-
-  const reasons:{label:string;value:string;tone:RetroBarTone}[] = [
-    {label:"Setup", value: bestMode ? `${bestMode.label} ${bestMode.winRate.toFixed(0)}%` : "Need 3+ trades", tone:"mint"},
-    {label:"Session", value: currentSessionRow ? `${currentSession} ${currentSessionRow.winRate.toFixed(0)}%` : `${currentSession} new`, tone:"sky"},
-    {label:"RR", value: `Avg ${allStats.avgRR.toFixed(2)}`, tone:"butter"},
-    {label:"Today", value: todayTradeCount===0 ? "Fresh day" : `${todayTradeCount}/${MAX_TRADES_PER_DAY} trades`, tone:todayTradeCount===0?"mint":"peach"},
-    {label:"Risk", value: todayHardStop ? "Hard stop" : todayLossStreak ? `Loss streak ${todayLossStreak}` : "Clear", tone:todayHardStop?"coral":todayLossStreak?"butter":"mint"},
-  ];
-
-  const command = todayHardStop
-    ? "STOP TODAY: วันนี้ LOSS streak ถึงจุดเสี่ยงแล้ว พักก่อนและไป review journal"
-    : doneSignal
-      ? "DAY COMPLETE: ครบจำนวนไม้วันนี้แล้ว เก็บพลังไว้วันใหม่ อย่าเพิ่มไม้เพราะอยากเอาคืน"
-      : todayTradeCount === 0
-        ? (closed.length < 3
-          ? "NEW DAY: วันนี้ยังไม่ได้เทรด ระบบรีเซ็ตแล้ว เก็บข้อมูลเพิ่มและเข้าเฉพาะ setup ที่ชัด"
-          : `FRESH DAY: วันนี้ยังไม่ได้เทรด ถ้าจะเข้า ให้รอ ${bestMode?.label || "setup หลัก"} + checklist ครบ`)
-        : readiness >= 78
-          ? `READY: โฟกัส ${bestMode?.label || "setup ที่เคยทำได้ดี"} ใน ${currentSession} และรอ confirmation เท่านั้น`
-          : readiness >= 60
-            ? "WATCH: เทรดได้แต่ต้องลดความถี่ รอจังหวะชัด ห้ามเข้าเพราะ FOMO"
-            : "WAIT: คะแนนยังไม่ดีพอ รอ setup ชัดกว่านี้หรือพักก่อน";
-
+function BattleReadinessPanel({metrics,dailyStatus}:{metrics:BattleCoachMetrics;dailyStatus:ReturnType<typeof calcDailyStatus>}) {
   return (
-    <div className="j-rpg-panel v41">
-      <div className="j-rpg-top j-battle-top">
+    <div className="j-rpg-panel">
+      <div className="j-rpg-top battle-hero">
         <div>
-          <div className="j-tool-label">TRADER OS v4.1</div>
-          <div className="j-rpg-name">BATTLE READINESS</div>
-          <div className="j-rpg-note">รีเซ็ตสถานะรายวันด้วยเวลาท้องถิ่น 00:00 · ไม่เอาสถานะเมื่อวานมาตัดสินวันนี้</div>
+          <div className="j-tool-label">PRE-TRADE CHECK</div>
+          <div className="j-rpg-name">BATTLE COACH</div>
+          <div className="j-tool-sub">อ่านจาก Journal จริง · ไม่ใช่สัญญาณเข้าไม้ · ใช้เป็นตัวช่วยคุมวินัยก่อนเทรด</div>
         </div>
-        <PixelSignalBadge score={signalScore} hardStop={stopSignal}/>
+        <BattleStatusBadge metrics={metrics}/>
       </div>
 
-      <div className="j-readiness-card v41-card">
-        <div className="j-readiness-score">
-          <span>{stopSignal?"🛑":doneSignal?"✅":"⚔️"}</span>
-          <div><small>{doneSignal?"DAY COMPLETE":"BATTLE READINESS"}</small><b>{readiness}/100</b></div>
+      <div className="j-rpg-avatar-row battle-main">
+        <div className="j-rpg-avatar battle-avatar">
+          <div className="battle-score">
+            <span>{metrics.score}</span>
+            <small>/100</small>
+          </div>
         </div>
-        <RetroStatBar label="READY BAR" value={readiness} tone={stopSignal?"coral":readiness>=78?"mint":readiness>=60?"butter":readiness>=43?"lav":"coral"} right={stopSignal?"STOP":doneSignal?"DONE":pctText(readiness)} size="big" />
-      </div>
-
-      <div className="j-score-breakdown">
-        <CoachChip label="Setup" value={`${Math.round(setupPower)}/100`} tone="mint" />
-        <CoachChip label="Session" value={`${Math.round(sessionPower)}/100`} tone="sky" />
-        <CoachChip label="RR" value={`${Math.round(rrPower)}/100`} tone="butter" />
-        <CoachChip label="Discipline" value={`${Math.round(disciplinePower)}/100`} tone={disciplinePower>=70?"mint":disciplinePower>=45?"butter":"coral"} />
-      </div>
-
-      <div className="j-rpg-avatar-row">
-        <div className="j-rpg-avatar">🧙‍♂️</div>
         <div className="j-rpg-bars">
-          <RetroStatBar label="HP / BEST SETUP" value={setupPower} tone="mint" right={bestMode ? `${bestMode.label} · ${bestMode.winRate.toFixed(0)}%` : "No data"} />
-          <RetroStatBar label="MP / SESSION EDGE" value={sessionPower} tone="sky" right={currentSessionRow ? `${currentSession} · ${currentSessionRow.winRate.toFixed(0)}%` : `${currentSession} · new`} />
-          <RetroStatBar label="EXP / DATA POWER" value={dataPower} tone="lav" right={`${closed.length} trades`} />
+          <RetroStatBar label="HP / READINESS" value={metrics.score} tone={metrics.tone} right={`${metrics.score}/100`} />
+          <RetroStatBar label="MP / DISCIPLINE" value={metrics.discipline} tone={metrics.discipline >= 70 ? "mint" : metrics.discipline >= 45 ? "butter" : "coral"} right={`${metrics.discipline}%`} />
+          <RetroStatBar label="XP / AVG RR" value={metrics.rrPower} tone={metrics.rrPower >= 60 ? "sky" : "butter"} right={`${metrics.avgRR.toFixed(2)}R`} />
         </div>
       </div>
 
-      <div className="j-rpg-grid coach-grid">
-        <RetroStatBar label="RR POWER" value={rrPower} tone="butter" right={`Avg RR ${allStats.avgRR.toFixed(2)}`} />
-        <RetroStatBar label="DISCIPLINE" value={disciplinePower} tone={disciplinePower>=70?"mint":disciplinePower>=45?"butter":"coral"} right={`${todayTradeCount}/${MAX_TRADES_PER_DAY} today`} />
-        <RetroStatBar label="DANGER" value={riskPenalty} tone="coral" right={todayLossStreak ? `LOSS ${todayLossStreak}` : "Clear"} />
+      <div className="j-rpg-grid battle-stat-grid">
+        <div className="battle-mini-card">
+          <div className="j-tool-label">SETUP POWER</div>
+          <b>{metrics.setupName}</b>
+          <RetroStatBar label="WR" value={metrics.setupPower} tone="lav" right={`${metrics.setupPower}%`} />
+        </div>
+        <div className="battle-mini-card">
+          <div className="j-tool-label">SESSION EDGE</div>
+          <b>{metrics.sessionName}</b>
+          <RetroStatBar label="EDGE" value={metrics.sessionEdge} tone="sky" right={`${metrics.sessionEdge}%`} />
+        </div>
+        <div className="battle-mini-card">
+          <div className="j-tool-label">RISK TODAY</div>
+          <b>{dailyStatus.todayPL >= 0 ? money(dailyStatus.todayPL) : money(dailyStatus.todayPL)}</b>
+          <RetroStatBar label="DANGER" value={metrics.riskToday} tone={metrics.riskToday >= 67 ? "coral" : metrics.riskToday >= 34 ? "butter" : "mint"} right={`${metrics.riskToday}%`} />
+        </div>
       </div>
 
-      <div className="j-coach-chips">
-        {reasons.map(r=><CoachChip key={r.label} label={r.label} value={r.value} tone={r.tone} />)}
-        <CoachChip label="Weak point" value={weakMode ? `${weakMode.label} ${weakMode.winRate.toFixed(0)}%` : "Need data"} tone="coral" />
-        <CoachChip label="Emotion trap" value={badEmotion ? badEmotion.label.replace(/^.*? /,"") : "Need data"} tone="peach" />
-      </div>
-
-      <div className="j-rpg-command-box">
-        <div className="j-rpg-command-title">BATTLE COACH</div>
-        <div className="j-rpg-command-text">{command}</div>
+      <div className="j-rpg-command-box battle-command">
+        <div className="j-rpg-command-title">COACH LOG</div>
+        <div className="battle-log">
+          {metrics.notes.map((n,i)=><div key={i}><span>{i===0?"⚔️":"•"}</span>{n}</div>)}
+        </div>
       </div>
     </div>
   );
 }
 
-function ForexSessionsTool() {
+function SessionMonitorPanel({trades}:{trades:Trade[]}) {
   const [now,setNow]=useState(new Date());
   useEffect(()=>{ const id=setInterval(()=>setNow(new Date()),1000); return ()=>clearInterval(id); },[]);
+
   const nowUtc = utcHourFloat(now);
   const openSessions = FOREX_SESSIONS.filter(s=>isForexSessionOpen(s,nowUtc));
   const isOverlap = isForexSessionOpen(FOREX_SESSIONS[2],nowUtc) && isForexSessionOpen(FOREX_SESSIONS[3],nowUtc);
@@ -775,69 +805,89 @@ function ForexSessionsTool() {
     <div className="j-tool-stack">
       <div className="j-rpg-mini-header">
         <div>
-          <div className="j-tool-label">FOREX SESSIONS</div>
+          <div className="j-tool-label">SESSION MONITOR</div>
           <div className="j-rpg-title-sm">{isOverlap ? "⚡ OVERLAP MODE" : openSessions.length ? `${openSessions.map(s=>s.name).join(" + ")}` : "MARKET QUIET"}</div>
           <div className="j-tool-sub">TH {now.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})} · UTC {pad2(now.getUTCHours())}:{pad2(now.getUTCMinutes())}</div>
         </div>
-        <div className="j-tool-next"><span>Next</span><b>{nextSession.name}</b><small>{fmtHours(hoursUntil(nextSession.openUtc,nowUtc))}</small></div>
+        <div className="j-tool-next">
+          <span>Next</span>
+          <b>{nextSession.name}</b>
+          <small>{fmtHours(hoursUntil(nextSession.openUtc,nowUtc))}</small>
+        </div>
       </div>
 
-      <RetroStatBar label="SP / SESSION POWER" value={activity} tone={activity >= 75 ? "mint" : activity >= 45 ? "butter" : "coral"} right={`${activity}%`} size="big" />
+      <RetroStatBar label="SP / SESSION POWER" value={activity} tone={activity >= 75 ? "mint" : activity >= 45 ? "butter" : "coral"} right={`${activity}%`} />
 
       <div className="j-session-grid hp-style">
         {FOREX_SESSIONS.map(s=>{
           const open=isForexSessionOpen(s,nowUtc);
           const pct=sessionProgress(s,nowUtc);
+          const wr = s.name==="Sydney" ? 0 : calcSessionWinRate(trades, s.name as Session);
           const tone: RetroBarTone = s.name === "London" ? "sky" : s.name === "New York" ? "mint" : s.name === "Tokyo" ? "lav" : "peach";
           return (
             <div key={s.name} className={`j-session-card ${open?"on":"off"}`}>
               <div className="j-session-head">
                 <span className="j-session-icon" style={{background:s.color}}>{s.emoji}</span>
-                <div><b>{s.name}</b><small>{localWindowText(s.openUtc,s.closeUtc)}</small></div>
-                <em>{open?"OPEN":"CLOSED"}</em>
+                <div>
+                  <b>{s.name}</b>
+                  <small>{localWindowText(s.openUtc,s.closeUtc)}</small>
+                </div>
+                <em>{open?"OPEN":"WAIT"}</em>
               </div>
-              <RetroStatBar label={open ? "TIME / ACTIVE" : "WAIT"} value={open ? pct : 0} tone={tone} right={open ? `${pct.toFixed(0)}%` : s.note} />
+              <RetroStatBar label={open ? "ACTIVE TIME" : "SLEEP"} value={open ? pct : 0} tone={tone} right={open ? `${pct.toFixed(0)}%` : s.note} />
+              {s.name !== "Sydney" && (
+                <div className="session-edge-mini">
+                  <span>Journal WR</span><b>{wr ? `${wr.toFixed(0)}%` : "No data"}</b>
+                </div>
+              )}
             </div>
           );
         })}
       </div>
 
-      <div className="j-tool-tip"><b>Trade note:</b> XAUUSD มักขยับแรงช่วง London, New York และ Overlap · ใช้คู่กับ Checklist / Journal Stats ก่อนเข้าไม้</div>
+      <div className="j-tool-tip">
+        <b>Coach rule:</b> ถ้า Session Power สูง แต่วันนี้ครบ 3 ไม้แล้ว ให้หยุดตามระบบ · ถ้า Overlap เปิด ให้ลดความรีบและรอ Checklist ครบก่อนเสมอ
+      </div>
     </div>
   );
 }
 
-function MissionPanel({dailyStatus}:{dailyStatus:ReturnType<typeof calcDailyStatus>}) {
-  const missions = [
-    {label:"เริ่มวันใหม่ / ยังไม่เกินแผน", ok:dailyStatus.totalToday===0 || dailyStatus.totalToday<MAX_TRADES_PER_DAY},
-    {label:"ไม่ Revenge", ok:dailyStatus.lossStreak<2},
-    {label:"พักหลังแพ้ติด", ok:dailyStatus.lossStreak===0},
-    {label:"รอ Checklist ครบ", ok:false},
-  ];
+function BattleCoachSummary({dailyStatus,stats}:{dailyStatus:ReturnType<typeof calcDailyStatus>;stats:ReturnType<typeof calcStats>}) {
   return (
-    <Win title="🎯 TODAY QUEST" color="var(--j-mint)">
-      <div className="j-quest-list">
-        {missions.map((m,i)=><div key={i} className={m.ok?"done":""}><span>{m.ok?"☑":"☐"}</span><b>{m.label}</b></div>)}
-      </div>
-    </Win>
+    <div className="battle-summary-grid">
+      {[
+        {l:"Today",v:`${dailyStatus.totalToday}/${MAX_TRADES_PER_DAY}`,s:"trades"},
+        {l:"Win",v:String(dailyStatus.todayWins),s:dailyStatus.totalToday?`${((dailyStatus.todayWins/dailyStatus.totalToday)*100).toFixed(0)}% today`:"no trades"},
+        {l:"Loss",v:String(dailyStatus.todayLosses),s:`streak ${dailyStatus.lossStreak}`},
+        {l:"All WR",v:`${stats.winRate.toFixed(0)}%`,s:`${stats.total} closed`},
+      ].map(x=>(
+        <div key={x.l} className="battle-summary-card">
+          <span>{x.l}</span>
+          <b>{x.v}</b>
+          <small>{x.s}</small>
+        </div>
+      ))}
+    </div>
   );
 }
 
-function MarketToolsPanel({trades,dailyStatus}:{trades:Trade[];dailyStatus:ReturnType<typeof calcDailyStatus>}) {
+function BattleCoachPanel({trades,dailyStatus,stats}:{trades:Trade[];dailyStatus:ReturnType<typeof calcDailyStatus>;stats:ReturnType<typeof calcStats>}) {
+  const metrics = calcBattleCoach(trades,dailyStatus,stats);
   return (
-    <div className="j-tools-screen">
-      <div className="j-tools-layout advanced">
-        <Win title="⚔️ XAUUSD Battle Coach" color="var(--j-lav)">
-          <XauusdBattleCoach trades={trades} dailyStatus={dailyStatus} />
+    <div className="j-tools-screen battle-screen">
+      <div className="j-tools-layout battle-layout">
+        <Win title="⚔️ BATTLE COACH.EXE" color="var(--j-lav)">
+          <BattleReadinessPanel metrics={metrics} dailyStatus={dailyStatus} />
         </Win>
 
-        <div className="j-tools-side">
-          <Win title="🌍 Session HP / MP" color="var(--j-sky)">
-            <ForexSessionsTool />
-          </Win>
-          <MissionPanel dailyStatus={dailyStatus} />
-        </div>
+        <Win title="🌍 SESSION RADAR" color="var(--j-sky)">
+          <SessionMonitorPanel trades={trades} />
+        </Win>
       </div>
+
+      <Win title="📟 TODAY'S BATTLE LOG" color="var(--j-butter)">
+        <BattleCoachSummary dailyStatus={dailyStatus} stats={stats} />
+      </Win>
     </div>
   );
 }
@@ -873,7 +923,7 @@ export default function JournalPage() {
   const [clM5,setClM5]         = useState<ChecklistM5Rev>(defM5Rev());
 
   // ── Entry form ─────────────────────────────────────────────────────────────
-  const [entryDate,setEntryDate]   = useState(localDateString());
+  const [entryDate,setEntryDate]   = useState(new Date().toISOString().split("T")[0]);
   const [entryTime,setEntryTime]   = useState(nowTime24());
   const [session,setSession]       = useState<Session>(()=>autoSessionFromTime(nowTime24()));
   const [sessionManual,setSessionManual] = useState(false);
@@ -892,7 +942,7 @@ export default function JournalPage() {
   const [exitNotes,setExitNotes]   = useState("");
   const [screenshotUrl,setScreenshotUrl] = useState("");
 
-  const [todayStr,setTodayStr] = useState(localDateString());
+  const todayStr    = new Date().toISOString().split("T")[0];
   const dailyStatus = calcDailyStatus(trades, todayStr);
   const isCent      = accountType==="cent";
   const stats       = calcStats(trades);
@@ -906,21 +956,13 @@ export default function JournalPage() {
   const setNowEntryTime = () => {
     const d = new Date();
     const t = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-    setEntryDate(localDateString(d));
+    setEntryDate(d.toISOString().split("T")[0]);
     setEntryTime(t);
     setSession(autoSessionFromTime(t));
     setSessionManual(false);
   };
 
   useEffect(()=>{ setMounted(true); },[]);
-
-  // รีเฟรชสถานะรายวันหลังเที่ยงคืนด้วยเวลาท้องถิ่นของเครื่อง
-  useEffect(()=>{
-    const tickDay = () => setTodayStr(localDateString());
-    tickDay();
-    const id = setInterval(tickDay, 30 * 1000);
-    return () => clearInterval(id);
-  },[]);
 
   // ── Boot ──────────────────────────────────────────────────────────────────
   useEffect(()=>{
@@ -1210,9 +1252,7 @@ export default function JournalPage() {
 
 
         .j-tools-screen{display:flex;flex-direction:column;gap:12px;}
-        .j-tools-layout{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:12px;align-items:start;}
-        .j-tools-layout.advanced{grid-template-columns:minmax(0,1.18fr) minmax(330px,.82fr);}
-        .j-tools-side{display:flex;flex-direction:column;gap:12px;}
+        .j-tools-layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:12px;align-items:start;}
         .j-tool-label{font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px;}
         .j-tool-sub{font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);line-height:1.5;margin-top:4px;}
         .j-tool-stack{display:flex;flex-direction:column;gap:10px;}
@@ -1222,11 +1262,7 @@ export default function JournalPage() {
         .j-tool-next small{display:block;font-size:9px;color:#3f9b73;margin-top:1px;}
         .j-tool-tip{font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);line-height:1.55;background:#fbf6ea;border:1.5px dashed var(--j-ink);border-radius:8px;padding:9px 10px;}
         .j-rpg-panel{display:flex;flex-direction:column;gap:12px;}
-        .j-rpg-panel.v41 .j-rpg-top{background:linear-gradient(135deg,#fffdf8,#f6e6ac55);}
-        .j-score-breakdown{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
-        .v41-card{background:linear-gradient(135deg,#fffdf8,#c0e6d455)!important;}
         .j-rpg-top{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fbf6ea;border:2px solid var(--j-ink);border-radius:9px;padding:12px;box-shadow:2px 2px 0 var(--j-ink);}
-        .j-battle-top{background:linear-gradient(135deg,#fffdf8,#f6e6ac55);}
         .j-rpg-name{font-family:'VT323',monospace;font-size:34px;line-height:1;color:var(--j-ink);letter-spacing:1px;}
         .j-rpg-title-sm{font-family:'VT323',monospace;font-size:26px;line-height:1;color:var(--j-ink);letter-spacing:.5px;}
         .j-signal-badge{border:2px solid var(--j-ink);border-radius:9px;padding:8px 10px;box-shadow:2px 2px 0 var(--j-ink);font-family:'DM Mono',monospace;display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;white-space:nowrap;}
@@ -1238,13 +1274,12 @@ export default function JournalPage() {
         .j-rpg-line{display:flex;flex-direction:column;gap:5px;min-width:0;}
         .j-rpg-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);text-transform:uppercase;}
         .j-rpg-meta b{color:var(--j-ink);font-size:9px;white-space:nowrap;}
-        .j-rpg-bar{height:20px;position:relative;border:2px solid var(--j-ink);border-radius:6px;background:#2f2924;box-shadow:2px 2px 0 var(--j-ink), inset 0 0 0 2px rgba(255,253,248,.18);overflow:hidden;}
-        .j-rpg-line.big .j-rpg-bar{height:26px;border-width:2.5px;}
-        .j-rpg-bar i{position:absolute;inset:0 auto 0 0;width:0%;transition:width .45s steps(8,end);background:#65e6a0;box-shadow:inset 0 -5px 0 rgba(0,0,0,.18), inset 0 5px 0 rgba(255,255,255,.32), 0 0 12px rgba(101,230,160,.28);}
-        .j-rpg-line.sky .j-rpg-bar i{background:#7ed0ff;box-shadow:inset 0 -5px 0 rgba(0,0,0,.16), inset 0 5px 0 rgba(255,255,255,.32),0 0 12px rgba(126,208,255,.28);}.j-rpg-line.lav .j-rpg-bar i{background:#c39bff;}.j-rpg-line.butter .j-rpg-bar i{background:#ffe56a;}.j-rpg-line.coral .j-rpg-bar i{background:#ff7d73;box-shadow:inset 0 -5px 0 rgba(0,0,0,.16), inset 0 5px 0 rgba(255,255,255,.32),0 0 12px rgba(255,125,115,.28);}.j-rpg-line.peach .j-rpg-bar i{background:#ffb26d;}.j-rpg-line.ink .j-rpg-bar i{background:#5a4d42;}
+        .j-rpg-bar{height:18px;position:relative;border:2px solid var(--j-ink);border-radius:6px;background:#e3d9c4;box-shadow:2px 2px 0 var(--j-ink);overflow:hidden;}
+        .j-rpg-bar i{position:absolute;inset:0 auto 0 0;width:0%;transition:width .45s steps(8,end);background:var(--j-mint);}
+        .j-rpg-line.sky .j-rpg-bar i{background:var(--j-sky);}.j-rpg-line.lav .j-rpg-bar i{background:var(--j-lav);}.j-rpg-line.butter .j-rpg-bar i{background:var(--j-butter);}.j-rpg-line.coral .j-rpg-bar i{background:var(--j-coral);}.j-rpg-line.peach .j-rpg-bar i{background:var(--j-peach);}
         .j-rpg-segments{position:absolute;inset:2px;display:grid;grid-template-columns:repeat(12,1fr);gap:2px;}
-        .j-rpg-segments span{border-right:1px solid rgba(255,253,248,.35);background:rgba(255,253,248,.10);}
-        .j-rpg-segments span.fill{background:rgba(255,255,255,.20);}
+        .j-rpg-segments span{border-right:1px solid rgba(90,77,66,.28);background:rgba(255,253,248,.22);}
+        .j-rpg-segments span.fill{background:rgba(255,253,248,.06);}
         .j-rpg-command-box{border:2px solid var(--j-ink);border-radius:9px;background:var(--j-win);padding:10px 12px;box-shadow:2px 2px 0 var(--j-ink);}
         .j-rpg-command-title{font-family:'VT323',monospace;font-size:20px;line-height:1;margin-bottom:4px;}
         .j-rpg-command-text{font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);line-height:1.6;}
@@ -1257,22 +1292,32 @@ export default function JournalPage() {
         .j-session-head b{display:block;font-family:'DM Mono',monospace;font-size:12px;line-height:1;color:var(--j-ink);}
         .j-session-head small{display:block;font-family:'DM Mono',monospace;font-size:8px;color:var(--j-soft);margin-top:3px;}
         .j-session-head em{margin-left:auto;font-style:normal;font-family:'DM Mono',monospace;font-size:8px;font-weight:700;border:1.5px solid var(--j-ink);border-radius:5px;padding:2px 5px;background:rgba(255,253,248,.65);}
-        .j-readiness-card{border:2.5px solid var(--j-ink);border-radius:12px;background:#fffdf8;padding:12px;box-shadow:3px 3px 0 var(--j-ink);display:flex;flex-direction:column;gap:8px;}
-        .j-readiness-score{display:flex;align-items:center;gap:10px;}
-        .j-readiness-score>span{width:42px;height:42px;border:2px solid var(--j-ink);border-radius:10px;background:var(--j-butter);display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:2px 2px 0 var(--j-ink);}
-        .j-readiness-score small{display:block;font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);letter-spacing:1px;}
-        .j-readiness-score b{display:block;font-family:'VT323',monospace;font-size:34px;line-height:.9;color:var(--j-ink);}
-        .j-rpg-note{font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);margin-top:4px;}
-        .j-coach-chips{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
-        .j-coach-chip{border:2px solid var(--j-ink);border-radius:8px;background:#fffdf8;padding:8px;box-shadow:2px 2px 0 var(--j-ink);min-width:0;}
-        .j-coach-chip span{display:block;font-family:'DM Mono',monospace;font-size:8px;color:var(--j-soft);text-transform:uppercase;margin-bottom:3px;}
-        .j-coach-chip b{display:block;font-family:'DM Mono',monospace;font-size:10px;color:var(--j-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .j-coach-chip.mint{background:#c0e6d455}.j-coach-chip.sky{background:#c6def055}.j-coach-chip.coral{background:#f3b0a855}.j-coach-chip.peach{background:#f8d6ba66}.j-coach-chip.butter{background:#f6e6ac66}.j-coach-chip.lav{background:#ddccf066}
-        .j-quest-list{display:flex;flex-direction:column;gap:8px;}
-        .j-quest-list div{display:flex;align-items:center;gap:9px;border:2px solid var(--j-ink);border-radius:8px;background:#fbf6ea;padding:8px 10px;font-family:'DM Mono',monospace;font-size:11px;color:var(--j-soft);}
-        .j-quest-list div.done{background:var(--j-mint);color:var(--j-ink);box-shadow:2px 2px 0 var(--j-ink);}
-        .j-quest-list span{font-size:15px;line-height:1;}
-        @media(max-width:920px){.j-tools-layout,.j-tools-layout.advanced{grid-template-columns:1fr}.j-rpg-avatar-row{grid-template-columns:1fr}.j-rpg-avatar{min-height:76px}.j-rpg-grid,.coach-grid,.j-score-breakdown{grid-template-columns:1fr}.j-coach-chips{grid-template-columns:1fr 1fr}.j-rpg-mini-header{align-items:flex-start;flex-direction:column}.j-tool-next{width:100%;}.j-rpg-top{align-items:flex-start;flex-direction:column}.j-signal-badge{width:100%;justify-content:center;}} 
+
+        .battle-screen{gap:14px;}
+        .battle-layout{grid-template-columns:minmax(0,1.12fr) 390px;}
+        .battle-hero{background:linear-gradient(135deg,var(--j-lav),#fffdf8 68%);}
+        .battle-main{grid-template-columns:118px minmax(0,1fr);}
+        .battle-avatar{background:linear-gradient(180deg,var(--j-butter),var(--j-peach));min-height:128px;position:relative;overflow:hidden;}
+        .battle-avatar:before{content:'';position:absolute;inset:10px;border:2px dashed rgba(90,77,66,.35);border-radius:9px;}
+        .battle-score{position:relative;text-align:center;font-family:'VT323',monospace;color:var(--j-ink);line-height:.9;}
+        .battle-score span{display:block;font-size:48px;}
+        .battle-score small{font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);}
+        .battle-stat-grid{grid-template-columns:repeat(3,minmax(0,1fr));}
+        .battle-mini-card{background:#fbf6ea;border:2px solid var(--j-ink);border-radius:9px;padding:10px;box-shadow:2px 2px 0 var(--j-ink);display:flex;flex-direction:column;gap:8px;min-width:0;}
+        .battle-mini-card>b{font-family:'VT323',monospace;font-size:22px;line-height:1;color:var(--j-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .battle-command{background:linear-gradient(180deg,#fffdf8,#fbf6ea);}
+        .battle-log{display:flex;flex-direction:column;gap:6px;font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);line-height:1.5;}
+        .battle-log div{display:flex;gap:7px;align-items:flex-start;}
+        .battle-log span{color:var(--j-ink);font-weight:800;}
+        .session-edge-mini{display:flex;justify-content:space-between;gap:8px;margin-top:7px;font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);}
+        .session-edge-mini b{color:var(--j-ink);}
+        .battle-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+        .battle-summary-card{background:#fbf6ea;border:2px solid var(--j-ink);border-radius:9px;padding:11px 10px;box-shadow:2px 2px 0 var(--j-ink);text-align:center;}
+        .battle-summary-card span{display:block;font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);text-transform:uppercase;letter-spacing:1px;}
+        .battle-summary-card b{display:block;font-family:'VT323',monospace;font-size:30px;line-height:1;margin-top:3px;color:var(--j-ink);}
+        .battle-summary-card small{display:block;font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);margin-top:2px;}
+
+        @media(max-width:820px){.j-tools-layout,.battle-layout{grid-template-columns:1fr}.j-rpg-avatar-row,.battle-main{grid-template-columns:1fr}.j-rpg-avatar{min-height:76px}.battle-avatar{min-height:96px}.j-rpg-grid,.battle-stat-grid,.battle-summary-grid{grid-template-columns:1fr}.j-rpg-mini-header{align-items:flex-start;flex-direction:column}.j-tool-next{width:100%;}.j-rpg-top{align-items:flex-start;flex-direction:column}.j-signal-badge{width:100%;justify-content:center;}} 
 
         .open-badge{animation:blink .8s step-end infinite;}
       `}</style>
@@ -1312,7 +1357,7 @@ export default function JournalPage() {
             <button key={v} onClick={()=>setView(v)} className={`j-tab ${view===v?"on":""}`}>{label}</button>
           ))}
           <button onClick={()=>setView("calendar" as any)} className={`j-tab ${view==="calendar"?"on":""}`}>📅 Calendar</button>
-          <button onClick={()=>setView("tools")} className={`j-tab ${view==="tools"?"on":""}`}>🧰 Tools</button>
+          <button onClick={()=>setView("tools")} className={`j-tab ${view==="tools"?"on":""}`}>⚔️ Battle Coach</button>
           {openTrade&&(
             <button onClick={()=>setView("exit")} className={`j-tab ${view==="exit"?"on":""}`} style={{color:"#d4a65f",fontWeight:600}}>
               🟡 OPEN TRADE
@@ -1809,8 +1854,8 @@ export default function JournalPage() {
         })()}
 
 
-        {/* ── TOOLS ── */}
-        {view==="tools"&&(<MarketToolsPanel trades={trades} dailyStatus={dailyStatus} />)}
+        {/* ── BATTLE COACH ── */}
+        {view==="tools"&&(<BattleCoachPanel trades={trades} dailyStatus={dailyStatus} stats={stats} />)}
 
       {/* Alert Popup */}
       {showAlert&&(dailyStatus.isHardStop||dailyStatus.isDayDone)&&(
