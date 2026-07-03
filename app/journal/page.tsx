@@ -1140,30 +1140,52 @@ function FreeAICoachPanel({trades,dailyStatus,setLightbox}:{trades:Trade[];daily
   };
 
   const analyzeWithGemini = async () => {
-    if (!htfImg || !ltfImg) {
-      setAiError("ต้องอัปโหลด HTF และ LTF ก่อน");
-      return;
-    }
-
     setAiLoading(true);
     setAiError("");
 
     try {
+      const payload = {
+        direction: coach.direction,
+        bias: coach.bias,
+        cycle: coach.cycle,
+        lossesToday: dailyStatus.todayLosses,
+        checklist: {
+          htfZone: coach.htfZone,
+          liquidity: coach.liquidity,
+          bosChoch: coach.bosChoch,
+          obDzSz: coach.obDzSz,
+          mss: coach.mss,
+          retest: coach.retest,
+          rejection: coach.rejection,
+          volumeConfirm: coach.volume,
+          breakoutClose: coach.breakoutClose,
+          noFomo: coach.noFomo,
+          rrGood: coach.rrGood,
+          nearRange: coach.nearRange,
+          pa2: coach.pa2,
+          dirConfirm: coach.dirConfirm,
+        },
+        plan: {
+          liquidityTarget: liqTarget,
+          interestZone: interestZoneText,
+          entryZone: entryZoneText,
+          stopLoss: planSL,
+          takeProfit1: planTP1,
+          takeProfit2: planTP2,
+          invalidation: invalidPrice,
+        },
+      };
+
       const res = await fetch("/api/ai/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          htfImage: htfImg,
-          ltfImage: ltfImg,
-          lossesToday: dailyStatus.todayLosses,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Gemini analyze failed");
+      if (!res.ok) throw new Error(data?.error || data?.message || "Rule Engine failed");
 
       setAiResult(data);
-      applyGeminiResult(data);
     } catch (err: any) {
       setAiError(err?.message || "Analyze failed");
     } finally {
@@ -1196,7 +1218,7 @@ function FreeAICoachPanel({trades,dailyStatus,setLightbox}:{trades:Trade[];daily
   return (
     <div className="j-tools-screen">
       <Win title="🤖 YOKIMURA AI COACH — RULE ENGINE" color="var(--j-lav)">
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div className="j-mobile-grid j-upload-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
           <UploadBox title="HTF Screenshot" img={htfImg} setImg={setHtfImg}/>
           <UploadBox title="LTF Screenshot" img={ltfImg} setImg={setLtfImg}/>
         </div>
@@ -1204,25 +1226,25 @@ function FreeAICoachPanel({trades,dailyStatus,setLightbox}:{trades:Trade[];daily
         <div style={{marginTop:10,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
           <button
             onClick={analyzeWithGemini}
-            disabled={aiLoading || !htfImg || !ltfImg}
+            disabled={aiLoading}
             className="j-chip"
             style={{
               fontSize:12,
               background:aiLoading ? "#e3d9c4" : "var(--j-lav)",
-              opacity:(!htfImg || !ltfImg) ? 0.55 : 1,
-              cursor:(!htfImg || !ltfImg || aiLoading) ? "not-allowed" : "pointer",
+              opacity: aiLoading ? 0.65 : 1,
+              cursor: aiLoading ? "not-allowed" : "pointer",
               boxShadow:"2px 2px 0 var(--j-ink)"
             }}
           >
-            {aiLoading ? "⏳ Analyzing..." : "🤖 AI Vision (พักไว้ก่อน)"}
+            {aiLoading ? "⏳ Calculating..." : "🧠 คำนวณคะแนน Rule Engine"}
           </button>
           {aiError && <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#d4685f"}}>{aiError}</span>}
-          {aiResult && !aiError && <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#5fae89"}}>✓ Gemini applied checklist</span>}
+          {aiResult && !aiError && <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#5fae89"}}>✓ Rule Engine updated</span>}
         </div>
 
         {aiResult && (
           <div style={{marginTop:10,border:"2px solid var(--j-ink)",borderRadius:10,padding:10,background:"#fbf6ea"}}>
-            <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",marginBottom:4}}>GEMINI READ</div>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",marginBottom:4}}>RULE ENGINE READ</div>
             <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,lineHeight:1.6}}>
               <b>Bias:</b> {aiResult.bias || "-"} · <b>Cycle:</b> {aiResult.cycle || "-"} · <b>Setup:</b> {aiResult.recommendedSetup || "-"} · <b>Verdict:</b> {aiResult.verdict || "-"}
             </div>
@@ -1234,7 +1256,7 @@ function FreeAICoachPanel({trades,dailyStatus,setLightbox}:{trades:Trade[];daily
           </div>
         )}
 
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:12}}>
+        <div className="j-mobile-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:12}}>
           <div style={{background:"var(--j-win)",border:"2px solid var(--j-ink)",borderRadius:10,padding:10}}>
             <div className="j-tool-label">MARKET READ</div>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",margin:"8px 0"}}>
@@ -1283,7 +1305,7 @@ function FreeAICoachPanel({trades,dailyStatus,setLightbox}:{trades:Trade[];daily
       </Win>
 
       <Win title="🧭 ACTION PLAN — รออะไร / โซนไหน / ยกเลิกตรงไหน" color="var(--j-peach)">
-        <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:10}}>
+        <div className="j-mobile-grid" style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:10}}>
           <div style={{border:"2px solid var(--j-ink)",borderRadius:10,padding:10,background:"#fbf6ea"}}>
             <div className="j-tool-label">LIQUIDITY TARGET</div>
             <input value={liqTarget} onChange={e=>setLiqTarget(e.target.value)} placeholder="เช่น SSL 4172.30 / BSL 4180.50" style={{width:"100%",marginTop:6,border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11,background:"var(--j-win)"}}/>
@@ -1294,7 +1316,7 @@ function FreeAICoachPanel({trades,dailyStatus,setLightbox}:{trades:Trade[];daily
 
           <div style={{border:"2px solid var(--j-ink)",borderRadius:10,padding:10,background:"#fbf6ea"}}>
             <div className="j-tool-label">INTEREST ZONE</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:6}}>
+            <div className="j-input-pair" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:6}}>
               <input value={interestFrom} onChange={e=>setInterestFrom(e.target.value)} placeholder="จาก" style={{border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11,background:"var(--j-win)"}}/>
               <input value={interestTo} onChange={e=>setInterestTo(e.target.value)} placeholder="ถึง" style={{border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11,background:"var(--j-win)"}}/>
             </div>
@@ -1303,7 +1325,7 @@ function FreeAICoachPanel({trades,dailyStatus,setLightbox}:{trades:Trade[];daily
 
           <div style={{border:"2px solid var(--j-ink)",borderRadius:10,padding:10,background:"var(--j-win)"}}>
             <div className="j-tool-label">ENTRY PLAN</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:6}}>
+            <div className="j-input-pair" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:6}}>
               <input value={entryFrom} onChange={e=>setEntryFrom(e.target.value)} placeholder="Entry from" style={{border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11}}/>
               <input value={entryTo} onChange={e=>setEntryTo(e.target.value)} placeholder="Entry to" style={{border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11}}/>
               <input value={planSL} onChange={e=>setPlanSL(e.target.value)} placeholder="SL" style={{border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11}}/>
@@ -1324,7 +1346,7 @@ function FreeAICoachPanel({trades,dailyStatus,setLightbox}:{trades:Trade[];daily
           </div>
         </div>
 
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:10}}>
+        <div className="j-mobile-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:10}}>
           <div style={{border:"2px solid var(--j-ink)",borderRadius:10,padding:10,background:"var(--j-butter)"}}>
             <div className="j-tool-label">WHAT TO WAIT FOR</div>
             <div style={{display:"grid",gap:6,marginTop:8}}>
@@ -1831,6 +1853,68 @@ export default function JournalPage() {
 
         @media(max-width:820px){.j-tools-layout,.battle-layout{grid-template-columns:1fr}.j-rpg-avatar-row,.battle-main{grid-template-columns:1fr}.j-rpg-avatar{min-height:76px}.battle-avatar{min-height:96px}.j-rpg-grid,.battle-stat-grid,.battle-summary-grid{grid-template-columns:1fr}.j-rpg-mini-header{align-items:flex-start;flex-direction:column}.j-tool-next{width:100%;}.j-rpg-top{align-items:flex-start;flex-direction:column}.j-signal-badge{width:100%;justify-content:center;}} 
 
+        /* ─── Mobile First Polish ───────────────────────────────────────── */
+        .j-page-shell{max-width:780px;margin:0 auto;padding:16px 12px 0;}
+        .j-tabs-wrap{max-width:780px;margin:14px auto 0;display:flex;gap:6px;border-bottom:2.5px solid var(--j-ink);}
+        .j-mobile-grid{min-width:0;}
+        .j-input-pair{min-width:0;}
+        input, textarea, button, select{max-width:100%;}
+        img{max-width:100%;}
+
+        @media(max-width:640px){
+          .j-root{padding-bottom:96px;background-size:12px 12px;overflow-x:hidden;}
+          .j-header-wrap{padding:8px 8px 0!important;}
+          .j-page-shell{padding:10px 8px 0!important;max-width:100%!important;}
+          .j-win{border-width:2px;border-radius:12px;box-shadow:2px 2px 0 var(--j-ink);margin-bottom:10px;}
+          .j-bar{padding:8px 9px;border-bottom-width:2px;}
+          .j-t{font-size:10px;letter-spacing:.1px;white-space:normal;line-height:1.25;}
+          .j-ctrl span{width:13px;height:13px;line-height:9px;font-size:8px;border-width:1.5px;}
+          .j-body{padding:10px!important;}
+          .j-lab,.j-tool-label{font-size:9px!important;letter-spacing:.7px;}
+          .j-chip{font-size:11px!important;padding:8px 9px!important;min-height:36px;border-width:1.8px;border-radius:9px;box-shadow:1.5px 1.5px 0 var(--j-ink);}
+          .j-btn{min-height:40px;border-width:2px;border-radius:10px;box-shadow:2px 2px 0 var(--j-ink);}
+          .j-in{font-size:13px;padding:10px 10px;}
+          .j-num{font-size:26px;}
+          .j-stat{padding:8px 6px;border-width:2px;box-shadow:2px 2px 0 var(--j-ink);}
+          .j-statlab{font-size:7px;}
+
+          .j-header-wrap > .j-win{max-width:100%!important;margin:0!important;}
+          .j-header-wrap .j-body{align-items:flex-start!important;gap:10px!important;}
+          .j-header-wrap .j-body > div:first-child{width:100%;}
+          .j-header-wrap .j-body > div:first-child div:first-child{font-size:28px!important;line-height:.9!important;}
+          .j-header-wrap .j-body > div:last-child{width:100%;display:grid!important;grid-template-columns:70px 1fr!important;gap:8px!important;}
+          .j-header-wrap .j-body > div:last-child button{width:100%;}
+
+          .j-tabs-wrap{position:fixed!important;left:0;right:0;bottom:0;z-index:990;max-width:none!important;margin:0!important;padding:7px 7px calc(7px + env(safe-area-inset-bottom))!important;display:flex!important;gap:6px!important;overflow-x:auto!important;white-space:nowrap!important;border-top:2.5px solid var(--j-ink)!important;border-bottom:0!important;background:rgba(241,233,218,.97)!important;box-shadow:0 -4px 0 rgba(90,77,66,.1);-webkit-overflow-scrolling:touch;}
+          .j-tabs-wrap::-webkit-scrollbar{display:none;}
+          .j-tab{flex:0 0 auto!important;min-width:78px!important;border:2px solid var(--j-ink)!important;border-radius:10px!important;background:var(--j-win)!important;padding:9px 8px!important;font-size:9px!important;line-height:1.15!important;text-align:center!important;box-shadow:1.5px 1.5px 0 var(--j-ink);}
+          .j-tab.on{background:var(--j-lav)!important;border-bottom-color:var(--j-ink)!important;color:var(--j-ink)!important;}
+
+          .j-mobile-grid,.j-upload-grid,.j-tools-layout,.battle-layout,.j-open-edit-grid,.j-open-edit-grid.two{grid-template-columns:1fr!important;}
+          .j-input-pair{grid-template-columns:1fr 1fr!important;}
+          .j-cal-summary-grid,.battle-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+          .j-rpg-grid,.battle-stat-grid{grid-template-columns:1fr!important;}
+          .j-rpg-avatar-row,.battle-main{grid-template-columns:1fr!important;}
+          .j-rpg-avatar,.battle-avatar{min-height:80px!important;}
+          .battle-score span{font-size:38px!important;}
+
+          .j-cal-weekdays{gap:4px;font-size:8px;}
+          .j-cal-grid{gap:4px;}
+          .j-cal-cell{min-height:54px;padding:5px;border-width:1.5px;border-radius:7px;box-shadow:1px 1px 0 var(--j-ink);}
+          .j-cal-day{font-size:10px;top:4px;right:5px;}
+          .j-cal-pl{font-size:10px;}
+          .j-cal-count,.j-cal-mini{font-size:7px;}
+          .j-cal-cell.today:after{display:none;}
+
+          .grid{min-width:0;}
+          .grid.grid-cols-2{gap:8px!important;}
+          .space-y-4 > * + *{margin-top:10px!important;}
+          .space-y-3 > * + *{margin-top:8px!important;}
+          [style*="maxWidth:560"],[style*="max-width:560px"]{max-width:100%!important;}
+          [style*="gridTemplateColumns"]{min-width:0;}
+          textarea{min-height:76px!important;}
+        }
+
         .open-badge{animation:blink .8s step-end infinite;}
       `}</style>
 
@@ -1838,7 +1922,7 @@ export default function JournalPage() {
       {booting&&(<div className={`j-boot ${bootDone?"done":""}`}><div className="j-boot-logo">JOURNAL.EXE</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:13,color:"#c0e6d4",minHeight:40,whiteSpace:"pre"}}>{bootText}<span className="j-boot-cursor"/></div><div className="j-boot-bar"><div className="j-boot-fill"/></div><div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#c0e6d4",opacity:.6,letterSpacing:2}}>SMC · XAUUSD · TRUST YOUR OWN</div></div>)}
 
       {/* Header */}
-      <div style={{padding:"14px 12px 0"}}>
+      <div className="j-header-wrap" style={{padding:"14px 12px 0"}}>
         <div className="j-win" style={{maxWidth:780,margin:"0 auto"}}>
           <div className="j-bar" style={{background:"var(--j-pink)"}}>
             <span className="j-t">★ JOURNAL.EXE — XAUUSD SMC</span>
@@ -1864,7 +1948,7 @@ export default function JournalPage() {
           </div>
         </div>
         {/* Tabs */}
-        <div style={{maxWidth:780,margin:"14px auto 0",display:"flex",gap:6,borderBottom:"2.5px solid var(--j-ink)"}}>
+        <div className="j-tabs-wrap" style={{maxWidth:780,margin:"14px auto 0",display:"flex",gap:6,borderBottom:"2.5px solid var(--j-ink)"}}>
           {([["dashboard","📊 Dashboard"],["list","📋 Sessions"]] as const).map(([v,label])=>(
             <button key={v} onClick={()=>setView(v)} className={`j-tab ${view===v?"on":""}`}>{label}</button>
           ))}
@@ -1884,7 +1968,7 @@ export default function JournalPage() {
         {pixels.map(p=>(<div key={p.id} className="j-pixel" style={{"--px":`${p.x}px`,"--py":`${p.y}px`,background:p.c} as any}/>))}
       </div>
 
-      <div style={{maxWidth:780,margin:"0 auto",padding:"16px 12px 0"}}>
+      <div className="j-page-shell" style={{maxWidth:780,margin:"0 auto",padding:"16px 12px 0"}}>
 
         {/* ── DASHBOARD ── */}
         {view==="dashboard"&&(
