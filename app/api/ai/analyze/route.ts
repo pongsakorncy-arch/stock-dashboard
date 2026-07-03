@@ -2,14 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-function dataUrlToPart(dataUrl: string) {
-  const [meta, base64] = String(dataUrl || "").split(",");
-  const mimeType = meta?.match(/data:(.*);base64/)?.[1] || "image/png";
-
+function imagePart(dataUrl: string) {
   return {
-    inline_data: {
-      mime_type: mimeType,
-      data: base64 || "",
+    type: "image_url",
+    image_url: {
+      url: dataUrl,
     },
   };
 }
@@ -22,36 +19,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing HTF or LTF image" }, { status: 400 });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.OPENROUTER_API_KEY;
 
     if (!apiKey) {
-      return NextResponse.json({ error: "Missing GEMINI_API_KEY in Vercel" }, { status: 500 });
+      return NextResponse.json({ error: "Missing OPENROUTER_API_KEY in Vercel" }, { status: 500 });
     }
 
-    const url =
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+    const prompt = `
+คุณคือ Yokimura AI Coach วิเคราะห์กราฟ XAUUSD ตามระบบของผู้ใช้เท่านั้น
 
-    const geminiRes = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: `
-คุณคือ Yokimura AI Coach
-วิเคราะห์ HTF และ LTF ตามระบบ 5 ท่า:
+มี 5 ท่า:
 1. SMC Pro Max
 2. Pullback
 3. Sideway Range
 4. Breakout / Run Trend
 5. M1/M5 Reversal
 
-วันนี้แพ้แล้ว ${lossesToday} ไม้
+กฎ:
+- ถ้าไม่เห็นชัด ให้ false
+- ไม่มี MSS ชัด = ไม่ให้เข้า SMC
+- ไม่มี Retest ตามกฎ = ให้รอ
+- Breakout ต้องปิดหลุดกรอบ ไม่ใช่แค่ไส้
+- ถ้าแพ้วันนี้เยอะ ให้เข้มงวดขึ้น
+- วันนี้แพ้แล้ว ${lossesToday} ไม้
+- ห้ามรับประกันกำไร
 
 ตอบ JSON เท่านั้น:
 {
@@ -80,38 +71,49 @@ export async function POST(req: NextRequest) {
     "noFomo": true
   }
 }
-                `,
-              },
-              dataUrlToPart(htfImage),
-              dataUrlToPart(ltfImage),
+`;
+
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://adminamericano.vercel.app",
+        "X-OpenRouter-Title": "Yokimura Trading Journal",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              imagePart(htfImage),
+              imagePart(ltfImage),
             ],
           },
         ],
-        generationConfig: {
-          temperature: 0.2,
-          responseMimeType: "application/json",
-        },
+        temperature: 0.2,
       }),
     });
 
-    const raw = await geminiRes.text();
+    const data = await res.json();
 
-    if (!geminiRes.ok) {
+    if (!res.ok) {
       return NextResponse.json(
         {
-          error: "Gemini API error",
-          status: geminiRes.status,
-          detail: raw,
-          keyPrefix: apiKey.slice(0, 6),
+          error: "OpenRouter API error",
+          status: res.status,
+          detail: data,
         },
         { status: 500 }
       );
     }
 
-    return NextResponse.json(JSON.parse(raw).candidates?.[0]?.content?.parts?.[0]?.text
-      ? JSON.parse(JSON.parse(raw).candidates[0].content.parts[0].text)
-      : JSON.parse(raw)
-    );
+    const text = data?.choices?.[0]?.message?.content || "{}";
+    const clean = text.replace(/```json|```/g, "").trim();
+
+    return NextResponse.json(JSON.parse(clean));
   } catch (err: any) {
     return NextResponse.json(
       {
