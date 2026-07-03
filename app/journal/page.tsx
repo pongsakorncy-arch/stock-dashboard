@@ -1061,6 +1061,9 @@ function FreeAICoachPanel({trades,dailyStatus,setLightbox}:{trades:Trade[];daily
   const [coach,setCoach] = useState<CoachState>(defaultCoachState());
   const [htfImg,setHtfImg] = useState("");
   const [ltfImg,setLtfImg] = useState("");
+  const [aiLoading,setAiLoading] = useState(false);
+  const [aiError,setAiError] = useState("");
+  const [aiResult,setAiResult] = useState<any>(null);
 
   const scores = calcFreeCoachScores(coach,dailyStatus);
   const best = scores[0];
@@ -1074,6 +1077,61 @@ function FreeAICoachPanel({trades,dailyStatus,setLightbox}:{trades:Trade[];daily
       {on ? "✓ " : "□ "}{label}
     </button>
   );
+
+  const applyGeminiResult = (data: any) => {
+    const checklist = data?.checklist || {};
+    const bias: CoachBias = data?.bias === "Bear" ? "Bear" : data?.bias === "Neutral" ? "Neutral" : "Bull";
+    const cycle: CoachCycle = data?.cycle === "Trend" ? "Trend" : data?.cycle === "Sideway" ? "Sideway" : "Pullback";
+
+    setCoach(v => ({
+      ...v,
+      direction: bias === "Bear" ? "SELL" : bias === "Bull" ? "BUY" : v.direction,
+      bias,
+      cycle,
+      htfZone: Boolean(checklist.htfZone ?? checklist.obDzSz ?? v.htfZone),
+      bosChoch: Boolean(checklist.bosChoch ?? v.bosChoch),
+      obDzSz: Boolean(checklist.obDzSz ?? v.obDzSz),
+      liquidity: Boolean(checklist.liquidity ?? v.liquidity),
+      rejection: Boolean(checklist.rejection ?? v.rejection),
+      mss: Boolean(checklist.mss ?? v.mss),
+      retest: Boolean(checklist.retest ?? v.retest),
+      volume: Boolean(checklist.volumeConfirm ?? checklist.volume ?? v.volume),
+      breakoutClose: Boolean(checklist.breakoutClose ?? v.breakoutClose),
+      noFomo: Boolean(checklist.noFomo ?? true),
+    }));
+  };
+
+  const analyzeWithGemini = async () => {
+    if (!htfImg || !ltfImg) {
+      setAiError("ต้องอัปโหลด HTF และ LTF ก่อน");
+      return;
+    }
+
+    setAiLoading(true);
+    setAiError("");
+
+    try {
+      const res = await fetch("/api/ai/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          htfImage: htfImg,
+          ltfImage: ltfImg,
+          lossesToday: dailyStatus.todayLosses,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Gemini analyze failed");
+
+      setAiResult(data);
+      applyGeminiResult(data);
+    } catch (err: any) {
+      setAiError(err?.message || "Analyze failed");
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const UploadBox = ({title,img,setImg}:{title:string;img:string;setImg:(v:string)=>void}) => (
     <div style={{border:"2px dashed var(--j-ink)",borderRadius:10,padding:10,background:"#fbf6ea"}}>
@@ -1104,6 +1162,39 @@ function FreeAICoachPanel({trades,dailyStatus,setLightbox}:{trades:Trade[];daily
           <UploadBox title="HTF Screenshot" img={htfImg} setImg={setHtfImg}/>
           <UploadBox title="LTF Screenshot" img={ltfImg} setImg={setLtfImg}/>
         </div>
+
+        <div style={{marginTop:10,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <button
+            onClick={analyzeWithGemini}
+            disabled={aiLoading || !htfImg || !ltfImg}
+            className="j-chip"
+            style={{
+              fontSize:12,
+              background:aiLoading ? "#e3d9c4" : "var(--j-lav)",
+              opacity:(!htfImg || !ltfImg) ? 0.55 : 1,
+              cursor:(!htfImg || !ltfImg || aiLoading) ? "not-allowed" : "pointer",
+              boxShadow:"2px 2px 0 var(--j-ink)"
+            }}
+          >
+            {aiLoading ? "⏳ Analyzing..." : "🤖 Analyze with Gemini"}
+          </button>
+          {aiError && <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#d4685f"}}>{aiError}</span>}
+          {aiResult && !aiError && <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#5fae89"}}>✓ Gemini applied checklist</span>}
+        </div>
+
+        {aiResult && (
+          <div style={{marginTop:10,border:"2px solid var(--j-ink)",borderRadius:10,padding:10,background:"#fbf6ea"}}>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",marginBottom:4}}>GEMINI READ</div>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,lineHeight:1.6}}>
+              <b>Bias:</b> {aiResult.bias || "-"} · <b>Cycle:</b> {aiResult.cycle || "-"} · <b>Setup:</b> {aiResult.recommendedSetup || "-"} · <b>Verdict:</b> {aiResult.verdict || "-"}
+            </div>
+            {!!aiResult.reasons?.length && (
+              <div style={{marginTop:6,fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",lineHeight:1.6}}>
+                {aiResult.reasons.slice(0,3).map((r:string,i:number)=><div key={i}>• {r}</div>)}
+              </div>
+            )}
+          </div>
+        )}
 
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:12}}>
           <div style={{background:"var(--j-win)",border:"2px solid var(--j-ink)",borderRadius:10,padding:10}}>
