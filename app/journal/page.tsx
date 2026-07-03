@@ -892,11 +892,302 @@ function BattleCoachPanel({trades,dailyStatus,stats}:{trades:Trade[];dailyStatus
   );
 }
 
+
+// ─── Free AI Coach: Rule-Based Setup Scoring ─────────────────────────────────
+type CoachBias = "Bull" | "Bear" | "Neutral";
+type CoachCycle = "Trend" | "Pullback" | "Sideway";
+type CoachDirection = "BUY" | "SELL";
+
+type CoachState = {
+  direction: CoachDirection;
+  bias: CoachBias;
+  cycle: CoachCycle;
+  htfZone: boolean;
+  bosChoch: boolean;
+  obDzSz: boolean;
+  liquidity: boolean;
+  rejection: boolean;
+  mss: boolean;
+  retest: boolean;
+  volume: boolean;
+  breakoutClose: boolean;
+  noFomo: boolean;
+  rrGood: boolean;
+  nearRange: boolean;
+  pa2: boolean;
+  dirConfirm: boolean;
+};
+
+type CoachScore = {
+  mode: TradeMode;
+  label: string;
+  emoji: string;
+  score: number;
+  note: string;
+};
+
+const defaultCoachState = (): CoachState => ({
+  direction: "BUY",
+  bias: "Bull",
+  cycle: "Pullback",
+  htfZone: false,
+  bosChoch: false,
+  obDzSz: false,
+  liquidity: false,
+  rejection: false,
+  mss: false,
+  retest: false,
+  volume: false,
+  breakoutClose: false,
+  noFomo: true,
+  rrGood: false,
+  nearRange: false,
+  pa2: false,
+  dirConfirm: false,
+});
+
+function score10(v: number) {
+  return Math.round(clampNum(v, 0, 10) * 10) / 10;
+}
+
+function biasMatchScore(s: CoachState) {
+  if (s.bias === "Neutral") return 0.5;
+  if (s.direction === "BUY" && s.bias === "Bull") return 1;
+  if (s.direction === "SELL" && s.bias === "Bear") return 1;
+  return 0;
+}
+
+function calcFreeCoachScores(s: CoachState, dailyStatus: ReturnType<typeof calcDailyStatus>): CoachScore[] {
+  const biasOk = biasMatchScore(s);
+  const lossPenalty = dailyStatus.lossStreak >= 3 ? 1.4 : dailyStatus.lossStreak === 2 ? 0.7 : 0;
+
+  const smc = score10(
+    biasOk * 1.1 +
+    (s.cycle === "Trend" || s.cycle === "Pullback" ? 1.0 : 0) +
+    (s.bosChoch ? 1.0 : 0) +
+    (s.obDzSz ? 1.0 : 0) +
+    (s.htfZone ? 0.8 : 0) +
+    (s.liquidity ? 1.4 : 0) +
+    (s.rejection ? 1.1 : 0) +
+    (s.mss ? 1.3 : 0) +
+    (s.retest ? 1.1 : 0) +
+    (s.volume ? 0.7 : 0) +
+    (s.rrGood ? 0.5 : 0) -
+    lossPenalty
+  );
+
+  const pullback = score10(
+    biasOk * 1.2 +
+    (s.cycle === "Pullback" ? 2.0 : s.cycle === "Trend" ? 1.0 : 0) +
+    (s.htfZone ? 1.4 : 0) +
+    (s.obDzSz ? 1.0 : 0) +
+    (s.rejection ? 1.2 : 0) +
+    (s.mss ? 1.0 : 0) +
+    (s.retest ? 0.9 : 0) +
+    (s.volume ? 0.6 : 0) +
+    (s.rrGood ? 0.7 : 0) -
+    lossPenalty
+  );
+
+  const range = score10(
+    (s.cycle === "Sideway" ? 2.6 : 0) +
+    (s.nearRange ? 1.8 : 0) +
+    (s.pa2 ? 1.4 : 0) +
+    (s.dirConfirm ? 1.2 : 0) +
+    (s.rejection ? 1.0 : 0) +
+    (s.rrGood ? 1.0 : 0) +
+    (s.noFomo ? 0.8 : -1.2) -
+    lossPenalty
+  );
+
+  const breakout = score10(
+    (s.cycle === "Sideway" ? 1.4 : s.cycle === "Trend" ? 0.7 : 0) +
+    (s.breakoutClose ? 2.5 : 0) +
+    (s.retest ? 1.5 : 0) +
+    (s.volume ? 1.5 : 0) +
+    (s.dirConfirm ? 1.0 : 0) +
+    (s.noFomo ? 1.1 : -1.5) +
+    (s.rrGood ? 0.7 : 0) -
+    lossPenalty
+  );
+
+  const reversal = score10(
+    (s.pa2 ? 2.2 : 0) +
+    (s.dirConfirm ? 1.6 : 0) +
+    (s.rejection ? 1.4 : 0) +
+    (s.mss ? 1.2 : 0) +
+    (s.volume ? 0.8 : 0) +
+    (s.noFomo ? 0.8 : -1.2) +
+    (s.rrGood ? 0.6 : 0) -
+    lossPenalty
+  );
+
+  return [
+    { mode:"SMC", label:"SMC Pro Max", emoji:"🥇", score:smc, note: smc >= 8.5 ? "A setup" : smc >= 7 ? "รอ confirm" : "ยังไม่ครบ" },
+    { mode:"PULLBACK", label:"Pullback", emoji:"🥈", score:pullback, note: pullback >= 8.5 ? "เหมาะ" : pullback >= 7 ? "พอใช้" : "ยังไม่ใช่" },
+    { mode:"SW_RANGE", label:"Sideway Range", emoji:"🟦", score:range, note: range >= 8 ? "เล่นกรอบได้" : "ไม่เด่น" },
+    { mode:"SW_BREAKOUT", label:"Breakout / Run Trend", emoji:"🟡", score:breakout, note: breakout >= 8.5 ? "หลุดกรอบสวย" : breakout >= 7 ? "รอ retest" : "ยังไม่ใช่" },
+    { mode:"M5_REVERSAL", label:"M1/M5 Reversal", emoji:"⚡", score:reversal, note: reversal >= 8 ? "กลับตัวใช้ได้" : "ยังไม่ชัด" },
+  ].sort((a,b)=>b.score-a.score);
+}
+
+function coachVerdict(best: CoachScore, s: CoachState, dailyStatus: ReturnType<typeof calcDailyStatus>) {
+  if (dailyStatus.lossStreak >= 3) return { text:"หยุด", color:"var(--j-coral)", emoji:"🛑", msg:"LOSS streak ถึง Hard Stop วันนี้ห้ามแก้มือ" };
+  if (!s.noFomo) return { text:"ไม่เข้า", color:"var(--j-coral)", emoji:"🔴", msg:"มี FOMO / Revenge แทรก ระบบให้หยุดก่อน" };
+  if (best.score >= 8.8 && s.rrGood) return { text:"เข้าได้", color:"var(--j-mint)", emoji:"🟢", msg:"Setup ผ่าน แต่ต้องใช้ SL/TP ตามแผน" };
+  if (best.score >= 7.0) return { text:"รอ", color:"var(--j-butter)", emoji:"🟡", msg:"มีทรง แต่รอ confirm ให้ครบก่อนกด" };
+  return { text:"ไม่เข้า", color:"var(--j-coral)", emoji:"🔴", msg:"คะแนนต่ำกว่ามาตรฐาน A setup" };
+}
+
+function coachReasons(s: CoachState, best: CoachScore, dailyStatus: ReturnType<typeof calcDailyStatus>) {
+  const rs: string[] = [];
+  if (dailyStatus.lossStreak >= 2) rs.push(`วันนี้ LOSS ${dailyStatus.lossStreak} ติด — เพิ่มความเข้มงวด`);
+  if (!s.liquidity && best.mode === "SMC") rs.push("SMC ยังขาด Liquidity $$$");
+  if (!s.mss && ["SMC","PULLBACK","M5_REVERSAL"].includes(best.mode)) rs.push("ยังไม่มี MSS ชัด");
+  if (!s.retest && ["SMC","SW_BREAKOUT","PULLBACK"].includes(best.mode)) rs.push("ยังไม่มี Retest ตามกฎ");
+  if (!s.volume) rs.push("Volume ยังไม่ช่วยยืนยัน");
+  if (!s.rrGood) rs.push("RR ยังไม่ผ่านเกณฑ์");
+  if (!rs.length) rs.push("เงื่อนไขหลักครบ — เล่นตามแผนได้");
+  return rs.slice(0,3);
+}
+
+function fileToDataUrl(file: File, cb: (v:string)=>void) {
+  const reader = new FileReader();
+  reader.onload = () => cb(String(reader.result || ""));
+  reader.readAsDataURL(file);
+}
+
+function FreeAICoachPanel({trades,dailyStatus,setLightbox}:{trades:Trade[];dailyStatus:ReturnType<typeof calcDailyStatus>;setLightbox:(v:string|null)=>void}) {
+  const [coach,setCoach] = useState<CoachState>(defaultCoachState());
+  const [htfImg,setHtfImg] = useState("");
+  const [ltfImg,setLtfImg] = useState("");
+
+  const scores = calcFreeCoachScores(coach,dailyStatus);
+  const best = scores[0];
+  const verdict = coachVerdict(best,coach,dailyStatus);
+  const reasons = coachReasons(coach,best,dailyStatus);
+
+  const setK = <K extends keyof CoachState>(key: K, value: CoachState[K]) => setCoach(v=>({...v,[key]:value}));
+
+  const FieldBtn = ({on,label,click}:{on:boolean;label:string;click:()=>void}) => (
+    <button onClick={click} className={`j-chip ${on?"":"off"}`} style={{fontSize:10,background:on?"var(--j-mint)":"var(--j-win)"}}>
+      {on ? "✓ " : "□ "}{label}
+    </button>
+  );
+
+  const UploadBox = ({title,img,setImg}:{title:string;img:string;setImg:(v:string)=>void}) => (
+    <div style={{border:"2px dashed var(--j-ink)",borderRadius:10,padding:10,background:"#fbf6ea"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8}}>
+        <b style={{fontFamily:"'DM Mono',monospace",fontSize:11}}>{title}</b>
+        {img && <button onClick={()=>setImg("")} className="j-chip off" style={{fontSize:9}}>clear</button>}
+      </div>
+      <input
+        type="file"
+        accept="image/*"
+        onChange={e=>{ const f=e.target.files?.[0]; if(f) fileToDataUrl(f,setImg); }}
+        style={{fontFamily:"'DM Mono',monospace",fontSize:10,width:"100%"}}
+      />
+      {img ? (
+        <img src={img} onClick={()=>setLightbox(img)} style={{width:"100%",maxHeight:190,objectFit:"cover",marginTop:9,border:"2px solid var(--j-ink)",borderRadius:8,cursor:"zoom-in"}}/>
+      ) : (
+        <div style={{height:92,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)"}}>
+          upload screenshot
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="j-tools-screen">
+      <Win title="🤖 FREE AI COACH — RULE ENGINE" color="var(--j-lav)">
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <UploadBox title="HTF Screenshot" img={htfImg} setImg={setHtfImg}/>
+          <UploadBox title="LTF Screenshot" img={ltfImg} setImg={setLtfImg}/>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:12}}>
+          <div style={{background:"var(--j-win)",border:"2px solid var(--j-ink)",borderRadius:10,padding:10}}>
+            <div className="j-tool-label">MARKET READ</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",margin:"8px 0"}}>
+              {(["BUY","SELL"] as CoachDirection[]).map(v=>(
+                <button key={v} onClick={()=>setK("direction",v)} className={`j-chip ${coach.direction===v?"":"off"}`} style={{fontSize:11,background:coach.direction===v?(v==="BUY"?"var(--j-mint)":"var(--j-coral)"):"var(--j-win)"}}>{v}</button>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+              {(["Bull","Bear","Neutral"] as CoachBias[]).map(v=>(
+                <button key={v} onClick={()=>setK("bias",v)} className={`j-chip ${coach.bias===v?"":"off"}`} style={{fontSize:10}}>{v}</button>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {(["Trend","Pullback","Sideway"] as CoachCycle[]).map(v=>(
+                <button key={v} onClick={()=>setK("cycle",v)} className={`j-chip ${coach.cycle===v?"":"off"}`} style={{fontSize:10}}>{v}</button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{background:verdict.color,border:"2px solid var(--j-ink)",borderRadius:10,padding:12,boxShadow:"3px 3px 0 var(--j-ink)"}}>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:10}}>VERDICT</div>
+            <div style={{fontFamily:"'VT323',monospace",fontSize:42,lineHeight:1}}>{verdict.emoji} {verdict.text}</div>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,lineHeight:1.5}}>{verdict.msg}</div>
+          </div>
+        </div>
+
+        <div style={{marginTop:12}}>
+          <div className="j-tool-label" style={{marginBottom:7}}>CHECKLIST</div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            <FieldBtn on={coach.htfZone} label="HTF DZ/SZ" click={()=>setK("htfZone",!coach.htfZone)}/>
+            <FieldBtn on={coach.bosChoch} label="BOS/CHoCH" click={()=>setK("bosChoch",!coach.bosChoch)}/>
+            <FieldBtn on={coach.obDzSz} label="OB + DZ/SZ" click={()=>setK("obDzSz",!coach.obDzSz)}/>
+            <FieldBtn on={coach.liquidity} label="Liquidity $$$" click={()=>setK("liquidity",!coach.liquidity)}/>
+            <FieldBtn on={coach.rejection} label="Rejection" click={()=>setK("rejection",!coach.rejection)}/>
+            <FieldBtn on={coach.mss} label="MSS" click={()=>setK("mss",!coach.mss)}/>
+            <FieldBtn on={coach.retest} label="Retest" click={()=>setK("retest",!coach.retest)}/>
+            <FieldBtn on={coach.volume} label="Volume Confirm" click={()=>setK("volume",!coach.volume)}/>
+            <FieldBtn on={coach.breakoutClose} label="Breakout Close" click={()=>setK("breakoutClose",!coach.breakoutClose)}/>
+            <FieldBtn on={coach.nearRange} label="Near Range Edge" click={()=>setK("nearRange",!coach.nearRange)}/>
+            <FieldBtn on={coach.pa2} label="PA2" click={()=>setK("pa2",!coach.pa2)}/>
+            <FieldBtn on={coach.dirConfirm} label="Direction Confirm" click={()=>setK("dirConfirm",!coach.dirConfirm)}/>
+            <FieldBtn on={coach.rrGood} label="RR ≥ 2/3" click={()=>setK("rrGood",!coach.rrGood)}/>
+            <FieldBtn on={coach.noFomo} label="No FOMO" click={()=>setK("noFomo",!coach.noFomo)}/>
+          </div>
+        </div>
+      </Win>
+
+      <Win title="📊 SETUP SCORE" color="var(--j-sky)">
+        <div style={{display:"grid",gap:8}}>
+          {scores.map((x,i)=>(
+            <div key={x.mode} style={{border:"2px solid var(--j-ink)",borderRadius:9,padding:"8px 10px",background:i===0?"var(--j-mint)":"var(--j-win)",boxShadow:i===0?"2px 2px 0 var(--j-ink)":"none"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+                <b style={{fontFamily:"'DM Mono',monospace",fontSize:12}}>{x.emoji} {x.label}</b>
+                <span style={{fontFamily:"'VT323',monospace",fontSize:28,lineHeight:1}}>{x.score.toFixed(1)}</span>
+              </div>
+              <RetroStatBar label={x.note} value={x.score} max={10} tone={x.score>=8.8?"mint":x.score>=7?"butter":"coral"} right={`${x.score.toFixed(1)}/10`}/>
+            </div>
+          ))}
+        </div>
+      </Win>
+
+      <Win title="⚠️ COACH REASONS" color="var(--j-butter)">
+        <div style={{display:"grid",gap:8}}>
+          {reasons.map((r,i)=>(
+            <div key={i} style={{fontFamily:"'DM Mono',monospace",fontSize:11,border:"2px solid var(--j-ink)",borderRadius:8,padding:"8px 10px",background:i===0?"#fbf6ea":"var(--j-win)"}}>
+              {i===0?"⚔️":"•"} {r}
+            </div>
+          ))}
+          <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",lineHeight:1.6}}>
+            ระบบนี้ฟรี 100% และไม่ได้อ่านภาพเอง: ใช้รูปเป็นหลักฐาน + ให้คุณติ๊กเงื่อนไข แล้วคำนวณคะแนนตามกฎ SMC Pro Max / Pullback / Sideway / Breakout / Reversal
+          </div>
+        </div>
+      </Win>
+    </div>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function JournalPage() {
   const [trades,setTrades]     = useState<Trade[]>([]);
   const [openTrade,setOpenTrade] = useState<Trade|null>(null);
-  const [view,setView]         = useState<"dashboard"|"list"|"checklist"|"exit"|"calendar"|"tools">("dashboard");
+  const [view,setView]         = useState<"dashboard"|"list"|"checklist"|"exit"|"calendar"|"tools"|"aiCoach">("dashboard");
   const [filter,setFilter]     = useState<"ALL"|Result>("ALL");
   const [accountType,setAccountType] = useState<AccountType>("cent");
   const [lightbox,setLightbox] = useState<string|null>(null);
@@ -1378,6 +1669,7 @@ export default function JournalPage() {
           ))}
           <button onClick={()=>setView("calendar" as any)} className={`j-tab ${view==="calendar"?"on":""}`}>📅 Calendar</button>
           <button onClick={()=>setView("tools")} className={`j-tab ${view==="tools"?"on":""}`}>⚔️ Battle Coach</button>
+          <button onClick={()=>setView("aiCoach")} className={`j-tab ${view==="aiCoach"?"on":""}`}>🤖 AI Coach</button>
           {openTrade&&(
             <button onClick={()=>setView("exit")} className={`j-tab ${view==="exit"?"on":""}`} style={{color:"#d4a65f",fontWeight:600}}>
               🟡 OPEN TRADE
@@ -1944,6 +2236,7 @@ export default function JournalPage() {
 
         {/* ── BATTLE COACH ── */}
         {view==="tools"&&(<BattleCoachPanel trades={trades} dailyStatus={dailyStatus} stats={stats} />)}
+        {view==="aiCoach"&&(<FreeAICoachPanel trades={trades} dailyStatus={dailyStatus} setLightbox={setLightbox} />)}
 
       {/* Alert Popup */}
       {showAlert&&(dailyStatus.isHardStop||dailyStatus.isDayDone)&&(
