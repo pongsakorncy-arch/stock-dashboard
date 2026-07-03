@@ -1065,10 +1065,48 @@ function FreeAICoachPanel({trades,dailyStatus,setLightbox}:{trades:Trade[];daily
   const [aiError,setAiError] = useState("");
   const [aiResult,setAiResult] = useState<any>(null);
 
+  // ── Yokimura Action Plan fields (manual, free, no API) ─────────────────────
+  const [liqTarget,setLiqTarget] = useState("");
+  const [interestFrom,setInterestFrom] = useState("");
+  const [interestTo,setInterestTo] = useState("");
+  const [entryFrom,setEntryFrom] = useState("");
+  const [entryTo,setEntryTo] = useState("");
+  const [planSL,setPlanSL] = useState("");
+  const [planTP1,setPlanTP1] = useState("");
+  const [planTP2,setPlanTP2] = useState("");
+  const [invalidPrice,setInvalidPrice] = useState("");
+  const [coachNote,setCoachNote] = useState("");
+
   const scores = calcFreeCoachScores(coach,dailyStatus);
   const best = scores[0];
   const verdict = coachVerdict(best,coach,dailyStatus);
   const reasons = coachReasons(coach,best,dailyStatus);
+
+  const waitFor = [
+    !coach.liquidity ? `รอเคลียร์ $$$${liqTarget ? ` ที่ ${liqTarget}` : " ที่ Low/High สำคัญก่อน"}` : "Liquidity เคลียร์แล้ว",
+    !coach.mss ? "รอ MSS ชัดก่อน" : "MSS ผ่าน",
+    !coach.retest ? "รอ Retest ตามระบบก่อน" : "Retest ผ่าน",
+    !coach.rejection ? "รอ Rejection / Displacement" : "Rejection ผ่าน",
+    !coach.volume ? "รอ Volume Confirm" : "Volume Confirm ผ่าน",
+  ];
+
+  const interestZoneText = interestFrom || interestTo
+    ? `${interestFrom || "?"} - ${interestTo || "?"}`
+    : "ยังไม่ได้กำหนดโซน";
+
+  const entryZoneText = entryFrom || entryTo
+    ? `${entryFrom || "?"} - ${entryTo || "?"}`
+    : "รอให้เข้าโซนก่อน";
+
+  const invalidText = invalidPrice
+    ? `ถ้าปิดหลุด/ทะลุ ${invalidPrice} = ยกเลิกแผนนี้`
+    : "ยังไม่ได้กำหนดจุดยกเลิกแผน";
+
+  const next3 = [
+    coach.breakoutClose ? "ถ้ากลับเข้าในกรอบ = ระวัง False Break" : "ถ้าปิด Breakout ชัด + Volume มา = Run Trend มีน้ำหนักขึ้น",
+    coach.mss ? "ถ้า Retest แล้วไม่หลุดโครงสร้าง = รอ Trigger เข้า" : "ถ้ายังไม่มี MSS = ห้ามรีบเข้า",
+    coach.liquidity ? "ถ้า Sweep แล้ว Reject ต่อ = Setup แข็งแรงขึ้น" : "จับตาว่าราคาจะไปเคลียร์ $$$ ก่อนหรือไม่",
+  ];
 
   const setK = <K extends keyof CoachState>(key: K, value: CoachState[K]) => setCoach(v=>({...v,[key]:value}));
 
@@ -1157,7 +1195,7 @@ function FreeAICoachPanel({trades,dailyStatus,setLightbox}:{trades:Trade[];daily
 
   return (
     <div className="j-tools-screen">
-      <Win title="🤖 FREE AI COACH — RULE ENGINE" color="var(--j-lav)">
+      <Win title="🤖 YOKIMURA AI COACH — RULE ENGINE" color="var(--j-lav)">
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
           <UploadBox title="HTF Screenshot" img={htfImg} setImg={setHtfImg}/>
           <UploadBox title="LTF Screenshot" img={ltfImg} setImg={setLtfImg}/>
@@ -1176,7 +1214,7 @@ function FreeAICoachPanel({trades,dailyStatus,setLightbox}:{trades:Trade[];daily
               boxShadow:"2px 2px 0 var(--j-ink)"
             }}
           >
-            {aiLoading ? "⏳ Analyzing..." : "🤖 Analyze with Gemini"}
+            {aiLoading ? "⏳ Analyzing..." : "🤖 AI Vision (พักไว้ก่อน)"}
           </button>
           {aiError && <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#d4685f"}}>{aiError}</span>}
           {aiResult && !aiError && <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#5fae89"}}>✓ Gemini applied checklist</span>}
@@ -1241,6 +1279,78 @@ function FreeAICoachPanel({trades,dailyStatus,setLightbox}:{trades:Trade[];daily
             <FieldBtn on={coach.rrGood} label="RR ≥ 2/3" click={()=>setK("rrGood",!coach.rrGood)}/>
             <FieldBtn on={coach.noFomo} label="No FOMO" click={()=>setK("noFomo",!coach.noFomo)}/>
           </div>
+        </div>
+      </Win>
+
+      <Win title="🧭 ACTION PLAN — รออะไร / โซนไหน / ยกเลิกตรงไหน" color="var(--j-peach)">
+        <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:10}}>
+          <div style={{border:"2px solid var(--j-ink)",borderRadius:10,padding:10,background:"#fbf6ea"}}>
+            <div className="j-tool-label">LIQUIDITY TARGET</div>
+            <input value={liqTarget} onChange={e=>setLiqTarget(e.target.value)} placeholder="เช่น SSL 4172.30 / BSL 4180.50" style={{width:"100%",marginTop:6,border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11,background:"var(--j-win)"}}/>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",marginTop:6,lineHeight:1.5}}>
+              ใช้ตอบว่า “รอเคลียร์ $$$ ที่ไหนก่อน”
+            </div>
+          </div>
+
+          <div style={{border:"2px solid var(--j-ink)",borderRadius:10,padding:10,background:"#fbf6ea"}}>
+            <div className="j-tool-label">INTEREST ZONE</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:6}}>
+              <input value={interestFrom} onChange={e=>setInterestFrom(e.target.value)} placeholder="จาก" style={{border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11,background:"var(--j-win)"}}/>
+              <input value={interestTo} onChange={e=>setInterestTo(e.target.value)} placeholder="ถึง" style={{border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11,background:"var(--j-win)"}}/>
+            </div>
+            <div style={{fontFamily:"'VT323',monospace",fontSize:24,marginTop:6}}>{interestZoneText}</div>
+          </div>
+
+          <div style={{border:"2px solid var(--j-ink)",borderRadius:10,padding:10,background:"var(--j-win)"}}>
+            <div className="j-tool-label">ENTRY PLAN</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:6}}>
+              <input value={entryFrom} onChange={e=>setEntryFrom(e.target.value)} placeholder="Entry from" style={{border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11}}/>
+              <input value={entryTo} onChange={e=>setEntryTo(e.target.value)} placeholder="Entry to" style={{border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11}}/>
+              <input value={planSL} onChange={e=>setPlanSL(e.target.value)} placeholder="SL" style={{border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11}}/>
+              <input value={planTP1} onChange={e=>setPlanTP1(e.target.value)} placeholder="TP1" style={{border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11}}/>
+              <input value={planTP2} onChange={e=>setPlanTP2(e.target.value)} placeholder="TP2 optional" style={{border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11,gridColumn:"1 / -1"}}/>
+            </div>
+            <div style={{marginTop:8,fontFamily:"'DM Mono',monospace",fontSize:10,lineHeight:1.6,color:"var(--j-soft)"}}>
+              Entry Zone: <b style={{color:"var(--j-ink)"}}>{entryZoneText}</b> · SL: <b style={{color:"#d4685f"}}>{planSL || "-"}</b> · TP: <b style={{color:"#3f9b73"}}>{planTP1 || "-"}{planTP2 ? ` / ${planTP2}` : ""}</b>
+            </div>
+          </div>
+
+          <div style={{border:"2px solid var(--j-ink)",borderRadius:10,padding:10,background:"var(--j-win)"}}>
+            <div className="j-tool-label">INVALIDATION</div>
+            <input value={invalidPrice} onChange={e=>setInvalidPrice(e.target.value)} placeholder="เช่น 4171.90" style={{width:"100%",marginTop:6,border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11}}/>
+            <div style={{marginTop:8,border:"1.5px dashed var(--j-ink)",borderRadius:7,padding:"8px 10px",background:"var(--j-coral)",fontFamily:"'DM Mono',monospace",fontSize:10,lineHeight:1.5}}>
+              {invalidText}
+            </div>
+          </div>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:10}}>
+          <div style={{border:"2px solid var(--j-ink)",borderRadius:10,padding:10,background:"var(--j-butter)"}}>
+            <div className="j-tool-label">WHAT TO WAIT FOR</div>
+            <div style={{display:"grid",gap:6,marginTop:8}}>
+              {waitFor.map((w,i)=>(
+                <div key={i} style={{fontFamily:"'DM Mono',monospace",fontSize:10,border:"1.5px solid var(--j-ink)",borderRadius:7,padding:"7px 9px",background:w.includes("ผ่าน")||w.includes("เคลียร์แล้ว")?"var(--j-mint)":"var(--j-win)"}}>
+                  {w.includes("ผ่าน")||w.includes("เคลียร์แล้ว") ? "✅" : "⏳"} {w}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{border:"2px solid var(--j-ink)",borderRadius:10,padding:10,background:"var(--j-sky)"}}>
+            <div className="j-tool-label">NEXT 3 CANDLES</div>
+            <div style={{display:"grid",gap:6,marginTop:8}}>
+              {next3.map((n,i)=>(
+                <div key={i} style={{fontFamily:"'DM Mono',monospace",fontSize:10,border:"1.5px solid var(--j-ink)",borderRadius:7,padding:"7px 9px",background:"var(--j-win)",lineHeight:1.5}}>
+                  {i+1}. {n}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div style={{marginTop:10,border:"2px solid var(--j-ink)",borderRadius:10,padding:10,background:"#fbf6ea"}}>
+          <div className="j-tool-label">COACH NOTE</div>
+          <textarea value={coachNote} onChange={e=>setCoachNote(e.target.value)} placeholder="บันทึกเหตุผล เช่น รอ Sweep SSL แล้วค่อยหา MSS / ห้ามไล่ราคา" style={{width:"100%",minHeight:70,marginTop:6,border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11,resize:"vertical",background:"var(--j-win)"}}/>
         </div>
       </Win>
 
