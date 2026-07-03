@@ -28,6 +28,7 @@ const PROMPT = `
   "verdict": "เข้า | รอ | ไม่เข้า",
   "reasons": ["เหตุผลสั้น 1", "เหตุผลสั้น 2", "เหตุผลสั้น 3"],
   "checklist": {
+    "htfZone": false,
     "liquidity": false,
     "bosChoch": false,
     "obDzSz": false,
@@ -35,7 +36,8 @@ const PROMPT = `
     "retest": false,
     "rejection": false,
     "volumeConfirm": false,
-    "breakoutClose": false
+    "breakoutClose": false,
+    "noFomo": true
   }
 }
 
@@ -48,37 +50,26 @@ const PROMPT = `
 - ห้ามรับประกันกำไร
 `;
 
+function toInlineImage(dataUrl: string) {
+  const [meta, base64] = String(dataUrl || "").split(",");
+  const mimeType = meta?.match(/data:(.*);base64/)?.[1] || "image/png";
+  return { inlineData: { mimeType, data: base64 || "" } };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { htfImage, ltfImage, lossesToday = 0 } = await req.json();
 
     if (!htfImage || !ltfImage) {
-      return NextResponse.json(
-        { error: "ต้องมี HTF และ LTF image" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "ต้องมี HTF และ LTF image" }, { status: 400 });
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return NextResponse.json(
-        { error: "ยังไม่ได้ตั้งค่า GEMINI_API_KEY ใน Vercel" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "ยังไม่ได้ตั้งค่า GEMINI_API_KEY ใน Vercel" }, { status: 500 });
     }
 
     const ai = new GoogleGenAI({ apiKey });
-
-    const toInlineImage = (dataUrl: string) => {
-      const [meta, base64] = dataUrl.split(",");
-      const mimeType = meta.match(/data:(.*);base64/)?.[1] || "image/png";
-      return {
-        inlineData: {
-          mimeType,
-          data: base64,
-        },
-      };
-    };
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
@@ -98,15 +89,9 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    const text = response.text || "{}";
-    const clean = text.replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(clean);
-
-    return NextResponse.json(parsed);
+    const clean = (response.text || "{}").replace(/```json|```/g, "").trim();
+    return NextResponse.json(JSON.parse(clean));
   } catch (err: any) {
-    return NextResponse.json(
-      { error: err?.message || "Gemini analyze failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: err?.message || "Gemini analyze failed" }, { status: 500 });
   }
 }
