@@ -1179,22 +1179,14 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
     } catch {}
   }, [htfImg, ltfImg, result]);
 
-  const getAuthHeader = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
-    } catch {
-      return {};
-    }
-  };
-
   const loadAnalyzeHistory = async () => {
     try {
       setHistoryLoading(true);
-      const headers = await getAuthHeader();
-      const res = await fetch("/api/get-ai-history", { headers });
+      const { data:{user} } = await supabase.auth.getUser();
+      const qs = user?.id ? `?userId=${encodeURIComponent(user.id)}` : "";
+      const res = await fetch(`/api/get-ai-history${qs}`, { cache: "no-store" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || data?.message || "Load history failed");
+      if (!res.ok) throw new Error(data?.error || data?.message || "Load AI history failed");
       setHistory(data?.history || []);
     } catch(e) {
       console.error("AI history load error:", e);
@@ -1206,14 +1198,12 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
   const saveAnalyzeHistory = async (aiResult:any, htfDataUrl:string, ltfDataUrl:string) => {
     try {
       setSavingHistory(true);
-      const headers = await getAuthHeader();
+      const { data:{user} } = await supabase.auth.getUser();
       const res = await fetch("/api/save-ai-history", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...headers,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          userId: user?.id || null,
           htfImage: htfDataUrl,
           ltfImage: ltfDataUrl,
           aiResult,
@@ -1223,13 +1213,11 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || data?.message || "Save history failed");
-      setHistory(p => data?.row ? [data.row, ...p.filter(x => x.id !== data.row.id)] : p);
-      setError("");
+      if (!res.ok) throw new Error(data?.error || data?.message || "Save AI history failed");
       await loadAnalyzeHistory();
     } catch(e:any) {
       console.error("AI history save error:", e);
-      setError(`Analyze สำเร็จ แต่บันทึก History ไม่สำเร็จ: ${e?.message || String(e)} — กด 💾 Save Latest เพื่อบันทึกซ้ำได้ ไม่เสีย token`);
+      setError(`Analyze สำเร็จ แต่บันทึก History ไม่สำเร็จ: ${e?.message || String(e)}`);
     } finally {
       setSavingHistory(false);
     }
@@ -1252,36 +1240,26 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
 
   const deleteHistory = async (id:string) => {
     if (!confirm("ลบรายการ Analyze นี้ใช่ไหม?")) return;
-    try {
-      const headers = await getAuthHeader();
-      const res = await fetch("/api/delete-ai-history", {
-        method: "POST",
-        headers: { "Content-Type":"application/json", ...headers },
-        body: JSON.stringify({ id }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || data?.message || "Delete failed");
-      setHistory(p => p.filter(x => x.id !== id));
-    } catch(e:any) {
-      setError(e?.message || "Delete failed");
-    }
+    const res = await fetch("/api/delete-ai-history", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    const data = await res.json();
+    if (!res.ok) { setError(data?.error || data?.message || "Delete failed"); return; }
+    setHistory(p => p.filter(x => x.id !== id));
   };
 
   const toggleFavorite = async (row:any) => {
     const next = !row.favorite;
-    try {
-      const headers = await getAuthHeader();
-      const res = await fetch("/api/favorite-ai-history", {
-        method: "POST",
-        headers: { "Content-Type":"application/json", ...headers },
-        body: JSON.stringify({ id: row.id, favorite: next }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || data?.message || "Favorite update failed");
-      setHistory(p => p.map(x => x.id === row.id ? {...x, favorite: next} : x));
-    } catch(e:any) {
-      setError(e?.message || "Favorite update failed");
-    }
+    const res = await fetch("/api/favorite-ai-history", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: row.id, favorite: next }),
+    });
+    const data = await res.json();
+    if (!res.ok) { setError(data?.error || data?.message || "Favorite update failed"); return; }
+    setHistory(p => p.map(x => x.id === row.id ? {...x, favorite: next} : x));
   };
 
   const clearAICoach = () => {
@@ -2215,7 +2193,7 @@ export default function JournalPage() {
         img{max-width:100%;}
 
         @media(max-width:640px){
-          .j-root{padding-bottom:16px;background-size:12px 12px;overflow-x:hidden;}
+          .j-root{padding-bottom:96px;background-size:12px 12px;overflow-x:hidden;}
           .j-header-wrap{padding:8px 8px 0!important;}
           .j-page-shell{padding:10px 8px 0!important;max-width:100%!important;}
           .j-win{border-width:2px;border-radius:12px;box-shadow:2px 2px 0 var(--j-ink);margin-bottom:10px;}
