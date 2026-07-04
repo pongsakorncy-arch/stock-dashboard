@@ -1145,17 +1145,150 @@ function fileToDataUrl(file: File, cb: (v:string)=>void) {
 }
 
 function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof calcDailyStatus>;setLightbox:(v:string|null)=>void}) {
+  const AI_COACH_CACHE_KEY = "yok_ai_coach_cache_v2";
+  const AI_BUCKET = "ai-coach-images";
+
   const [htfImg,setHtfImg] = useState("");
   const [ltfImg,setLtfImg] = useState("");
   const [loading,setLoading] = useState(false);
+  const [savingHistory,setSavingHistory] = useState(false);
+  const [historyLoading,setHistoryLoading] = useState(false);
+  const [showHistory,setShowHistory] = useState(false);
+  const [history,setHistory] = useState<any[]>([]);
   const [error,setError] = useState("");
   const [result,setResult] = useState<any>(null);
 
   const canAnalyze = htfImg && ltfImg && !loading;
 
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(AI_COACH_CACHE_KEY);
+      if (saved) {
+        const data = JSON.parse(saved);
+        setHtfImg(data.htfImg || "");
+        setLtfImg(data.ltfImg || "");
+        setResult(data.result || null);
+      }
+    } catch {}
+    loadAnalyzeHistory();
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(AI_COACH_CACHE_KEY, JSON.stringify({ htfImg, ltfImg, result }));
+    } catch {}
+  }, [htfImg, ltfImg, result]);
+
+  const dataUrlToBlob = async (dataUrl: string) => {
+    const res = await fetch(dataUrl);
+    return await res.blob();
+  };
+
+  const uploadAiImage = async (dataUrl: string, side: "htf" | "ltf", userId: string) => {
+    const ext = dataUrl.startsWith("data:image/png") ? "png" : "jpg";
+    const path = `${userId}/${Date.now()}-${side}.${ext}`;
+    const blob = await dataUrlToBlob(dataUrl);
+    const { error: upErr } = await supabase.storage
+      .from(AI_BUCKET)
+      .upload(path, blob, { contentType: ext === "png" ? "image/png" : "image/jpeg", upsert: false });
+    if (upErr) throw upErr;
+    const { data } = supabase.storage.from(AI_BUCKET).getPublicUrl(path);
+    return data.publicUrl;
+  };
+
+  const loadAnalyzeHistory = async () => {
+    try {
+      setHistoryLoading(true);
+      const { data:{user} } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data, error } = await supabase
+        .from("ai_analyze_history")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending:false })
+        .limit(30);
+      if (error) throw error;
+      setHistory(data || []);
+    } catch(e) {
+      console.error("AI history load error:", e);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const saveAnalyzeHistory = async (aiResult:any, htfDataUrl:string, ltfDataUrl:string) => {
+    try {
+      setSavingHistory(true);
+      const { data:{user} } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const [htfUrl, ltfUrl] = await Promise.all([
+        uploadAiImage(htfDataUrl, "htf", user.id),
+        uploadAiImage(ltfDataUrl, "ltf", user.id),
+      ]);
+
+      const { error: insErr } = await supabase.from("ai_analyze_history").insert({
+        user_id: user.id,
+        htf_image: htfUrl,
+        ltf_image: ltfUrl,
+        ai_result: aiResult,
+        market: "XAUUSD",
+        timeframe: "HTF+LTF",
+        version: "claude-ui-v1",
+      });
+      if (insErr) throw insErr;
+      await loadAnalyzeHistory();
+    } catch(e:any) {
+      console.error("AI history save error:", e);
+      setError(`Analyze สำเร็จ แต่บันทึก History ไม่สำเร็จ: ${e?.message || String(e)}`);
+    } finally {
+      setSavingHistory(false);
+    }
+  };
+
+  const restoreHistory = (row:any) => {
+    setHtfImg(row.htf_image || "");
+    setLtfImg(row.ltf_image || "");
+    setResult(row.ai_result || null);
+    setError("");
+    setShowHistory(false);
+    try {
+      localStorage.setItem(AI_COACH_CACHE_KEY, JSON.stringify({
+        htfImg: row.htf_image || "",
+        ltfImg: row.ltf_image || "",
+        result: row.ai_result || null,
+      }));
+    } catch {}
+  };
+
+  const deleteHistory = async (id:string) => {
+    if (!confirm("ลบรายการ Analyze นี้ใช่ไหม?")) return;
+    const { error } = await supabase.from("ai_analyze_history").delete().eq("id", id);
+    if (error) { setError(error.message); return; }
+    setHistory(p => p.filter(x => x.id !== id));
+  };
+
+  const toggleFavorite = async (row:any) => {
+    const next = !row.favorite;
+    const { error } = await supabase.from("ai_analyze_history").update({ favorite: next }).eq("id", row.id);
+    if (error) { setError(error.message); return; }
+    setHistory(p => p.map(x => x.id === row.id ? {...x, favorite: next} : x));
+  };
+
+  const clearAICoach = () => {
+    setHtfImg("");
+    setLtfImg("");
+    setResult(null);
+    setError("");
+    try { localStorage.removeItem(AI_COACH_CACHE_KEY); } catch {}
+  };
+
+  const setHtfAndClear = (v:string) => { setHtfImg(v); setResult(null); setError(""); };
+  const setLtfAndClear = (v:string) => { setLtfImg(v); setResult(null); setError(""); };
+
   const analyze = async () => {
     if(!canAnalyze) return;
-    setLoading(true); setError(""); setResult(null);
+    setLoading(true); setError("");
     try {
       const [htfResized, ltfResized] = await Promise.all([
         resizeImage(htfImg), resizeImage(ltfImg),
@@ -1168,6 +1301,7 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
       const data = await res.json();
       if(!res.ok) throw new Error(data?.error || data?.message || "API error");
       setResult(data);
+      await saveAnalyzeHistory(data, htfResized, ltfResized);
     } catch(e:any) {
       setError(e?.message || "Analyze failed");
     } finally {
@@ -1179,7 +1313,7 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
     <div style={{border:"2.5px solid var(--j-ink)",borderRadius:10,overflow:"hidden",boxShadow:"3px 3px 0 var(--j-ink)"}}>
       <div style={{background:"var(--j-lav)",borderBottom:"2px solid var(--j-ink)",padding:"6px 12px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,fontWeight:600}}>{title}</span>
-        {img && <button onClick={()=>setImg("")} style={{fontFamily:"'DM Mono',monospace",fontSize:9,border:"1.5px solid var(--j-ink)",borderRadius:5,padding:"2px 7px",cursor:"pointer",background:"var(--j-coral)"}}>✕ clear</button>}
+        {img && <button onClick={()=>{setImg(""); setResult(null); setError("");}} style={{fontFamily:"'DM Mono',monospace",fontSize:9,border:"1.5px solid var(--j-ink)",borderRadius:5,padding:"2px 7px",cursor:"pointer",background:"var(--j-coral)"}}>✕ clear</button>}
       </div>
       {img ? (
         <img src={img} onClick={()=>setLightbox(img)} style={{width:"100%",maxHeight:180,objectFit:"cover",cursor:"zoom-in",display:"block"}}/>
@@ -1210,8 +1344,8 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
 
       {/* Upload */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-        <UploadBox title="📊 HTF — M15" label="อัปโหลด screenshot M15" img={htfImg} setImg={setHtfImg}/>
-        <UploadBox title="📈 LTF — M5/M1" label="อัปโหลด screenshot M5/M1" img={ltfImg} setImg={setLtfImg}/>
+        <UploadBox title="📊 HTF — M15" label="อัปโหลด screenshot M15" img={htfImg} setImg={setHtfAndClear}/>
+        <UploadBox title="📈 LTF — M5/M1" label="อัปโหลด screenshot M5/M1" img={ltfImg} setImg={setLtfAndClear}/>
       </div>
 
       {/* Analyze button */}
@@ -1224,6 +1358,62 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
           opacity:(!htfImg||!ltfImg)?0.5:1}}>
         {loading ? "⏳ AI กำลังวิเคราะห์กราฟ..." : (!htfImg||!ltfImg) ? "📸 อัปโหลดรูปทั้ง 2 ใบก่อน" : "🧠 ANALYZE — วิเคราะห์กราฟ"}
       </button>
+
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <button onClick={()=>{setShowHistory(v=>!v); if(!showHistory) loadAnalyzeHistory();}} className="j-chip" style={{fontSize:11,background:"var(--j-butter)"}}>
+          📜 Analyze History {history.length ? `(${history.length})` : ""}
+        </button>
+        <button onClick={clearAICoach} className="j-chip off" style={{fontSize:11}}>
+          🧹 Clear AI Coach
+        </button>
+        {savingHistory && <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",alignSelf:"center"}}>saving history...</span>}
+      </div>
+
+      {showHistory && (
+        <div style={{background:"var(--j-win)",border:"2.5px solid var(--j-ink)",borderRadius:10,overflow:"hidden",boxShadow:"3px 3px 0 var(--j-ink)"}}>
+          <div style={{background:"var(--j-butter)",borderBottom:"2px solid var(--j-ink)",padding:"7px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,fontWeight:600}}>📜 Analyze History</span>
+            <button onClick={loadAnalyzeHistory} style={{fontFamily:"'DM Mono',monospace",fontSize:9,border:"1.5px solid var(--j-ink)",borderRadius:5,padding:"2px 7px",background:"var(--j-win)",cursor:"pointer"}}>refresh</button>
+          </div>
+          <div style={{padding:10,display:"flex",flexDirection:"column",gap:8,maxHeight:360,overflow:"auto"}}>
+            {historyLoading && <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--j-soft)",padding:10}}>กำลังโหลด...</div>}
+            {!historyLoading && history.length === 0 && (
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--j-soft)",padding:10,textAlign:"center"}}>ยังไม่มีประวัติ Analyze</div>
+            )}
+            {history.map((row:any)=>{
+              const r = row.ai_result || {};
+              const topScore = r?.scores ? Math.max(...Object.values(r.scores).map((v:any)=>Number(v)||0)) : 0;
+              const dt = row.created_at ? new Date(row.created_at).toLocaleString("th-TH", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" }) : "";
+              const vc = r.verdict === "เข้า" ? "var(--j-mint)" : r.verdict === "รอ" ? "var(--j-butter)" : "var(--j-coral)";
+              return (
+                <div key={row.id} style={{border:"2px solid var(--j-ink)",borderRadius:9,background:row.favorite?"#fff7d7":"#fbf6ea",padding:9,display:"grid",gridTemplateColumns:"54px 1fr",gap:10,alignItems:"center"}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr",gap:4}}>
+                    {row.htf_image && <img src={row.htf_image} onClick={()=>setLightbox(row.htf_image)} style={{width:54,height:36,objectFit:"cover",border:"1.5px solid var(--j-ink)",borderRadius:5,cursor:"zoom-in"}}/>}
+                    {row.ltf_image && <img src={row.ltf_image} onClick={()=>setLightbox(row.ltf_image)} style={{width:54,height:36,objectFit:"cover",border:"1.5px solid var(--j-ink)",borderRadius:5,cursor:"zoom-in"}}/>}
+                  </div>
+                  <div>
+                    <div style={{display:"flex",gap:6,alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
+                      <b style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)"}}>{dt}</b>
+                      <span style={{fontFamily:"'DM Mono',monospace",fontSize:9,background:vc,border:"1.5px solid var(--j-ink)",borderRadius:5,padding:"2px 6px"}}>{r.verdict || "-"}</span>
+                    </div>
+                    <div style={{fontFamily:"'Fredoka',sans-serif",fontSize:13,fontWeight:700,lineHeight:1.25,marginBottom:3}}>
+                      {r.recommendedSetup || "AI Analyze"}
+                    </div>
+                    <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",marginBottom:7}}>
+                      Bias: {r.bias || "-"} · Cycle: {r.cycle || "-"} · Score: {topScore}/10
+                    </div>
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      <button onClick={()=>restoreHistory(row)} className="j-chip" style={{fontSize:10,background:"var(--j-mint)"}}>View / Restore</button>
+                      <button onClick={()=>toggleFavorite(row)} className="j-chip off" style={{fontSize:10,background:row.favorite?"var(--j-butter)":"var(--j-win)"}}>{row.favorite?"★ Favorite":"☆ Favorite"}</button>
+                      <button onClick={()=>deleteHistory(row.id)} className="j-chip off" style={{fontSize:10,background:"var(--j-coral)"}}>Delete</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {error && (
         <div style={{background:"var(--j-coral)",border:"2px solid var(--j-ink)",borderRadius:9,padding:"10px 14px",fontFamily:"'DM Mono',monospace",fontSize:11}}>
@@ -1998,69 +2188,42 @@ export default function JournalPage() {
         img{max-width:100%;}
 
         @media(max-width:640px){
-          /* Mobile appearance only: keep all features, just make them fit better */
-          .j-root{padding-bottom:22px;background-size:12px 12px;overflow-x:hidden;}
-          .j-header-wrap{padding:8px 8px 0!important;position:relative;z-index:980;}
+          .j-root{padding-bottom:96px;background-size:12px 12px;overflow-x:hidden;}
+          .j-header-wrap{padding:8px 8px 0!important;}
           .j-page-shell{padding:10px 8px 0!important;max-width:100%!important;}
-
-          .j-win{border-width:2px;border-radius:12px;box-shadow:2px 2px 0 var(--j-ink);margin-bottom:10px;max-width:100%;}
-          .j-bar{padding:8px 9px;border-bottom-width:2px;min-height:36px;}
-          .j-t{font-size:10px;letter-spacing:.1px;white-space:normal;line-height:1.25;min-width:0;}
+          .j-win{border-width:2px;border-radius:12px;box-shadow:2px 2px 0 var(--j-ink);margin-bottom:10px;}
+          .j-bar{padding:8px 9px;border-bottom-width:2px;}
+          .j-t{font-size:10px;letter-spacing:.1px;white-space:normal;line-height:1.25;}
           .j-ctrl span{width:13px;height:13px;line-height:9px;font-size:8px;border-width:1.5px;}
           .j-body{padding:10px!important;}
           .j-lab,.j-tool-label{font-size:9px!important;letter-spacing:.7px;}
           .j-chip{font-size:11px!important;padding:8px 9px!important;min-height:36px;border-width:1.8px;border-radius:9px;box-shadow:1.5px 1.5px 0 var(--j-ink);}
           .j-btn{min-height:40px;border-width:2px;border-radius:10px;box-shadow:2px 2px 0 var(--j-ink);}
-          .j-in{font-size:13px;padding:10px 10px;min-height:40px;}
+          .j-in{font-size:13px;padding:10px 10px;}
           .j-num{font-size:26px;}
           .j-stat{padding:8px 6px;border-width:2px;box-shadow:2px 2px 0 var(--j-ink);}
           .j-statlab{font-size:7px;}
 
-          /* Header stays compact on mobile */
           .j-header-wrap > .j-win{max-width:100%!important;margin:0!important;}
-          .j-header-wrap .j-body{align-items:flex-start!important;gap:8px!important;}
+          .j-header-wrap .j-body{align-items:flex-start!important;gap:10px!important;}
           .j-header-wrap .j-body > div:first-child{width:100%;}
-          .j-header-wrap .j-body > div:first-child div:first-child{font-size:26px!important;line-height:.9!important;}
-          .j-header-wrap .j-body > div:first-child div:last-child{font-size:8px!important;letter-spacing:1px!important;}
-          .j-header-wrap .j-body > div:last-child{width:100%;display:grid!important;grid-template-columns:86px 1fr!important;gap:8px!important;align-items:stretch!important;}
-          .j-header-wrap .j-body > div:last-child button{width:100%;min-width:0!important;}
-          .j-header-wrap .j-body > div:last-child > *:only-child{grid-column:1/-1;}
+          .j-header-wrap .j-body > div:first-child div:first-child{font-size:28px!important;line-height:.9!important;}
+          .j-header-wrap .j-body > div:last-child{width:100%;display:flex!important;flex-wrap:wrap!important;gap:8px!important;}
+          .j-header-wrap .j-body > div:last-child button{width:100%;}
 
-          /* Mobile tabs moved to TOP, not bottom */
-          .j-tabs-wrap{
-            position:sticky!important;
-            top:0!important;
-            z-index:970!important;
-            max-width:none!important;
-            margin:8px -8px 0!important;
-            padding:7px 8px!important;
-            display:flex!important;
-            gap:6px!important;
-            overflow-x:auto!important;
-            white-space:nowrap!important;
-            border-top:2px solid var(--j-ink)!important;
-            border-bottom:2.5px solid var(--j-ink)!important;
-            background:rgba(241,233,218,.98)!important;
-            box-shadow:0 3px 0 rgba(90,77,66,.12)!important;
-            -webkit-overflow-scrolling:touch;
-            scrollbar-width:none;
-          }
+          .j-tabs-wrap{position:fixed!important;left:0;right:0;bottom:0;z-index:990;max-width:none!important;margin:0!important;padding:7px 7px calc(7px + env(safe-area-inset-bottom))!important;display:flex!important;gap:6px!important;overflow-x:auto!important;white-space:nowrap!important;border-top:2.5px solid var(--j-ink)!important;border-bottom:0!important;background:rgba(241,233,218,.97)!important;box-shadow:0 -4px 0 rgba(90,77,66,.1);-webkit-overflow-scrolling:touch;}
           .j-tabs-wrap::-webkit-scrollbar{display:none;}
-          .j-tab{flex:0 0 auto!important;min-width:76px!important;border:2px solid var(--j-ink)!important;border-radius:999px!important;background:var(--j-win)!important;padding:9px 10px!important;font-size:9px!important;line-height:1.1!important;text-align:center!important;box-shadow:1.5px 1.5px 0 var(--j-ink);}
-          .j-tab.on{background:var(--j-lav)!important;border-bottom-color:var(--j-ink)!important;color:var(--j-ink)!important;transform:translate(1px,1px);box-shadow:.5px .5px 0 var(--j-ink);}
+          .j-tab{flex:0 0 auto!important;min-width:78px!important;border:2px solid var(--j-ink)!important;border-radius:10px!important;background:var(--j-win)!important;padding:9px 8px!important;font-size:9px!important;line-height:1.15!important;text-align:center!important;box-shadow:1.5px 1.5px 0 var(--j-ink);}
+          .j-tab.on{background:var(--j-lav)!important;border-bottom-color:var(--j-ink)!important;color:var(--j-ink)!important;}
 
-          /* One-column mobile cards; keep all content */
           .j-mobile-grid,.j-upload-grid,.j-tools-layout,.battle-layout,.j-open-edit-grid,.j-open-edit-grid.two{grid-template-columns:1fr!important;}
           .j-input-pair{grid-template-columns:1fr 1fr!important;}
           .j-cal-summary-grid,.battle-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
           .j-rpg-grid,.battle-stat-grid{grid-template-columns:1fr!important;}
-          .j-rpg-avatar-row,.battle-main{grid-template-columns:1fr!important;gap:8px!important;}
-          .j-rpg-avatar,.battle-avatar{min-height:76px!important;}
-          .battle-score span{font-size:36px!important;}
-          .j-rpg-name{font-size:24px!important;line-height:1!important;}
-          .j-rpg-top,.j-rpg-mini-header{gap:8px!important;}
+          .j-rpg-avatar-row,.battle-main{grid-template-columns:1fr!important;}
+          .j-rpg-avatar,.battle-avatar{min-height:80px!important;}
+          .battle-score span{font-size:38px!important;}
 
-          /* Calendar compact but readable */
           .j-cal-weekdays{gap:4px;font-size:8px;}
           .j-cal-grid{gap:4px;}
           .j-cal-cell{min-height:54px;padding:5px;border-width:1.5px;border-radius:7px;box-shadow:1px 1px 0 var(--j-ink);}
@@ -2068,20 +2231,13 @@ export default function JournalPage() {
           .j-cal-pl{font-size:10px;}
           .j-cal-count,.j-cal-mini{font-size:7px;}
           .j-cal-cell.today:after{display:none;}
-          .j-cal-summary-card{padding:7px 6px!important;}
-          .j-cal-summary-card b{font-size:20px!important;}
 
-          /* Prevent broken/wide boxes */
           .grid{min-width:0;}
           .grid.grid-cols-2{gap:8px!important;}
-          .grid.grid-cols-3{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;}
-          .grid.grid-cols-4{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;}
-          .flex{min-width:0;}
           .space-y-4 > * + *{margin-top:10px!important;}
           .space-y-3 > * + *{margin-top:8px!important;}
           [style*="maxWidth:560"],[style*="max-width:560px"]{max-width:100%!important;}
           [style*="gridTemplateColumns"]{min-width:0;}
-          img,svg,video,canvas{max-width:100%;}
           textarea{min-height:76px!important;}
         }
 
