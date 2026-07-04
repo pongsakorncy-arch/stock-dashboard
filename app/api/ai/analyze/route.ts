@@ -1,196 +1,111 @@
 import { NextRequest, NextResponse } from "next/server";
-
 export const runtime = "nodejs";
 
-type Bias = "Bull" | "Bear" | "Neutral";
-type Cycle = "Trend" | "Pullback" | "Sideway" | "Unknown";
-
-function score10(v: number) {
-  return Math.max(0, Math.min(10, Math.round(v * 10) / 10));
+function imageBlock(dataUrl: string) {
+  const [meta, base64] = String(dataUrl || "").split(",");
+  const mediaType = meta?.match(/data:(.*);base64/)?.[1] || "image/png";
+  return { type: "image", source: { type: "base64", media_type: mediaType, data: base64 || "" } };
 }
+
+const SYSTEM = `คุณคือ Yokimura AI Coach ผู้ช่วยตัดสินใจเทรด XAUUSD
+ระบบที่ใช้: SMC Pro Max · Pullback · Sideway Range · Breakout · M5 Reversal
+กฎเหล็ก: ไม่มี MSS = ห้ามเข้า SMC · Breakout ต้องปิดหลุดกรอบไม่ใช่แค่ Wick · ห้ามรับประกันกำไร
+หน้าที่: ช่วยพี่คิด ไม่ใช่ตัดสินใจแทน`;
 
 export async function POST(req: NextRequest) {
   try {
-    const {
-      direction = "BUY",
-      bias = "Neutral",
-      cycle = "Unknown",
-      lossesToday = 0,
-      checklist = {},
-      plan = {},
-    } = await req.json();
+    const { htfImage, ltfImage, lossesToday = 0 } = await req.json();
+    if (!htfImage || !ltfImage)
+      return NextResponse.json({ error: "Missing HTF or LTF image" }, { status: 400 });
 
-    const biasMatch =
-      bias === "Neutral" ? 0.5 :
-      direction === "BUY" && bias === "Bull" ? 1 :
-      direction === "SELL" && bias === "Bear" ? 1 : 0;
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey)
+      return NextResponse.json({ error: "Missing ANTHROPIC_API_KEY" }, { status: 500 });
 
-    const c = {
-      htfZone: !!checklist.htfZone,
-      liquidity: !!checklist.liquidity,
-      bosChoch: !!checklist.bosChoch,
-      obDzSz: !!checklist.obDzSz,
-      mss: !!checklist.mss,
-      retest: !!checklist.retest,
-      rejection: !!checklist.rejection,
-      volumeConfirm: !!checklist.volumeConfirm,
-      breakoutClose: !!checklist.breakoutClose,
-      noFomo: checklist.noFomo !== false,
-      rrGood: !!checklist.rrGood,
-      nearRange: !!checklist.nearRange,
-      pa2: !!checklist.pa2,
-      dirConfirm: !!checklist.dirConfirm,
-    };
+    const prompt = `วันนี้แพ้แล้ว ${lossesToday} ไม้${lossesToday >= 2 ? " — ต้องเข้มงวดกว่าปกติ" : ""}
 
-    const penalty = lossesToday >= 3 ? 1.2 : lossesToday >= 2 ? 0.7 : 0;
+ดูกราฟ HTF (M15) และ LTF (M5/M1) แล้วช่วยวิเคราะห์ตามระบบของผม
 
-    const smcProMax = score10(
-      biasMatch * 1.2 +
-      (cycle === "Trend" || cycle === "Pullback" ? 1 : 0) +
-      (c.htfZone ? 1 : 0) +
-      (c.bosChoch ? 1 : 0) +
-      (c.obDzSz ? 1 : 0) +
-      (c.liquidity ? 1.2 : 0) +
-      (c.mss ? 1.4 : 0) +
-      (c.retest ? 1.2 : 0) +
-      (c.rejection ? 0.8 : 0) +
-      (c.volumeConfirm ? 0.7 : 0) +
-      (c.rrGood ? 0.5 : 0) -
-      penalty
-    );
+ตอบ JSON เท่านั้น โดย:
+- zones ให้ระบุเป็นตัวเลขราคาจริงที่เห็นในกราฟ
+- ถ้าอ่านราคาจากกราฟไม่ได้ชัด ให้ใส่ "" แทน
+- reasons ต้องอ้างอิงสิ่งที่เห็นในกราฟจริง
 
-    const pullback = score10(
-      biasMatch * 1.3 +
-      (cycle === "Pullback" ? 2 : 0) +
-      (c.htfZone ? 1.4 : 0) +
-      (c.obDzSz ? 1 : 0) +
-      (c.rejection ? 1 : 0) +
-      (c.mss ? 1 : 0) +
-      (c.retest ? 1 : 0) +
-      (c.volumeConfirm ? 0.7 : 0) +
-      (c.rrGood ? 0.6 : 0) -
-      penalty
-    );
+{
+  "bias": "Bull | Bear | Neutral",
+  "cycle": "Trend | Pullback | Sideway | Unknown",
+  "scores": {
+    "smcProMax": 0,
+    "pullback": 0,
+    "sidewayRange": 0,
+    "breakoutRunTrend": 0,
+    "m5Reversal": 0
+  },
+  "recommendedSetup": "SMC Pro Max | Pullback | Sideway Range | Breakout / Run Trend | M5 Reversal",
+  "verdict": "เข้า | รอ | ไม่เข้า",
+  "verdictReason": "เหตุผลหลัก 1 ประโยค",
+  "waitFor": {
+    "liquidityZone": "ราคา $$$ ที่ยังไม่ถูก sweep เช่น SSL ที่ 3285.00",
+    "interestZone": "โซนที่น่าสนใจ เช่น 3288.00 - 3292.00",
+    "conditions": ["สิ่งที่ต้องรอก่อนเข้า เช่น รอ MSS บน M5", "รอ Retest กลับมาที่ OB", "ดู Volume ประกอบ"]
+  },
+  "actionPlan": {
+    "entryZone": "เช่น 3290.00 - 3293.00",
+    "sl": "เช่น 3284.50",
+    "tp1": "เช่น 3305.00",
+    "tp2": "เช่น 3318.00",
+    "invalidation": "ถ้าราคาปิดหลุด ... = ยกเลิกแผนนี้",
+    "next3Candles": ["สิ่งที่ต้องสังเกตใน 3 แท่งถัดไป", "เช่น ถ้า Volume โตขึ้นพร้อม bullish candle = momentum มา", "เช่น ถ้า Wick ยาวด้านบน = Rejection"]
+  },
+  "checklist": {
+    "htfZone": false,
+    "liquidity": false,
+    "bosChoch": false,
+    "obDzSz": false,
+    "mss": false,
+    "retest": false,
+    "rejection": false,
+    "volumeConfirm": false,
+    "breakoutClose": false,
+    "noFomo": true
+  },
+  "reasons": ["เหตุผล 1", "เหตุผล 2", "เหตุผล 3"]
+}`;
 
-    const sidewayRange = score10(
-      (cycle === "Sideway" ? 2.5 : 0) +
-      (c.nearRange ? 2 : 0) +
-      (c.rejection ? 1.2 : 0) +
-      (c.pa2 ? 1 : 0) +
-      (c.rrGood ? 1 : 0) +
-      (c.noFomo ? 0.6 : -1) -
-      penalty
-    );
-
-    const breakoutRunTrend = score10(
-      (cycle === "Sideway" ? 1 : 0) +
-      (c.breakoutClose ? 3 : 0) +
-      (c.retest ? 1.5 : 0) +
-      (c.volumeConfirm ? 1.5 : 0) +
-      (c.noFomo ? 1 : -1.5) +
-      (c.rrGood ? 0.8 : 0) -
-      penalty
-    );
-
-    const m1m5Reversal = score10(
-      (c.pa2 ? 1.7 : 0) +
-      (c.dirConfirm ? 1.5 : 0) +
-      (c.mss ? 1.5 : 0) +
-      (c.rejection ? 1.2 : 0) +
-      (c.volumeConfirm ? 1 : 0) +
-      (c.liquidity ? 1 : 0) +
-      (c.noFomo ? 0.8 : -1.2) -
-      penalty
-    );
-
-    const scores = {
-      smcProMax,
-      pullback,
-      sidewayRange,
-      breakoutRunTrend,
-      m1m5Reversal,
-    };
-
-    const entries = Object.entries(scores).sort((a, b) => b[1] - a[1]);
-    const bestKey = entries[0][0];
-    const bestScore = entries[0][1];
-
-    const setupNameMap: Record<string, string> = {
-      smcProMax: "SMC Pro Max",
-      pullback: "Pullback",
-      sidewayRange: "Sideway Range",
-      breakoutRunTrend: "Breakout / Run Trend",
-      m1m5Reversal: "M1/M5 Reversal",
-    };
-
-    let verdict: "เข้า" | "รอ" | "ไม่เข้า" = "ไม่เข้า";
-
-    if (lossesToday >= 3) verdict = "ไม่เข้า";
-    else if (bestScore >= 8.5 && c.noFomo) verdict = "เข้า";
-    else if (bestScore >= 6.5) verdict = "รอ";
-    else verdict = "ไม่เข้า";
-
-    const reasons: string[] = [];
-
-    if (lossesToday >= 3) reasons.push("วันนี้แพ้ 3 ไม้ขึ้นไป ระบบให้หยุดก่อน");
-    if (!c.liquidity && bestKey === "smcProMax") reasons.push("SMC ยังขาด Liquidity $$$");
-    if (!c.mss && ["smcProMax", "pullback", "m1m5Reversal"].includes(bestKey)) reasons.push("ยังไม่มี MSS ชัด");
-    if (!c.retest && ["smcProMax", "pullback", "breakoutRunTrend"].includes(bestKey)) reasons.push("ยังไม่มี Retest ตามกฎ");
-    if (!c.volumeConfirm) reasons.push("Volume ยังไม่ช่วยยืนยัน");
-    if (!c.rrGood) reasons.push("RR ยังไม่ผ่านเกณฑ์");
-
-    if (reasons.length === 0) {
-      reasons.push("เงื่อนไขหลักครบ เล่นตามแผนได้");
-    }
-
-    const waitFor = [
-      !c.liquidity ? `รอเคลียร์ $$$ ที่ ${plan.liquidityTarget || "High/Low สำคัญก่อน"}` : "",
-      !c.htfZone ? `รอราคาเข้าโซน ${plan.interestZone || "Demand/Supply ที่วางไว้"}` : "",
-      !c.mss ? "รอ MSS บน LTF" : "",
-      !c.retest ? "รอ Retest หลัง MSS" : "",
-      !c.volumeConfirm ? "รอ Volume Confirm" : "",
-    ].filter(Boolean);
-
-    const response = {
-      bias,
-      cycle,
-      recommendedSetup: setupNameMap[bestKey],
-      scores,
-      verdict,
-      confidence: Math.round(bestScore * 10),
-      reasons: reasons.slice(0, 3),
-      checklist: c,
-      actionPlan: {
-        liquidityTarget: plan.liquidityTarget || "",
-        interestZone: plan.interestZone || "",
-        entryZone: plan.entryZone || "",
-        stopLoss: plan.stopLoss || "",
-        takeProfit1: plan.takeProfit1 || "",
-        takeProfit2: plan.takeProfit2 || "",
-        invalidation: plan.invalidation || "",
-        waitFor,
-        next3Candles: [
-          "ถ้าปิดผ่าน MSS พร้อมแรง ให้เตรียมหา Retest",
-          "ถ้าหลุดโซนสำคัญ ให้ยกเลิก Setup",
-          "ถ้า Volume ไม่มา อย่าไล่ราคา",
-        ],
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
       },
-      coach:
-        verdict === "เข้า"
-          ? "Setup ผ่าน เล่นตามแผนได้ แต่อย่าเพิ่มความเสี่ยง"
-          : verdict === "รอ"
-          ? "ยังไม่ต้องรีบ รอเงื่อนไขที่ขาดให้ครบก่อน"
-          : "ไม่เข้า Setup ยังไม่คุ้ม หรือความเสี่ยงวันนี้สูงเกินไป",
-    };
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1024,
+        system: SYSTEM,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            { type: "text", text: "📊 HTF — M15 (หา Bias / Trend / DZ-SZ / Liquidity):" },
+            imageBlock(htfImage),
+            { type: "text", text: "📈 LTF — M5/M1 (หา MSS / Retest / Rejection / Volume / จุดเข้า):" },
+            imageBlock(ltfImage),
+          ],
+        }],
+      }),
+    });
 
-    return NextResponse.json(response);
+    const raw = await res.text();
+    if (!res.ok)
+      return NextResponse.json({ error: "Claude API error", status: res.status, detail: raw }, { status: 500 });
+
+    const data = JSON.parse(raw);
+    const text = data?.content?.find((b: any) => b.type === "text")?.text || "{}";
+    const cleaned = text.replace(/^```json\s*|\s*```$/g, "").trim();
+
+    return NextResponse.json(JSON.parse(cleaned));
   } catch (err: any) {
-    return NextResponse.json(
-      {
-        error: "Rule Engine crashed",
-        message: err?.message || String(err),
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Route crashed", message: err?.message }, { status: 500 });
   }
 }
