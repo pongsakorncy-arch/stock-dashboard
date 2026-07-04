@@ -1179,36 +1179,23 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
     } catch {}
   }, [htfImg, ltfImg, result]);
 
-  const dataUrlToBlob = async (dataUrl: string) => {
-    const res = await fetch(dataUrl);
-    return await res.blob();
-  };
-
-  const uploadAiImage = async (dataUrl: string, side: "htf" | "ltf", userId: string) => {
-    const ext = dataUrl.startsWith("data:image/png") ? "png" : "jpg";
-    const path = `${userId}/${Date.now()}-${side}.${ext}`;
-    const blob = await dataUrlToBlob(dataUrl);
-    const { error: upErr } = await supabase.storage
-      .from(AI_BUCKET)
-      .upload(path, blob, { contentType: ext === "png" ? "image/png" : "image/jpeg", upsert: false });
-    if (upErr) throw upErr;
-    const { data } = supabase.storage.from(AI_BUCKET).getPublicUrl(path);
-    return data.publicUrl;
+  const getAuthHeader = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+    } catch {
+      return {};
+    }
   };
 
   const loadAnalyzeHistory = async () => {
     try {
       setHistoryLoading(true);
-      const { data:{user} } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data, error } = await supabase
-        .from("ai_analyze_history")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending:false })
-        .limit(30);
-      if (error) throw error;
-      setHistory(data || []);
+      const headers = await getAuthHeader();
+      const res = await fetch("/api/get-ai-history", { headers });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || data?.message || "Load history failed");
+      setHistory(data?.history || []);
     } catch(e) {
       console.error("AI history load error:", e);
     } finally {
@@ -1219,45 +1206,30 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
   const saveAnalyzeHistory = async (aiResult:any, htfDataUrl:string, ltfDataUrl:string) => {
     try {
       setSavingHistory(true);
-      const { data:{user} } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const [htfUrl, ltfUrl] = await Promise.all([
-        uploadAiImage(htfDataUrl, "htf", user.id),
-        uploadAiImage(ltfDataUrl, "ltf", user.id),
-      ]);
-
-      const payload = {
-        user_id: user.id,
-        htf_image: htfUrl,
-        ltf_image: ltfUrl,
-        ai_result: aiResult,
-        market: "XAUUSD",
-        timeframe: "HTF+LTF",
-        version: "claude-ui-v1",
-      };
-
-      // Try normal insert first. If RLS blocks it, use the SQL RPC fallback
-      // public.save_ai_analyze_history(...) that we create in Supabase.
-      const { error: insErr } = await supabase.from("ai_analyze_history").insert(payload);
-
-      if (insErr) {
-        const { error: rpcErr } = await supabase.rpc("save_ai_analyze_history", {
-          p_user_id: user.id,
-          p_htf_image: htfUrl,
-          p_ltf_image: ltfUrl,
-          p_ai_result: aiResult,
-          p_market: "XAUUSD",
-          p_timeframe: "HTF+LTF",
-          p_version: "claude-ui-v1",
-        });
-        if (rpcErr) throw rpcErr;
-      }
-
+      const headers = await getAuthHeader();
+      const res = await fetch("/api/save-ai-history", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...headers,
+        },
+        body: JSON.stringify({
+          htfImage: htfDataUrl,
+          ltfImage: ltfDataUrl,
+          aiResult,
+          market: "XAUUSD",
+          timeframe: "HTF+LTF",
+          version: "claude-ui-v1",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || data?.message || "Save history failed");
+      setHistory(p => data?.row ? [data.row, ...p.filter(x => x.id !== data.row.id)] : p);
+      setError("");
       await loadAnalyzeHistory();
     } catch(e:any) {
       console.error("AI history save error:", e);
-      setError(`Analyze สำเร็จ แต่บันทึก History ไม่สำเร็จ: ${e?.message || String(e)}`);
+      setError(`Analyze สำเร็จ แต่บันทึก History ไม่สำเร็จ: ${e?.message || String(e)} — กด 💾 Save Latest เพื่อบันทึกซ้ำได้ ไม่เสีย token`);
     } finally {
       setSavingHistory(false);
     }
@@ -1280,16 +1252,36 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
 
   const deleteHistory = async (id:string) => {
     if (!confirm("ลบรายการ Analyze นี้ใช่ไหม?")) return;
-    const { error } = await supabase.from("ai_analyze_history").delete().eq("id", id);
-    if (error) { setError(error.message); return; }
-    setHistory(p => p.filter(x => x.id !== id));
+    try {
+      const headers = await getAuthHeader();
+      const res = await fetch("/api/delete-ai-history", {
+        method: "POST",
+        headers: { "Content-Type":"application/json", ...headers },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || data?.message || "Delete failed");
+      setHistory(p => p.filter(x => x.id !== id));
+    } catch(e:any) {
+      setError(e?.message || "Delete failed");
+    }
   };
 
   const toggleFavorite = async (row:any) => {
     const next = !row.favorite;
-    const { error } = await supabase.from("ai_analyze_history").update({ favorite: next }).eq("id", row.id);
-    if (error) { setError(error.message); return; }
-    setHistory(p => p.map(x => x.id === row.id ? {...x, favorite: next} : x));
+    try {
+      const headers = await getAuthHeader();
+      const res = await fetch("/api/favorite-ai-history", {
+        method: "POST",
+        headers: { "Content-Type":"application/json", ...headers },
+        body: JSON.stringify({ id: row.id, favorite: next }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || data?.message || "Favorite update failed");
+      setHistory(p => p.map(x => x.id === row.id ? {...x, favorite: next} : x));
+    } catch(e:any) {
+      setError(e?.message || "Favorite update failed");
+    }
   };
 
   const clearAICoach = () => {
@@ -2223,7 +2215,7 @@ export default function JournalPage() {
         img{max-width:100%;}
 
         @media(max-width:640px){
-          .j-root{padding-bottom:96px;background-size:12px 12px;overflow-x:hidden;}
+          .j-root{padding-bottom:16px;background-size:12px 12px;overflow-x:hidden;}
           .j-header-wrap{padding:8px 8px 0!important;}
           .j-page-shell{padding:10px 8px 0!important;max-width:100%!important;}
           .j-win{border-width:2px;border-radius:12px;box-shadow:2px 2px 0 var(--j-ink);margin-bottom:10px;}
