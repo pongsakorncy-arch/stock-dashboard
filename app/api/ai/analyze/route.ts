@@ -100,11 +100,25 @@ export async function POST(req: NextRequest) {
     if (!res.ok)
       return NextResponse.json({ error: "Claude API error", status: res.status, detail: raw }, { status: 500 });
 
-    const data = JSON.parse(raw);
-    const text = data?.content?.find((b: any) => b.type === "text")?.text || "{}";
+    if (!raw || raw.trim() === "")
+      return NextResponse.json({ error: "Empty response from Claude" }, { status: 500 });
+
+    let data: any;
+    try { data = JSON.parse(raw); }
+    catch { return NextResponse.json({ error: "Claude response not JSON", raw: raw.slice(0,200) }, { status: 500 }); }
+
+    const textBlock = data?.content?.find((b: any) => b.type === "text");
+    if (!textBlock?.text)
+      return NextResponse.json({ error: "No text in Claude response", content: data?.content }, { status: 500 });
+
+    const text = textBlock.text;
     const cleaned = text.replace(/^```json\s*|\s*```$/g, "").trim();
 
-    return NextResponse.json(JSON.parse(cleaned));
+    let parsed: any;
+    try { parsed = JSON.parse(cleaned); }
+    catch { return NextResponse.json({ error: "Could not parse Claude JSON", raw: cleaned.slice(0,300) }, { status: 500 }); }
+
+    return NextResponse.json(parsed);
   } catch (err: any) {
     return NextResponse.json({ error: "Route crashed", message: err?.message }, { status: 500 });
   }
