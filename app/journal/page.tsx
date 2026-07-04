@@ -1184,17 +1184,6 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
     return await res.blob();
   };
 
-  // ใช้ Auth เดิมแบบเดียวกับระบบบันทึก Screenshot ของ Journal
-  // สำคัญ: ไม่สร้าง Anonymous User ใหม่ เพราะจะทำให้ user_id ไม่ตรง RLS / session เดิม
-  const ensureAiUser = async () => {
-    const { data:{user}, error } = await supabase.auth.getUser();
-    if (error) throw error;
-    if (!user) {
-      throw new Error("กรุณา Login ก่อน จึงจะบันทึก AI History ข้ามเครื่องได้");
-    }
-    return user;
-  };
-
   const uploadAiImage = async (dataUrl: string, side: "htf" | "ltf", userId: string) => {
     const ext = dataUrl.startsWith("data:image/png") ? "png" : "jpg";
     const path = `${userId}/${Date.now()}-${side}.${ext}`;
@@ -1211,18 +1200,13 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
     try {
       setHistoryLoading(true);
       const { data:{user} } = await supabase.auth.getUser();
-      if (!user) {
-        setHistory([]);
-        return;
-      }
-
+      if (!user) return;
       const { data, error } = await supabase
         .from("ai_analyze_history")
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending:false })
         .limit(30);
-
       if (error) throw error;
       setHistory(data || []);
     } catch(e) {
@@ -1235,7 +1219,8 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
   const saveAnalyzeHistory = async (aiResult:any, htfDataUrl:string, ltfDataUrl:string) => {
     try {
       setSavingHistory(true);
-      const user = await ensureAiUser();
+      const { data:{user} } = await supabase.auth.getUser();
+      if (!user) return;
 
       const [htfUrl, ltfUrl] = await Promise.all([
         uploadAiImage(htfDataUrl, "htf", user.id),
@@ -1249,16 +1234,26 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
         ai_result: aiResult,
         market: "XAUUSD",
         timeframe: "HTF+LTF",
-        version: "claude-ui-v2-auth-same-as-screenshot",
+        version: "claude-ui-v1",
       };
 
-      const { error: insErr } = await supabase
-        .from("ai_analyze_history")
-        .insert(payload);
+      // Try normal insert first. If RLS blocks it, use the SQL RPC fallback
+      // public.save_ai_analyze_history(...) that we create in Supabase.
+      const { error: insErr } = await supabase.from("ai_analyze_history").insert(payload);
 
       if (insErr) {
-        throw new Error(`${insErr.message} | user_id=${user.id}`);
+        const { error: rpcErr } = await supabase.rpc("save_ai_analyze_history", {
+          p_user_id: user.id,
+          p_htf_image: htfUrl,
+          p_ltf_image: ltfUrl,
+          p_ai_result: aiResult,
+          p_market: "XAUUSD",
+          p_timeframe: "HTF+LTF",
+          p_version: "claude-ui-v1",
+        });
+        if (rpcErr) throw rpcErr;
       }
+
       await loadAnalyzeHistory();
     } catch(e:any) {
       console.error("AI history save error:", e);
@@ -1331,6 +1326,19 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
     }
   };
 
+  const saveCurrentResultOnly = async () => {
+    if (!result || !htfImg || !ltfImg || savingHistory) return;
+    setError("");
+    try {
+      const [htfResized, ltfResized] = await Promise.all([
+        resizeImage(htfImg), resizeImage(ltfImg),
+      ]);
+      await saveAnalyzeHistory(result, htfResized, ltfResized);
+    } catch(e:any) {
+      setError(e?.message || "Save history failed");
+    }
+  };
+
   const UploadBox = ({title,label,img,setImg}:{title:string;label:string;img:string;setImg:(v:string)=>void}) => (
     <div style={{border:"2.5px solid var(--j-ink)",borderRadius:10,overflow:"hidden",boxShadow:"3px 3px 0 var(--j-ink)"}}>
       <div style={{background:"var(--j-lav)",borderBottom:"2px solid var(--j-ink)",padding:"6px 12px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -1385,6 +1393,11 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
         <button onClick={()=>{setShowHistory(v=>!v); if(!showHistory) loadAnalyzeHistory();}} className="j-chip" style={{fontSize:11,background:"var(--j-butter)"}}>
           📜 Analyze History {history.length ? `(${history.length})` : ""}
         </button>
+        {result && htfImg && ltfImg && (
+          <button onClick={saveCurrentResultOnly} disabled={savingHistory} className="j-chip" style={{fontSize:11,background:"var(--j-mint)",opacity:savingHistory?0.6:1}}>
+            💾 Save Latest ไม่ใช้ token
+          </button>
+        )}
         <button onClick={clearAICoach} className="j-chip off" style={{fontSize:11}}>
           🧹 Clear AI Coach
         </button>
@@ -2201,26 +2214,16 @@ export default function JournalPage() {
 
         @media(max-width:820px){.j-tools-layout,.battle-layout{grid-template-columns:1fr}.j-rpg-avatar-row,.battle-main{grid-template-columns:1fr}.j-rpg-avatar{min-height:76px}.battle-avatar{min-height:96px}.j-rpg-grid,.battle-stat-grid,.battle-summary-grid{grid-template-columns:1fr}.j-rpg-mini-header{align-items:flex-start;flex-direction:column}.j-tool-next{width:100%;}.j-rpg-top{align-items:flex-start;flex-direction:column}.j-signal-badge{width:100%;justify-content:center;}} 
 
-        /* ─── Mobile First Polish: TOP tabs only ───────────────────────── */
+        /* ─── Mobile First Polish ───────────────────────────────────────── */
         .j-page-shell{max-width:780px;margin:0 auto;padding:16px 12px 0;}
-        .j-tabs-wrap{
-          max-width:780px;
-          margin:14px auto 0;
-          display:flex;
-          gap:6px;
-          border-bottom:2.5px solid var(--j-ink);
-          overflow-x:auto;
-          white-space:nowrap;
-          scrollbar-width:none;
-          -webkit-overflow-scrolling:touch;
-        }
-        .j-tabs-wrap::-webkit-scrollbar{display:none;}
-        .j-tab{flex:0 0 auto;}
-        .j-mobile-grid,.j-input-pair{min-width:0;}
-        input,textarea,button,select,img{max-width:100%;}
+        .j-tabs-wrap{max-width:780px;margin:14px auto 0;display:flex;gap:6px;border-bottom:2.5px solid var(--j-ink);}
+        .j-mobile-grid{min-width:0;}
+        .j-input-pair{min-width:0;}
+        input, textarea, button, select{max-width:100%;}
+        img{max-width:100%;}
 
         @media(max-width:640px){
-          .j-root{padding-bottom:18px!important;background-size:12px 12px;overflow-x:hidden;}
+          .j-root{padding-bottom:96px;background-size:12px 12px;overflow-x:hidden;}
           .j-header-wrap{padding:8px 8px 0!important;}
           .j-page-shell{padding:10px 8px 0!important;max-width:100%!important;}
           .j-win{border-width:2px;border-radius:12px;box-shadow:2px 2px 0 var(--j-ink);margin-bottom:10px;}
@@ -2231,64 +2234,28 @@ export default function JournalPage() {
           .j-lab,.j-tool-label{font-size:9px!important;letter-spacing:.7px;}
           .j-chip{font-size:11px!important;padding:8px 9px!important;min-height:36px;border-width:1.8px;border-radius:9px;box-shadow:1.5px 1.5px 0 var(--j-ink);}
           .j-btn{min-height:40px;border-width:2px;border-radius:10px;box-shadow:2px 2px 0 var(--j-ink);}
-          .j-in{font-size:13px;padding:10px 10px;min-height:40px;}
+          .j-in{font-size:13px;padding:10px 10px;}
           .j-num{font-size:26px;}
           .j-stat{padding:8px 6px;border-width:2px;box-shadow:2px 2px 0 var(--j-ink);}
           .j-statlab{font-size:7px;}
 
           .j-header-wrap > .j-win{max-width:100%!important;margin:0!important;}
-          .j-header-wrap .j-body{align-items:flex-start!important;gap:8px!important;}
+          .j-header-wrap .j-body{align-items:flex-start!important;gap:10px!important;}
           .j-header-wrap .j-body > div:first-child{width:100%;}
           .j-header-wrap .j-body > div:first-child div:first-child{font-size:28px!important;line-height:.9!important;}
-          .j-header-wrap .j-body > div:first-child div:last-child{font-size:8px!important;letter-spacing:1px!important;}
-          .j-header-wrap .j-body > div:last-child{width:100%;display:grid!important;grid-template-columns:82px 1fr!important;gap:8px!important;align-items:stretch!important;}
-          .j-header-wrap .j-body > div:last-child button{width:100%;min-width:0!important;}
-          .j-header-wrap .j-body > div:last-child > *:only-child{grid-column:1/-1;}
+          .j-header-wrap .j-body > div:last-child{width:100%;display:flex!important;flex-wrap:wrap!important;gap:8px!important;}
+          .j-header-wrap .j-body > div:last-child button{width:100%;}
 
-          /* Tabs stay at TOP on mobile. Do not use bottom/fixed nav here. */
-          .j-tabs-wrap{
-            position:sticky!important;
-            top:0!important;
-            left:auto!important;
-            right:auto!important;
-            bottom:auto!important;
-            z-index:980!important;
-            max-width:none!important;
-            margin:8px -8px 10px!important;
-            padding:8px!important;
-            display:flex!important;
-            gap:6px!important;
-            overflow-x:auto!important;
-            white-space:nowrap!important;
-            border-top:2px solid var(--j-ink)!important;
-            border-bottom:2px solid var(--j-ink)!important;
-            background:rgba(241,233,218,.98)!important;
-            box-shadow:0 3px 0 rgba(90,77,66,.12)!important;
-            -webkit-overflow-scrolling:touch;
-            scrollbar-width:none;
-          }
+          .j-tabs-wrap{position:fixed!important;left:0;right:0;bottom:0;z-index:990;max-width:none!important;margin:0!important;padding:7px 7px calc(7px + env(safe-area-inset-bottom))!important;display:flex!important;gap:6px!important;overflow-x:auto!important;white-space:nowrap!important;border-top:2.5px solid var(--j-ink)!important;border-bottom:0!important;background:rgba(241,233,218,.97)!important;box-shadow:0 -4px 0 rgba(90,77,66,.1);-webkit-overflow-scrolling:touch;}
           .j-tabs-wrap::-webkit-scrollbar{display:none;}
-          .j-tab{
-            flex:0 0 auto!important;
-            min-width:88px!important;
-            min-height:42px!important;
-            border:2px solid var(--j-ink)!important;
-            border-radius:12px!important;
-            background:var(--j-win)!important;
-            padding:9px 10px!important;
-            font-size:10px!important;
-            font-weight:700!important;
-            line-height:1.15!important;
-            text-align:center!important;
-            box-shadow:1.5px 1.5px 0 var(--j-ink);
-          }
-          .j-tab.on{background:var(--j-lav)!important;border-bottom-color:var(--j-ink)!important;color:var(--j-ink)!important;transform:translate(1px,1px);box-shadow:.5px .5px 0 var(--j-ink);}
+          .j-tab{flex:0 0 auto!important;min-width:78px!important;border:2px solid var(--j-ink)!important;border-radius:10px!important;background:var(--j-win)!important;padding:9px 8px!important;font-size:9px!important;line-height:1.15!important;text-align:center!important;box-shadow:1.5px 1.5px 0 var(--j-ink);}
+          .j-tab.on{background:var(--j-lav)!important;border-bottom-color:var(--j-ink)!important;color:var(--j-ink)!important;}
 
           .j-mobile-grid,.j-upload-grid,.j-tools-layout,.battle-layout,.j-open-edit-grid,.j-open-edit-grid.two{grid-template-columns:1fr!important;}
           .j-input-pair{grid-template-columns:1fr 1fr!important;}
           .j-cal-summary-grid,.battle-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
           .j-rpg-grid,.battle-stat-grid{grid-template-columns:1fr!important;}
-          .j-rpg-avatar-row,.battle-main{grid-template-columns:1fr!important;gap:8px!important;}
+          .j-rpg-avatar-row,.battle-main{grid-template-columns:1fr!important;}
           .j-rpg-avatar,.battle-avatar{min-height:80px!important;}
           .battle-score span{font-size:38px!important;}
 
