@@ -93,6 +93,55 @@ const KEY_OLD = "yok_journal_v3";
 const KOPEN = "yok_open_trade";
 const ALERT_ACK_KEY = "yok_journal_alert_ack_date";
 
+// ─── Discipline lock storage keys (ใหม่) ───────────────────────────────────────
+const COOLDOWN_KEY    = "yok_cooldown_until";     // epoch ms string — cooldown 15 นาทีหลัง LOSS 2 ติด
+const HARDLOCK_KEY     = "yok_hardlock_state";     // JSON {date, submitted, reflectionText, submittedAt}
+const FORCED_LOCK_KEY  = "yok_forced_lock_dates";  // JSON string[] — วันที่โดนล็อกข้ามวันจาก pattern ซ้ำ
+
+type HardlockState = { date: string; submitted: boolean; reflectionText: string; submittedAt: string };
+
+const loadCooldownUntil = (): number => { try { return Number(localStorage.getItem(COOLDOWN_KEY) || 0) || 0; } catch { return 0; } };
+const saveCooldownUntil = (ts: number) => { try { if (ts > 0) localStorage.setItem(COOLDOWN_KEY, String(ts)); else localStorage.removeItem(COOLDOWN_KEY); } catch {} };
+
+const loadHardlock = (): HardlockState | null => {
+  try { const s = localStorage.getItem(HARDLOCK_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
+};
+const saveHardlock = (v: HardlockState | null) => {
+  try { if (v) localStorage.setItem(HARDLOCK_KEY, JSON.stringify(v)); else localStorage.removeItem(HARDLOCK_KEY); } catch {}
+};
+
+const loadForcedLockDates = (): string[] => {
+  try { return JSON.parse(localStorage.getItem(FORCED_LOCK_KEY) || "[]"); } catch { return []; }
+};
+const saveForcedLockDates = (v: string[]) => { try { localStorage.setItem(FORCED_LOCK_KEY, JSON.stringify(v)); } catch {} };
+
+function tomorrowStr(dateStr: string) {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().split("T")[0];
+}
+
+function getWeekDatesOf(dateStr: string): string[] {
+  const base = new Date(dateStr + "T00:00:00");
+  const dow = base.getDay();
+  const monday = new Date(base);
+  monday.setDate(base.getDate() - (dow === 0 ? 6 : dow - 1));
+  const out: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    out.push(d.toISOString().split("T")[0]);
+  }
+  return out;
+}
+
+function fmtMMSS(ms: number) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+}
+
 // migrate ข้อมูลจาก v3 → v4 (เพิ่ม status/mode/checklistJson/exitReason ให้ของเก่า)
 function migrateOldTrades(rawTrades: any[]): Trade[] {
   return (rawTrades || []).map((t: any) => ({
@@ -156,6 +205,7 @@ const EMOTIONS: Emotion[] = ["😌 Calm","😎 Confident","😤 FOMO","😰 Fear
 const EXIT_REASONS: ExitReason[] = ["TP Hit","SL Hit","Manual","Rejection","MSS Failed","Other"];
 
 const MAX_TRADES_PER_DAY = 3;
+const COOLDOWN_MS = 15 * 60 * 1000; // 15 นาที
 
 function pad2(n: number) { return String(n).padStart(2, "0"); }
 
@@ -215,6 +265,15 @@ function calcDailyStatus(trades: Trade[], todayStr: string) {
     todayLosses:todayTrades.filter(t=>t.result==="LOSS").length,
     todayBE:todayTrades.filter(t=>t.result==="BE").length,
     todayPL:todayTrades.reduce((s,t)=>s+t.totalPL,0),todayTrades};
+}
+
+function countHardStopDaysThisWeek(trades: Trade[], todayStr: string): number {
+  const weekDates = getWeekDatesOf(todayStr).filter(d => d <= todayStr);
+  let count = 0;
+  for (const d of weekDates) {
+    if (calcDailyStatus(trades, d).isHardStop) count++;
+  }
+  return count;
 }
 
 // ─── PLChart ──────────────────────────────────────────────────────────────────
@@ -281,10 +340,10 @@ function PLChart({trades}:{trades:Trade[]}) {
 }
 
 // ─── DailyStatusBar ───────────────────────────────────────────────────────────
-function DailyStatusBar({status}:{status:ReturnType<typeof calcDailyStatus>}) {
+function DailyStatusBar({status,cooldownRemainingMs,isHardLockToday,isForcedLockToday}:{status:ReturnType<typeof calcDailyStatus>;cooldownRemainingMs:number;isHardLockToday:boolean;isForcedLockToday:boolean}) {
   const {totalToday,lossStreak,isHardStop,isWarnBreak,isDayDone,todayWins,todayLosses,todayBE,todayPL} = status;
-  const barBg=isHardStop?"var(--j-coral)":isWarnBreak?"var(--j-butter)":"var(--j-mint)";
-  const statusTxt=isHardStop?"🛑 STOP — LOSS 3 ติด":isWarnBreak?"⚠️ LOSS 2 ติด — ระวัง":isDayDone?"✓ ครบ 3 ไม้แล้ว":`เหลือ ${status.tradesLeft} ไม้`;
+  const barBg=isForcedLockToday?"#c98a8a":isHardLockToday?"var(--j-coral)":cooldownRemainingMs>0?"var(--j-butter)":isWarnBreak?"var(--j-butter)":"var(--j-mint)";
+  const statusTxt=isForcedLockToday?"🔒 WEEK LOCK — Pattern ซ้ำ":isHardLockToday?"🛑 STOP — LOSS 3 ติด":cooldownRemainingMs>0?`⏸️ Cooldown ${fmtMMSS(cooldownRemainingMs)}`:isWarnBreak?"⚠️ LOSS 2 ติด — ระวัง":isDayDone?"✓ ครบ 3 ไม้แล้ว":`เหลือ ${status.tradesLeft} ไม้`;
   return (
     <div style={{border:"2.5px solid var(--j-ink)",borderRadius:9,overflow:"hidden",boxShadow:"3px 3px 0 var(--j-ink)"}}>
       <div style={{background:barBg,borderBottom:"2px solid var(--j-ink)",padding:"6px 12px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -313,9 +372,19 @@ function DailyStatusBar({status}:{status:ReturnType<typeof calcDailyStatus>}) {
             </div>
           ))}
         </div>
-        {lossStreak>=2&&(
-          <div style={{marginTop:8,background:isHardStop?"var(--j-coral)":"var(--j-butter)",border:"1.5px solid var(--j-ink)",borderRadius:7,padding:"6px 10px",fontFamily:"'DM Mono',monospace",fontSize:10,textAlign:"center"}}>
-            {isHardStop?`🛑 LOSS ${lossStreak} ติดกัน — หยุดเทรดวันนี้เด็ดขาด`:`⚠️ LOSS ${lossStreak} ติดกัน — พัก 1 ชั่วโมงก่อนไม้สุดท้าย`}
+        {isForcedLockToday && (
+          <div style={{marginTop:8,background:"#c98a8a",border:"1.5px solid var(--j-ink)",borderRadius:7,padding:"6px 10px",fontFamily:"'DM Mono',monospace",fontSize:10,textAlign:"center",color:"var(--j-win)",fontWeight:700}}>
+            🔒 ล็อกทั้งวัน — LOSS 3 ติดเกิน 2 ครั้งในสัปดาห์นี้ ป้องกัน pattern ซ้ำ
+          </div>
+        )}
+        {!isForcedLockToday && isHardLockToday && (
+          <div style={{marginTop:8,background:"var(--j-coral)",border:"1.5px solid var(--j-ink)",borderRadius:7,padding:"6px 10px",fontFamily:"'DM Mono',monospace",fontSize:10,textAlign:"center"}}>
+            🛑 LOSS 3 ติดกัน — หยุดเทรดวันนี้เด็ดขาด
+          </div>
+        )}
+        {!isForcedLockToday && !isHardLockToday && cooldownRemainingMs>0 && (
+          <div style={{marginTop:8,background:"var(--j-butter)",border:"1.5px solid var(--j-ink)",borderRadius:7,padding:"6px 10px",fontFamily:"'DM Mono',monospace",fontSize:10,textAlign:"center"}}>
+            ⏸️ LOSS 2 ติด — พักบังคับ เหลือ {fmtMMSS(cooldownRemainingMs)}
           </div>
         )}
       </div>
@@ -1406,6 +1475,82 @@ function FreeAICoachPanel({trades,dailyStatus,setLightbox}:{trades:Trade[];daily
   );
 }
 
+// ─── Discipline Lock overlay components (ใหม่) ────────────────────────────────
+function CooldownBanner({remainingMs}:{remainingMs:number}) {
+  return (
+    <div className="j-btn open-badge" style={{padding:"9px 14px",background:"var(--j-butter)",fontSize:12,cursor:"not-allowed",display:"flex",alignItems:"center",gap:8}}>
+      <span>⏸️ พัก 15 นาที</span>
+      <span style={{fontFamily:"'VT323',monospace",fontSize:18}}>{fmtMMSS(remainingMs)}</span>
+    </div>
+  );
+}
+
+function HardLockBanner({onWriteReflection,submitted}:{onWriteReflection:()=>void;submitted:boolean}) {
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+      <div style={{padding:"9px 14px",background:"var(--j-coral)",border:"2.5px solid var(--j-ink)",borderRadius:9,fontSize:12,fontFamily:"'Fredoka',sans-serif",fontWeight:700,boxShadow:"3px 3px 0 var(--j-ink)"}}>
+        🛑 หยุดเทรดวันนี้แล้ว
+      </div>
+      {!submitted && (
+        <button onClick={onWriteReflection} className="j-btn" style={{padding:"9px 14px",background:"var(--j-butter)",fontSize:12}}>
+          📝 เขียนสรุปก่อนปิดแอป
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ForcedLockBanner() {
+  return (
+    <div style={{padding:"9px 14px",background:"#c98a8a",border:"2.5px solid var(--j-ink)",borderRadius:9,fontSize:12,fontFamily:"'Fredoka',sans-serif",fontWeight:700,color:"var(--j-win)",boxShadow:"3px 3px 0 var(--j-ink)"}}>
+      🔒 ล็อกทั้งวัน — Pattern ซ้ำในสัปดาห์นี้
+    </div>
+  );
+}
+
+function ReflectionModal({onSubmit,onClose,initialText}:{onSubmit:(text:string)=>void;onClose:()=>void;initialText:string}) {
+  const [text,setText] = useState(initialText);
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20,background:"rgba(42,31,20,.9)",backdropFilter:"blur(3px)"}}>
+      <div className="j-win" style={{maxWidth:420,width:"100%"}}>
+        <div className="j-bar" style={{background:"var(--j-coral)"}}>
+          <span className="j-t">📝 สรุปก่อนปิดแอป — บังคับกรอก</span>
+        </div>
+        <div className="j-body">
+          <div style={{fontSize:48,textAlign:"center",marginBottom:10}}>🛑</div>
+          <div style={{fontFamily:"'Fredoka',sans-serif",fontSize:16,fontWeight:700,textAlign:"center",marginBottom:6}}>
+            วันนี้แพ้ให้ใจตัวเอง
+          </div>
+          <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--j-soft)",textAlign:"center",marginBottom:16,lineHeight:1.7}}>
+            เขียนสรุปสั้นๆ ก่อนปิดแอป — เกิดอะไรขึ้น และพรุ่งนี้จะทำยังไงให้ดีขึ้น<br/>เพื่อไม่ให้ pattern นี้เกิดซ้ำ
+          </div>
+          <label className="j-lab">สิ่งที่เกิดขึ้นวันนี้ / สิ่งที่จะทำพรุ่งนี้</label>
+          <textarea
+            value={text}
+            onChange={e=>setText(e.target.value)}
+            rows={5}
+            placeholder="เช่น เข้าไม้ที่ 3 ทั้งที่ checklist ไม่ครบ เพราะอยากเอาคืน พรุ่งนี้จะรอ cooldown ให้ครบก่อนเปิดไม้ใหม่..."
+            className="j-in"
+            style={{resize:"none",fontSize:13,fontFamily:"'Fredoka'",marginBottom:14}}
+            autoFocus
+          />
+          <button
+            onClick={()=>{ if(text.trim().length>=10) onSubmit(text.trim()); }}
+            disabled={text.trim().length<10}
+            className="j-btn w-full"
+            style={{padding:14,background:text.trim().length>=10?"var(--j-mint)":"#e3d9c4",fontSize:14}}
+          >
+            {text.trim().length<10 ? `พิมพ์อีก ${10-text.trim().length} ตัวอักษร` : "✓ บันทึกสรุป"}
+          </button>
+          <button onClick={onClose} className="j-chip off" style={{width:"100%",marginTop:8,fontSize:11,textAlign:"center"}}>
+            ปิดไว้ก่อน (ยังต้องกรอกทีหลัง)
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function JournalPage() {
   const [trades,setTrades]     = useState<Trade[]>([]);
@@ -1422,6 +1567,13 @@ export default function JournalPage() {
   const [showAlert,setShowAlert] = useState(false);
   const [uploading,setUploading] = useState(false);
   const [mounted,setMounted] = useState(false);
+
+  // ── Discipline lock states (ใหม่) ──────────────────────────────────────────
+  const [cooldownUntil,setCooldownUntil]   = useState(0);
+  const [nowTick,setNowTick]               = useState(Date.now());
+  const [hardlock,setHardlock]             = useState<HardlockState|null>(null);
+  const [forcedLockDates,setForcedLockDates] = useState<string[]>([]);
+  const [showReflection,setShowReflection] = useState(false);
 
   // ── Calendar states ────────────────────────────────────────────────────────
   const [calRef,setCalRef]           = useState(()=>{ const d=new Date(); return new Date(d.getFullYear(),d.getMonth(),1); });
@@ -1460,6 +1612,13 @@ export default function JournalPage() {
   const dailyStatus = calcDailyStatus(trades, todayStr);
   const isCent      = accountType==="cent";
   const stats       = calcStats(trades);
+
+  // ── Discipline lock derived state ──────────────────────────────────────────
+  const cooldownRemainingMs = Math.max(0, cooldownUntil - nowTick);
+  const isForcedLockToday = forcedLockDates.includes(todayStr);
+  const isHardLockToday = (hardlock?.date === todayStr) || dailyStatus.isHardStop || isForcedLockToday;
+  const isLockedFromTrading = isForcedLockToday || isHardLockToday || cooldownRemainingMs > 0;
+  const needsReflection = isHardLockToday && !isForcedLockToday && !(hardlock?.date===todayStr && hardlock?.submitted);
 
   const setEntryTimeAuto = (time: string) => {
     const clean = time.slice(0,5);
@@ -1523,7 +1682,40 @@ export default function JournalPage() {
     };
     loadData();
     const op=loadOpen(); setOpenTrade(op);
+
+    // ── โหลดสถานะ lock ที่ค้างไว้จาก localStorage ──
+    setCooldownUntil(loadCooldownUntil());
+    setHardlock(loadHardlock());
+    setForcedLockDates(loadForcedLockDates());
   },[]);
+
+  // ── Countdown ticker (อัปเดตทุกวินาทีตอน cooldown ทำงาน) ────────────────────
+  useEffect(()=>{
+    if (cooldownRemainingMs <= 0) return;
+    const id = setInterval(()=>setNowTick(Date.now()), 1000);
+    return ()=>clearInterval(id);
+  },[cooldownRemainingMs>0]);
+
+  // เคลียร์ cooldown อัตโนมัติเมื่อหมดเวลา
+  useEffect(()=>{
+    if (cooldownUntil > 0 && Date.now() >= cooldownUntil) {
+      saveCooldownUntil(0);
+      setCooldownUntil(0);
+    }
+  },[nowTick, cooldownUntil]);
+
+  // ── เตือนก่อนปิดแท็บถ้ายังไม่ได้เขียนสรุป (Hard Lock วันนี้) ──────────────────
+  useEffect(()=>{
+    const handler = (e: BeforeUnloadEvent) => {
+      if (needsReflection) {
+        e.preventDefault();
+        e.returnValue = "";
+        return "";
+      }
+    };
+    window.addEventListener("beforeunload", handler);
+    return ()=>window.removeEventListener("beforeunload", handler);
+  },[needsReflection]);
 
   // ── Loss alert ────────────────────────────────────────────────────────────
   // แจ้งเตือนวันละ 1 ครั้ง หลังผู้ใช้กดรับทราบแล้วจะไม่เด้งซ้ำ
@@ -1571,6 +1763,7 @@ export default function JournalPage() {
 
   // ── Save Open Trade (Pre-entry) ────────────────────────────────────────────
   const saveOpenTrade = async () => {
+    if (isLockedFromTrading) return; // กันเหนียว: ล็อกอยู่ห้ามเปิดไม้เด็ดขาด
     if(!selMode||!entryPrice||!slPrice) return;
     const trade: Trade = {
       id:uid(), status:"OPEN", mode:selMode,
@@ -1589,7 +1782,7 @@ export default function JournalPage() {
     setView("dashboard");
   };
 
-  // ── Save Closed Trade (Post-exit) ──────────────────────────────────────────
+  // ── Save Closed Trade (Post-exit) — ตรงนี้คือจุดที่ตรวจกฎ lock ทั้งหมด ────────
   const saveClosedTrade = async () => {
     if(!openTrade||!exitPrices.length) return;
     const ep=Number(openTrade.entryPrice), lot=openTrade.lotPerOrder;
@@ -1607,6 +1800,36 @@ export default function JournalPage() {
     const updated=[closed,...trades.filter(t=>t.id!==closed.id)];
     setTrades(updated); save(updated);
     setOpenTrade(null); saveOpen(null);
+
+    // ── ตรวจ Loss Streak Rules หลังบันทึกไม้นี้ ──
+    const newStatus = calcDailyStatus(updated, closed.date);
+    if (closed.date === todayStr) {
+      if (newStatus.isHardStop) {
+        // LOSS 3 ติด → hard lock ทั้งวัน เคลียร์ cooldown เดิม
+        saveCooldownUntil(0); setCooldownUntil(0);
+        const hl: HardlockState = { date: todayStr, submitted:false, reflectionText:"", submittedAt:"" };
+        saveHardlock(hl); setHardlock(hl);
+
+        // เช็ค pattern ซ้ำในสัปดาห์: hard-stop ครบ 3 วันขึ้นไปในสัปดาห์นี้ → ล็อกวันถัดไปด้วย
+        const weekCount = countHardStopDaysThisWeek(updated, todayStr);
+        if (weekCount >= 3) {
+          const tmr = tomorrowStr(todayStr);
+          const existing = loadForcedLockDates();
+          if (!existing.includes(tmr)) {
+            const next = [...existing, tmr];
+            saveForcedLockDates(next); setForcedLockDates(next);
+          }
+        }
+      } else if (newStatus.lossStreak === 2) {
+        // LOSS 2 ติด → cooldown บังคับ 15 นาที
+        const until = Date.now() + COOLDOWN_MS;
+        saveCooldownUntil(until); setCooldownUntil(until); setNowTick(Date.now());
+      } else {
+        // WIN/BE ทำให้ streak หลุด — เคลียร์ cooldown เดิม (ถ้ามี) แต่ hard lock ของวันไม่ถูกยกเลิก
+        saveCooldownUntil(0); setCooldownUntil(0);
+      }
+    }
+
     // supabase
     const {data:{user}}=await supabase.auth.getUser();
     if(user){
@@ -1625,6 +1848,12 @@ export default function JournalPage() {
     setExitPrices([]); setExitInput(""); setPasteInput(""); setExitReason(""); setExitNotes(""); setScreenshotUrl("");
     sparkle(); setSaving(true); setTimeout(()=>setSaving(false),900);
     setView("dashboard");
+  };
+
+  const submitReflection = (text: string) => {
+    const hl: HardlockState = { date: todayStr, submitted:true, reflectionText:text, submittedAt:new Date().toISOString() };
+    saveHardlock(hl); setHardlock(hl);
+    setShowReflection(false);
   };
 
   const uploadScreenshot=async(file:File)=>{
@@ -1882,7 +2111,7 @@ export default function JournalPage() {
           .j-header-wrap .j-body{align-items:flex-start!important;gap:10px!important;}
           .j-header-wrap .j-body > div:first-child{width:100%;}
           .j-header-wrap .j-body > div:first-child div:first-child{font-size:28px!important;line-height:.9!important;}
-          .j-header-wrap .j-body > div:last-child{width:100%;display:grid!important;grid-template-columns:70px 1fr!important;gap:8px!important;}
+          .j-header-wrap .j-body > div:last-child{width:100%;display:flex!important;flex-wrap:wrap!important;gap:8px!important;}
           .j-header-wrap .j-body > div:last-child button{width:100%;}
 
           .j-tabs-wrap{position:fixed!important;left:0;right:0;bottom:0;z-index:990;max-width:none!important;margin:0!important;padding:7px 7px calc(7px + env(safe-area-inset-bottom))!important;display:flex!important;gap:6px!important;overflow-x:auto!important;white-space:nowrap!important;border-top:2.5px solid var(--j-ink)!important;border-bottom:0!important;background:rgba(241,233,218,.97)!important;box-shadow:0 -4px 0 rgba(90,77,66,.1);-webkit-overflow-scrolling:touch;}
@@ -1933,9 +2162,17 @@ export default function JournalPage() {
               <div style={{fontFamily:"'VT323',monospace",fontSize:34,lineHeight:.8}}>TRADING JOURNAL</div>
               <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,letterSpacing:2,color:"var(--j-soft)",marginTop:4}}>✦ SMC PRO MAX · M15/M5/M1 ✦</div>
             </div>
-            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
               <button onClick={()=>setAccountType(accountType==="cent"?"standard":"cent")} className="j-chip" style={{fontSize:11,background:accountType==="cent"?"var(--j-butter)":"var(--j-lav)"}}>{accountType==="cent"?"Cent":"Std"}</button>
-              {openTrade ? (
+
+              {/* ── Discipline Lock priority: Forced > HardLock > Cooldown > Open Trade > New Trade ── */}
+              {isForcedLockToday ? (
+                <ForcedLockBanner/>
+              ) : isHardLockToday ? (
+                <HardLockBanner onWriteReflection={()=>setShowReflection(true)} submitted={hardlock?.date===todayStr && hardlock?.submitted}/>
+              ) : cooldownRemainingMs > 0 ? (
+                <CooldownBanner remainingMs={cooldownRemainingMs}/>
+              ) : openTrade ? (
                 <button onClick={()=>setView("exit")} className="j-btn open-badge" style={{padding:"9px 14px",background:"var(--j-butter)",fontSize:12}}>
                   🟡 ไม้ค้างอยู่! → กรอกจุดออก
                 </button>
@@ -1955,7 +2192,7 @@ export default function JournalPage() {
           <button onClick={()=>setView("calendar" as any)} className={`j-tab ${view==="calendar"?"on":""}`}>📅 Calendar</button>
           <button onClick={()=>setView("tools")} className={`j-tab ${view==="tools"?"on":""}`}>⚔️ Battle Coach</button>
           <button onClick={()=>setView("aiCoach")} className={`j-tab ${view==="aiCoach"?"on":""}`}>🤖 AI Coach</button>
-          {openTrade&&(
+          {openTrade&&!isLockedFromTrading&&(
             <button onClick={()=>setView("exit")} className={`j-tab ${view==="exit"?"on":""}`} style={{color:"#d4a65f",fontWeight:600}}>
               🟡 OPEN TRADE
             </button>
@@ -1973,7 +2210,7 @@ export default function JournalPage() {
         {/* ── DASHBOARD ── */}
         {view==="dashboard"&&(
           <div className="space-y-4 j-tabcontent">
-            <DailyStatusBar status={dailyStatus}/>
+            <DailyStatusBar status={dailyStatus} cooldownRemainingMs={cooldownRemainingMs} isHardLockToday={isHardLockToday} isForcedLockToday={isForcedLockToday}/>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="j-stat" style={{background:"var(--j-mint)"}}><div className="j-num">{stats.winRate.toFixed(0)}%</div><div className="j-statlab">Win Rate</div></div>
               <div className="j-stat" style={{background:stats.totalPL>=0?"var(--j-sky)":"var(--j-coral)"}}><div className="j-num">{money(stats.totalPL)}</div><div className="j-statlab">Total P/L</div></div>
@@ -2062,6 +2299,19 @@ export default function JournalPage() {
 
         {/* ── CHECKLIST (Pre-Entry) ── */}
         {view==="checklist"&&(
+          isLockedFromTrading ? (
+            <div className="space-y-4 j-tabcontent" style={{maxWidth:560,margin:"0 auto"}}>
+              <Win title="🔒 ล็อกอยู่ — เข้าไม้ไม่ได้ตอนนี้" color="var(--j-coral)">
+                <div style={{textAlign:"center",padding:"12px 4px"}}>
+                  <div style={{fontSize:44,marginBottom:8}}>{isForcedLockToday?"🔒":isHardLockToday?"🛑":"⏸️"}</div>
+                  <div style={{fontFamily:"'Fredoka',sans-serif",fontSize:15,fontWeight:700,marginBottom:10}}>
+                    {isForcedLockToday?"วันนี้ล็อกทั้งวัน (Pattern ซ้ำในสัปดาห์)":isHardLockToday?"LOSS 3 ติด — หยุดเทรดวันนี้":`พักบังคับ เหลือ ${fmtMMSS(cooldownRemainingMs)}`}
+                  </div>
+                  <button onClick={()=>setView("dashboard")} className="j-btn" style={{padding:"10px 18px",background:"var(--j-mint)",fontSize:13}}>← กลับ Dashboard</button>
+                </div>
+              </Win>
+            </div>
+          ) : (
           <div className="space-y-4 j-tabcontent" style={{maxWidth:560,margin:"0 auto"}}>
             <div className="flex items-center gap-3">
               <button onClick={()=>setView("dashboard")} className="j-chip off" style={{fontSize:12}}>← Cancel</button>
@@ -2219,13 +2469,14 @@ export default function JournalPage() {
                 </div>
                 <div style={{display:"flex",gap:8}}>
                   <button onClick={()=>setStep("checklist")} className="j-chip off" style={{fontSize:12}}>← กลับ</button>
-                  <button onClick={saveOpenTrade} disabled={!entryPrice||!slPrice} className="j-btn" style={{flex:1,padding:"13px",background:"var(--j-coral)",fontSize:14}}>
+                  <button onClick={saveOpenTrade} disabled={!entryPrice||!slPrice||isLockedFromTrading} className="j-btn" style={{flex:1,padding:"13px",background:"var(--j-coral)",fontSize:14}}>
                     🟡 บันทึกไม้ — รอกรอกจุดออก
                   </button>
                 </div>
               </Win>
             )}
           </div>
+          )
         )}
 
         {/* ── EXIT (Post-Exit) ── */}
@@ -2554,6 +2805,15 @@ export default function JournalPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Reflection Modal — บังคับกรอกก่อนปิดแอปตอน Hard Lock */}
+      {showReflection && (
+        <ReflectionModal
+          initialText={hardlock?.reflectionText || ""}
+          onSubmit={submitReflection}
+          onClose={()=>setShowReflection(false)}
+        />
       )}
 
       {/* Lightbox */}
