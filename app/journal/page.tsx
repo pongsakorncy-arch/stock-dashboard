@@ -1120,360 +1120,267 @@ function coachReasons(s: CoachState, best: CoachScore, dailyStatus: ReturnType<t
   return rs.slice(0,3);
 }
 
+// resize รูปก่อนส่ง AI — ลด token 60-70% ไม่กระทบคุณภาพการวิเคราะห์
+function resizeImage(dataUrl: string, maxW = 800, maxH = 600): Promise<string> {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxW / img.width, maxH / img.height);
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", 0.82)); // jpeg 82% ดีพอสำหรับกราฟ
+    };
+    img.onerror = () => resolve(dataUrl); // fallback ถ้า resize ไม่ได้
+    img.src = dataUrl;
+  });
+}
+
 function fileToDataUrl(file: File, cb: (v:string)=>void) {
   const reader = new FileReader();
   reader.onload = () => cb(String(reader.result || ""));
   reader.readAsDataURL(file);
 }
 
-function FreeAICoachPanel({trades,dailyStatus,setLightbox}:{trades:Trade[];dailyStatus:ReturnType<typeof calcDailyStatus>;setLightbox:(v:string|null)=>void}) {
-  const [coach,setCoach] = useState<CoachState>(defaultCoachState());
+function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof calcDailyStatus>;setLightbox:(v:string|null)=>void}) {
   const [htfImg,setHtfImg] = useState("");
   const [ltfImg,setLtfImg] = useState("");
-  const [aiLoading,setAiLoading] = useState(false);
-  const [aiError,setAiError] = useState("");
-  const [aiResult,setAiResult] = useState<any>(null);
+  const [loading,setLoading] = useState(false);
+  const [error,setError] = useState("");
+  const [result,setResult] = useState<any>(null);
 
-  // ── Yokimura Action Plan fields (manual, free, no API) ─────────────────────
-  const [liqTarget,setLiqTarget] = useState("");
-  const [interestFrom,setInterestFrom] = useState("");
-  const [interestTo,setInterestTo] = useState("");
-  const [entryFrom,setEntryFrom] = useState("");
-  const [entryTo,setEntryTo] = useState("");
-  const [planSL,setPlanSL] = useState("");
-  const [planTP1,setPlanTP1] = useState("");
-  const [planTP2,setPlanTP2] = useState("");
-  const [invalidPrice,setInvalidPrice] = useState("");
-  const [coachNote,setCoachNote] = useState("");
+  const canAnalyze = htfImg && ltfImg && !loading;
 
-  const scores = calcFreeCoachScores(coach,dailyStatus);
-  const best = scores[0];
-  const verdict = coachVerdict(best,coach,dailyStatus);
-  const reasons = coachReasons(coach,best,dailyStatus);
-
-  const waitFor = [
-    !coach.liquidity ? `รอเคลียร์ $$$${liqTarget ? ` ที่ ${liqTarget}` : " ที่ Low/High สำคัญก่อน"}` : "Liquidity เคลียร์แล้ว",
-    !coach.mss ? "รอ MSS ชัดก่อน" : "MSS ผ่าน",
-    !coach.retest ? "รอ Retest ตามระบบก่อน" : "Retest ผ่าน",
-    !coach.rejection ? "รอ Rejection / Displacement" : "Rejection ผ่าน",
-    !coach.volume ? "รอ Volume Confirm" : "Volume Confirm ผ่าน",
-  ];
-
-  const interestZoneText = interestFrom || interestTo
-    ? `${interestFrom || "?"} - ${interestTo || "?"}`
-    : "ยังไม่ได้กำหนดโซน";
-
-  const entryZoneText = entryFrom || entryTo
-    ? `${entryFrom || "?"} - ${entryTo || "?"}`
-    : "รอให้เข้าโซนก่อน";
-
-  const invalidText = invalidPrice
-    ? `ถ้าปิดหลุด/ทะลุ ${invalidPrice} = ยกเลิกแผนนี้`
-    : "ยังไม่ได้กำหนดจุดยกเลิกแผน";
-
-  const next3 = [
-    coach.breakoutClose ? "ถ้ากลับเข้าในกรอบ = ระวัง False Break" : "ถ้าปิด Breakout ชัด + Volume มา = Run Trend มีน้ำหนักขึ้น",
-    coach.mss ? "ถ้า Retest แล้วไม่หลุดโครงสร้าง = รอ Trigger เข้า" : "ถ้ายังไม่มี MSS = ห้ามรีบเข้า",
-    coach.liquidity ? "ถ้า Sweep แล้ว Reject ต่อ = Setup แข็งแรงขึ้น" : "จับตาว่าราคาจะไปเคลียร์ $$$ ก่อนหรือไม่",
-  ];
-
-  const setK = <K extends keyof CoachState>(key: K, value: CoachState[K]) => setCoach(v=>({...v,[key]:value}));
-
-  const FieldBtn = ({on,label,click}:{on:boolean;label:string;click:()=>void}) => (
-    <button onClick={click} className={`j-chip ${on?"":"off"}`} style={{fontSize:10,background:on?"var(--j-mint)":"var(--j-win)"}}>
-      {on ? "✓ " : "□ "}{label}
-    </button>
-  );
-
-  const applyGeminiResult = (data: any) => {
-    const checklist = data?.checklist || {};
-    const bias: CoachBias = data?.bias === "Bear" ? "Bear" : data?.bias === "Neutral" ? "Neutral" : "Bull";
-    const cycle: CoachCycle = data?.cycle === "Trend" ? "Trend" : data?.cycle === "Sideway" ? "Sideway" : "Pullback";
-
-    setCoach(v => ({
-      ...v,
-      direction: bias === "Bear" ? "SELL" : bias === "Bull" ? "BUY" : v.direction,
-      bias,
-      cycle,
-      htfZone: Boolean(checklist.htfZone ?? checklist.obDzSz ?? v.htfZone),
-      bosChoch: Boolean(checklist.bosChoch ?? v.bosChoch),
-      obDzSz: Boolean(checklist.obDzSz ?? v.obDzSz),
-      liquidity: Boolean(checklist.liquidity ?? v.liquidity),
-      rejection: Boolean(checklist.rejection ?? v.rejection),
-      mss: Boolean(checklist.mss ?? v.mss),
-      retest: Boolean(checklist.retest ?? v.retest),
-      volume: Boolean(checklist.volumeConfirm ?? checklist.volume ?? v.volume),
-      breakoutClose: Boolean(checklist.breakoutClose ?? v.breakoutClose),
-      noFomo: Boolean(checklist.noFomo ?? true),
-    }));
-  };
-
-  const analyzeWithGemini = async () => {
-    setAiLoading(true);
-    setAiError("");
-
+  const analyze = async () => {
+    if(!canAnalyze) return;
+    setLoading(true); setError(""); setResult(null);
     try {
-      const payload = {
-        direction: coach.direction,
-        bias: coach.bias,
-        cycle: coach.cycle,
-        lossesToday: dailyStatus.todayLosses,
-        checklist: {
-          htfZone: coach.htfZone,
-          liquidity: coach.liquidity,
-          bosChoch: coach.bosChoch,
-          obDzSz: coach.obDzSz,
-          mss: coach.mss,
-          retest: coach.retest,
-          rejection: coach.rejection,
-          volumeConfirm: coach.volume,
-          breakoutClose: coach.breakoutClose,
-          noFomo: coach.noFomo,
-          rrGood: coach.rrGood,
-          nearRange: coach.nearRange,
-          pa2: coach.pa2,
-          dirConfirm: coach.dirConfirm,
-        },
-        plan: {
-          liquidityTarget: liqTarget,
-          interestZone: interestZoneText,
-          entryZone: entryZoneText,
-          stopLoss: planSL,
-          takeProfit1: planTP1,
-          takeProfit2: planTP2,
-          invalidation: invalidPrice,
-        },
-      };
-
+      const [htfResized, ltfResized] = await Promise.all([
+        resizeImage(htfImg), resizeImage(ltfImg),
+      ]);
       const res = await fetch("/api/ai/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ htfImage:htfResized, ltfImage:ltfResized, lossesToday:dailyStatus.todayLosses }),
       });
-
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || data?.message || "Rule Engine failed");
-
-      setAiResult(data);
-    } catch (err: any) {
-      setAiError(err?.message || "Analyze failed");
+      if(!res.ok) throw new Error(data?.error || data?.message || "API error");
+      setResult(data);
+    } catch(e:any) {
+      setError(e?.message || "Analyze failed");
     } finally {
-      setAiLoading(false);
+      setLoading(false);
     }
   };
 
-  const UploadBox = ({title,img,setImg}:{title:string;img:string;setImg:(v:string)=>void}) => (
-    <div style={{border:"2px dashed var(--j-ink)",borderRadius:10,padding:10,background:"#fbf6ea"}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8}}>
-        <b style={{fontFamily:"'DM Mono',monospace",fontSize:11}}>{title}</b>
-        {img && <button onClick={()=>setImg("")} className="j-chip off" style={{fontSize:9}}>clear</button>}
+  const UploadBox = ({title,label,img,setImg}:{title:string;label:string;img:string;setImg:(v:string)=>void}) => (
+    <div style={{border:"2.5px solid var(--j-ink)",borderRadius:10,overflow:"hidden",boxShadow:"3px 3px 0 var(--j-ink)"}}>
+      <div style={{background:"var(--j-lav)",borderBottom:"2px solid var(--j-ink)",padding:"6px 12px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,fontWeight:600}}>{title}</span>
+        {img && <button onClick={()=>setImg("")} style={{fontFamily:"'DM Mono',monospace",fontSize:9,border:"1.5px solid var(--j-ink)",borderRadius:5,padding:"2px 7px",cursor:"pointer",background:"var(--j-coral)"}}>✕ clear</button>}
       </div>
-      <input
-        type="file"
-        accept="image/*"
-        onChange={e=>{ const f=e.target.files?.[0]; if(f) fileToDataUrl(f,setImg); }}
-        style={{fontFamily:"'DM Mono',monospace",fontSize:10,width:"100%"}}
-      />
       {img ? (
-        <img src={img} onClick={()=>setLightbox(img)} style={{width:"100%",maxHeight:190,objectFit:"cover",marginTop:9,border:"2px solid var(--j-ink)",borderRadius:8,cursor:"zoom-in"}}/>
+        <img src={img} onClick={()=>setLightbox(img)} style={{width:"100%",maxHeight:180,objectFit:"cover",cursor:"zoom-in",display:"block"}}/>
       ) : (
-        <div style={{height:92,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)"}}>
-          upload screenshot
-        </div>
+        <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:130,cursor:"pointer",background:"#fbf6ea",gap:8}}>
+          <span style={{fontSize:28}}>📸</span>
+          <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)"}}>{label}</span>
+          <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0]; if(f) fileToDataUrl(f,setImg);}}/>
+        </label>
       )}
     </div>
   );
 
+  const verdictColor = result?.verdict === "เข้า" ? "var(--j-mint)" : result?.verdict === "รอ" ? "var(--j-butter)" : result?.verdict ? "var(--j-coral)" : "var(--j-win)";
+  const verdictEmoji = result?.verdict === "เข้า" ? "🟢" : result?.verdict === "รอ" ? "🟡" : result?.verdict ? "🔴" : "⬜";
+  const biasColor = result?.bias === "Bull" ? "var(--j-mint)" : result?.bias === "Bear" ? "var(--j-coral)" : "var(--j-lav)";
+
+  const SETUP_KEYS = [
+    {key:"smcProMax",label:"SMC Pro Max",emoji:"🔵"},
+    {key:"pullback",label:"Pullback",emoji:"🟠"},
+    {key:"sidewayRange",label:"Sideway Range",emoji:"🟦"},
+    {key:"breakoutRunTrend",label:"Breakout / Run Trend",emoji:"🟡"},
+    {key:"m5Reversal",label:"M5 Reversal",emoji:"🟢"},
+  ];
+
   return (
-    <div className="j-tools-screen">
-      <Win title="🤖 YOKIMURA AI COACH — RULE ENGINE" color="var(--j-lav)">
-        <div className="j-mobile-grid j-upload-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          <UploadBox title="HTF Screenshot" img={htfImg} setImg={setHtfImg}/>
-          <UploadBox title="LTF Screenshot" img={ltfImg} setImg={setLtfImg}/>
-        </div>
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
 
-        <div style={{marginTop:10,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-          <button
-            onClick={analyzeWithGemini}
-            disabled={aiLoading}
-            className="j-chip"
-            style={{
-              fontSize:12,
-              background:aiLoading ? "#e3d9c4" : "var(--j-lav)",
-              opacity: aiLoading ? 0.65 : 1,
-              cursor: aiLoading ? "not-allowed" : "pointer",
-              boxShadow:"2px 2px 0 var(--j-ink)"
-            }}
-          >
-            {aiLoading ? "⏳ Calculating..." : "🧠 คำนวณคะแนน Rule Engine"}
-          </button>
-          {aiError && <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#d4685f"}}>{aiError}</span>}
-          {aiResult && !aiError && <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#5fae89"}}>✓ Rule Engine updated</span>}
-        </div>
+      {/* Upload */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <UploadBox title="📊 HTF — M15" label="อัปโหลด screenshot M15" img={htfImg} setImg={setHtfImg}/>
+        <UploadBox title="📈 LTF — M5/M1" label="อัปโหลด screenshot M5/M1" img={ltfImg} setImg={setLtfImg}/>
+      </div>
 
-        {aiResult && (
-          <div style={{marginTop:10,border:"2px solid var(--j-ink)",borderRadius:10,padding:10,background:"#fbf6ea"}}>
-            <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",marginBottom:4}}>RULE ENGINE READ</div>
-            <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,lineHeight:1.6}}>
-              <b>Bias:</b> {aiResult.bias || "-"} · <b>Cycle:</b> {aiResult.cycle || "-"} · <b>Setup:</b> {aiResult.recommendedSetup || "-"} · <b>Verdict:</b> {aiResult.verdict || "-"}
+      {/* Analyze button */}
+      <button onClick={analyze} disabled={!canAnalyze}
+        style={{width:"100%",padding:"14px",border:"2.5px solid var(--j-ink)",borderRadius:10,
+          cursor:canAnalyze?"pointer":"not-allowed",
+          background:loading?"#e3d9c4":canAnalyze?"var(--j-lav)":"#e3d9c4",
+          fontFamily:"'Fredoka',sans-serif",fontWeight:700,fontSize:16,
+          boxShadow:canAnalyze?"3px 3px 0 var(--j-ink)":"none",
+          opacity:(!htfImg||!ltfImg)?0.5:1}}>
+        {loading ? "⏳ AI กำลังวิเคราะห์กราฟ..." : (!htfImg||!ltfImg) ? "📸 อัปโหลดรูปทั้ง 2 ใบก่อน" : "🧠 ANALYZE — วิเคราะห์กราฟ"}
+      </button>
+
+      {error && (
+        <div style={{background:"var(--j-coral)",border:"2px solid var(--j-ink)",borderRadius:9,padding:"10px 14px",fontFamily:"'DM Mono',monospace",fontSize:11}}>
+          ❌ {error}
+        </div>
+      )}
+
+      {/* Result */}
+      {result && (<>
+
+        {/* Verdict + Bias */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <div style={{background:verdictColor,border:"2.5px solid var(--j-ink)",borderRadius:10,padding:"14px",boxShadow:"3px 3px 0 var(--j-ink)",textAlign:"center"}}>
+            <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",textTransform:"uppercase",marginBottom:4}}>Verdict</div>
+            <div style={{fontFamily:"'VT323',monospace",fontSize:42,lineHeight:1}}>{verdictEmoji} {result.verdict}</div>
+            {result.verdictReason && <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,marginTop:6,lineHeight:1.5}}>{result.verdictReason}</div>}
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <div style={{background:biasColor,border:"2.5px solid var(--j-ink)",borderRadius:10,padding:"10px 14px",boxShadow:"2px 2px 0 var(--j-ink)",flex:1}}>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",textTransform:"uppercase"}}>HTF Bias</div>
+              <div style={{fontFamily:"'VT323',monospace",fontSize:28}}>{result.bias === "Bull" ? "▲ Bull" : result.bias === "Bear" ? "▼ Bear" : "→ Neutral"}</div>
             </div>
-            {!!aiResult.reasons?.length && (
-              <div style={{marginTop:6,fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",lineHeight:1.6}}>
-                {aiResult.reasons.slice(0,3).map((r:string,i:number)=><div key={i}>• {r}</div>)}
-              </div>
-            )}
+            <div style={{background:"var(--j-sky)",border:"2.5px solid var(--j-ink)",borderRadius:10,padding:"10px 14px",boxShadow:"2px 2px 0 var(--j-ink)",flex:1}}>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",textTransform:"uppercase"}}>Cycle</div>
+              <div style={{fontFamily:"'VT323',monospace",fontSize:28}}>{result.cycle}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Setup Scores */}
+        <div style={{background:"var(--j-win)",border:"2.5px solid var(--j-ink)",borderRadius:10,overflow:"hidden",boxShadow:"3px 3px 0 var(--j-ink)"}}>
+          <div style={{background:"var(--j-butter)",borderBottom:"2px solid var(--j-ink)",padding:"7px 12px"}}>
+            <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,fontWeight:600}}>📊 คะแนน 5 ท่า</span>
+          </div>
+          <div style={{padding:"10px 12px",display:"flex",flexDirection:"column",gap:8}}>
+            {SETUP_KEYS.map(({key,label,emoji})=>{
+              const score = result?.scores?.[key] ?? 0;
+              const pct = Math.min(100, Math.max(0, score * 10));
+              const isTop = result?.recommendedSetup && label && result.recommendedSetup.toLowerCase().includes(label.toLowerCase().split(" ")[0].toLowerCase());
+              return (
+                <div key={key} style={{display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:14,width:20}}>{emoji}</span>
+                  <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,width:120,color:"var(--j-ink)",fontWeight:isTop?700:400}}>{label}</span>
+                  <div style={{flex:1,height:14,border:"1.5px solid var(--j-ink)",borderRadius:5,overflow:"hidden",background:"#e3d9c4"}}>
+                    <div style={{height:"100%",width:`${pct}%`,background:isTop?"var(--j-mint)":pct>=60?"var(--j-sky)":"var(--j-lav)",transition:"width .4s"}}/>
+                  </div>
+                  <span style={{fontFamily:"'VT323',monospace",fontSize:18,width:28,textAlign:"right"}}>{score}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Wait For */}
+        {result.waitFor && (
+          <div style={{background:"var(--j-win)",border:"2.5px solid var(--j-ink)",borderRadius:10,overflow:"hidden",boxShadow:"3px 3px 0 var(--j-ink)"}}>
+            <div style={{background:"var(--j-coral)",borderBottom:"2px solid var(--j-ink)",padding:"7px 12px"}}>
+              <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,fontWeight:600}}>⏳ รออะไรก่อน</span>
+            </div>
+            <div style={{padding:"10px 12px",display:"flex",flexDirection:"column",gap:8}}>
+              {result.waitFor.liquidityZone && (
+                <div style={{background:"#fbf6ea",border:"1.5px solid var(--j-ink)",borderRadius:8,padding:"8px 10px"}}>
+                  <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",textTransform:"uppercase",marginBottom:3}}>💰 Liquidity $$$</div>
+                  <div style={{fontFamily:"'DM Mono',monospace",fontSize:12,fontWeight:700}}>{result.waitFor.liquidityZone}</div>
+                </div>
+              )}
+              {result.waitFor.interestZone && (
+                <div style={{background:"#fbf6ea",border:"1.5px solid var(--j-ink)",borderRadius:8,padding:"8px 10px"}}>
+                  <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",textTransform:"uppercase",marginBottom:3}}>🎯 Interest Zone</div>
+                  <div style={{fontFamily:"'DM Mono',monospace",fontSize:12,fontWeight:700}}>{result.waitFor.interestZone}</div>
+                </div>
+              )}
+              {result.waitFor.conditions?.length > 0 && (
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  {result.waitFor.conditions.map((c:string,i:number)=>(
+                    <div key={i} style={{display:"flex",gap:8,alignItems:"flex-start",background:"var(--j-butter)",border:"1.5px solid var(--j-ink)",borderRadius:8,padding:"7px 10px"}}>
+                      <span style={{fontFamily:"'VT323',monospace",fontSize:16,lineHeight:1,flexShrink:0}}>⏸</span>
+                      <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,lineHeight:1.4}}>{c}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
-        <div className="j-mobile-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:12}}>
-          <div style={{background:"var(--j-win)",border:"2px solid var(--j-ink)",borderRadius:10,padding:10}}>
-            <div className="j-tool-label">MARKET READ</div>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap",margin:"8px 0"}}>
-              {(["BUY","SELL"] as CoachDirection[]).map(v=>(
-                <button key={v} onClick={()=>setK("direction",v)} className={`j-chip ${coach.direction===v?"":"off"}`} style={{fontSize:11,background:coach.direction===v?(v==="BUY"?"var(--j-mint)":"var(--j-coral)"):"var(--j-win)"}}>{v}</button>
-              ))}
+        {/* Action Plan */}
+        {result.actionPlan && (
+          <div style={{background:"var(--j-win)",border:"2.5px solid var(--j-ink)",borderRadius:10,overflow:"hidden",boxShadow:"3px 3px 0 var(--j-ink)"}}>
+            <div style={{background:"var(--j-mint)",borderBottom:"2px solid var(--j-ink)",padding:"7px 12px"}}>
+              <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,fontWeight:600}}>📋 Action Plan</span>
             </div>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
-              {(["Bull","Bear","Neutral"] as CoachBias[]).map(v=>(
-                <button key={v} onClick={()=>setK("bias",v)} className={`j-chip ${coach.bias===v?"":"off"}`} style={{fontSize:10}}>{v}</button>
-              ))}
-            </div>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-              {(["Trend","Pullback","Sideway"] as CoachCycle[]).map(v=>(
-                <button key={v} onClick={()=>setK("cycle",v)} className={`j-chip ${coach.cycle===v?"":"off"}`} style={{fontSize:10}}>{v}</button>
-              ))}
-            </div>
-          </div>
-
-          <div style={{background:verdict.color,border:"2px solid var(--j-ink)",borderRadius:10,padding:12,boxShadow:"3px 3px 0 var(--j-ink)"}}>
-            <div style={{fontFamily:"'DM Mono',monospace",fontSize:10}}>VERDICT</div>
-            <div style={{fontFamily:"'VT323',monospace",fontSize:42,lineHeight:1}}>{verdict.emoji} {verdict.text}</div>
-            <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,lineHeight:1.5}}>{verdict.msg}</div>
-          </div>
-        </div>
-
-        <div style={{marginTop:12}}>
-          <div className="j-tool-label" style={{marginBottom:7}}>CHECKLIST</div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            <FieldBtn on={coach.htfZone} label="HTF DZ/SZ" click={()=>setK("htfZone",!coach.htfZone)}/>
-            <FieldBtn on={coach.bosChoch} label="BOS/CHoCH" click={()=>setK("bosChoch",!coach.bosChoch)}/>
-            <FieldBtn on={coach.obDzSz} label="OB + DZ/SZ" click={()=>setK("obDzSz",!coach.obDzSz)}/>
-            <FieldBtn on={coach.liquidity} label="Liquidity $$$" click={()=>setK("liquidity",!coach.liquidity)}/>
-            <FieldBtn on={coach.rejection} label="Rejection" click={()=>setK("rejection",!coach.rejection)}/>
-            <FieldBtn on={coach.mss} label="MSS" click={()=>setK("mss",!coach.mss)}/>
-            <FieldBtn on={coach.retest} label="Retest" click={()=>setK("retest",!coach.retest)}/>
-            <FieldBtn on={coach.volume} label="Volume Confirm" click={()=>setK("volume",!coach.volume)}/>
-            <FieldBtn on={coach.breakoutClose} label="Breakout Close" click={()=>setK("breakoutClose",!coach.breakoutClose)}/>
-            <FieldBtn on={coach.nearRange} label="Near Range Edge" click={()=>setK("nearRange",!coach.nearRange)}/>
-            <FieldBtn on={coach.pa2} label="PA2" click={()=>setK("pa2",!coach.pa2)}/>
-            <FieldBtn on={coach.dirConfirm} label="Direction Confirm" click={()=>setK("dirConfirm",!coach.dirConfirm)}/>
-            <FieldBtn on={coach.rrGood} label="RR ≥ 2/3" click={()=>setK("rrGood",!coach.rrGood)}/>
-            <FieldBtn on={coach.noFomo} label="No FOMO" click={()=>setK("noFomo",!coach.noFomo)}/>
-          </div>
-        </div>
-      </Win>
-
-      <Win title="🧭 ACTION PLAN — รออะไร / โซนไหน / ยกเลิกตรงไหน" color="var(--j-peach)">
-        <div className="j-mobile-grid" style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:10}}>
-          <div style={{border:"2px solid var(--j-ink)",borderRadius:10,padding:10,background:"#fbf6ea"}}>
-            <div className="j-tool-label">LIQUIDITY TARGET</div>
-            <input value={liqTarget} onChange={e=>setLiqTarget(e.target.value)} placeholder="เช่น SSL 4172.30 / BSL 4180.50" style={{width:"100%",marginTop:6,border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11,background:"var(--j-win)"}}/>
-            <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",marginTop:6,lineHeight:1.5}}>
-              ใช้ตอบว่า “รอเคลียร์ $$$ ที่ไหนก่อน”
-            </div>
-          </div>
-
-          <div style={{border:"2px solid var(--j-ink)",borderRadius:10,padding:10,background:"#fbf6ea"}}>
-            <div className="j-tool-label">INTEREST ZONE</div>
-            <div className="j-input-pair" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:6}}>
-              <input value={interestFrom} onChange={e=>setInterestFrom(e.target.value)} placeholder="จาก" style={{border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11,background:"var(--j-win)"}}/>
-              <input value={interestTo} onChange={e=>setInterestTo(e.target.value)} placeholder="ถึง" style={{border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11,background:"var(--j-win)"}}/>
-            </div>
-            <div style={{fontFamily:"'VT323',monospace",fontSize:24,marginTop:6}}>{interestZoneText}</div>
-          </div>
-
-          <div style={{border:"2px solid var(--j-ink)",borderRadius:10,padding:10,background:"var(--j-win)"}}>
-            <div className="j-tool-label">ENTRY PLAN</div>
-            <div className="j-input-pair" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:6}}>
-              <input value={entryFrom} onChange={e=>setEntryFrom(e.target.value)} placeholder="Entry from" style={{border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11}}/>
-              <input value={entryTo} onChange={e=>setEntryTo(e.target.value)} placeholder="Entry to" style={{border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11}}/>
-              <input value={planSL} onChange={e=>setPlanSL(e.target.value)} placeholder="SL" style={{border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11}}/>
-              <input value={planTP1} onChange={e=>setPlanTP1(e.target.value)} placeholder="TP1" style={{border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11}}/>
-              <input value={planTP2} onChange={e=>setPlanTP2(e.target.value)} placeholder="TP2 optional" style={{border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11,gridColumn:"1 / -1"}}/>
-            </div>
-            <div style={{marginTop:8,fontFamily:"'DM Mono',monospace",fontSize:10,lineHeight:1.6,color:"var(--j-soft)"}}>
-              Entry Zone: <b style={{color:"var(--j-ink)"}}>{entryZoneText}</b> · SL: <b style={{color:"#d4685f"}}>{planSL || "-"}</b> · TP: <b style={{color:"#3f9b73"}}>{planTP1 || "-"}{planTP2 ? ` / ${planTP2}` : ""}</b>
-            </div>
-          </div>
-
-          <div style={{border:"2px solid var(--j-ink)",borderRadius:10,padding:10,background:"var(--j-win)"}}>
-            <div className="j-tool-label">INVALIDATION</div>
-            <input value={invalidPrice} onChange={e=>setInvalidPrice(e.target.value)} placeholder="เช่น 4171.90" style={{width:"100%",marginTop:6,border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11}}/>
-            <div style={{marginTop:8,border:"1.5px dashed var(--j-ink)",borderRadius:7,padding:"8px 10px",background:"var(--j-coral)",fontFamily:"'DM Mono',monospace",fontSize:10,lineHeight:1.5}}>
-              {invalidText}
-            </div>
-          </div>
-        </div>
-
-        <div className="j-mobile-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:10}}>
-          <div style={{border:"2px solid var(--j-ink)",borderRadius:10,padding:10,background:"var(--j-butter)"}}>
-            <div className="j-tool-label">WHAT TO WAIT FOR</div>
-            <div style={{display:"grid",gap:6,marginTop:8}}>
-              {waitFor.map((w,i)=>(
-                <div key={i} style={{fontFamily:"'DM Mono',monospace",fontSize:10,border:"1.5px solid var(--j-ink)",borderRadius:7,padding:"7px 9px",background:w.includes("ผ่าน")||w.includes("เคลียร์แล้ว")?"var(--j-mint)":"var(--j-win)"}}>
-                  {w.includes("ผ่าน")||w.includes("เคลียร์แล้ว") ? "✅" : "⏳"} {w}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div style={{border:"2px solid var(--j-ink)",borderRadius:10,padding:10,background:"var(--j-sky)"}}>
-            <div className="j-tool-label">NEXT 3 CANDLES</div>
-            <div style={{display:"grid",gap:6,marginTop:8}}>
-              {next3.map((n,i)=>(
-                <div key={i} style={{fontFamily:"'DM Mono',monospace",fontSize:10,border:"1.5px solid var(--j-ink)",borderRadius:7,padding:"7px 9px",background:"var(--j-win)",lineHeight:1.5}}>
-                  {i+1}. {n}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div style={{marginTop:10,border:"2px solid var(--j-ink)",borderRadius:10,padding:10,background:"#fbf6ea"}}>
-          <div className="j-tool-label">COACH NOTE</div>
-          <textarea value={coachNote} onChange={e=>setCoachNote(e.target.value)} placeholder="บันทึกเหตุผล เช่น รอ Sweep SSL แล้วค่อยหา MSS / ห้ามไล่ราคา" style={{width:"100%",minHeight:70,marginTop:6,border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 10px",fontFamily:"'DM Mono',monospace",fontSize:11,resize:"vertical",background:"var(--j-win)"}}/>
-        </div>
-      </Win>
-
-      <Win title="📊 SETUP SCORE" color="var(--j-sky)">
-        <div style={{display:"grid",gap:8}}>
-          {scores.map((x,i)=>(
-            <div key={x.mode} style={{border:"2px solid var(--j-ink)",borderRadius:9,padding:"8px 10px",background:i===0?"var(--j-mint)":"var(--j-win)",boxShadow:i===0?"2px 2px 0 var(--j-ink)":"none"}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
-                <b style={{fontFamily:"'DM Mono',monospace",fontSize:12}}>{x.emoji} {x.label}</b>
-                <span style={{fontFamily:"'VT323',monospace",fontSize:28,lineHeight:1}}>{x.score.toFixed(1)}</span>
+            <div style={{padding:"10px 12px",display:"flex",flexDirection:"column",gap:8}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                {[
+                  {label:"Entry Zone",value:result.actionPlan.entryZone,color:"var(--j-sky)"},
+                  {label:"🔴 SL",value:result.actionPlan.sl,color:"var(--j-coral)"},
+                  {label:"🟢 TP1",value:result.actionPlan.tp1,color:"var(--j-mint)"},
+                  {label:"🟢 TP2",value:result.actionPlan.tp2,color:"var(--j-mint)"},
+                ].map(({label,value,color})=> value ? (
+                  <div key={label} style={{background:color,border:"1.5px solid var(--j-ink)",borderRadius:8,padding:"8px 10px",boxShadow:"1.5px 1.5px 0 var(--j-ink)"}}>
+                    <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",textTransform:"uppercase",marginBottom:2}}>{label}</div>
+                    <div style={{fontFamily:"'VT323',monospace",fontSize:22,lineHeight:1}}>{value}</div>
+                  </div>
+                ) : null)}
               </div>
-              <RetroStatBar label={x.note} value={x.score} max={10} tone={x.score>=8.8?"mint":x.score>=7?"butter":"coral"} right={`${x.score.toFixed(1)}/10`}/>
+              {result.actionPlan.invalidation && (
+                <div style={{background:"var(--j-coral)",border:"1.5px solid var(--j-ink)",borderRadius:8,padding:"8px 10px",boxShadow:"1.5px 1.5px 0 var(--j-ink)"}}>
+                  <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",textTransform:"uppercase",marginBottom:2}}>⚠️ Invalidation</div>
+                  <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,lineHeight:1.4}}>{result.actionPlan.invalidation}</div>
+                </div>
+              )}
+              {result.actionPlan.next3Candles?.length > 0 && (
+                <div style={{border:"1.5px solid var(--j-ink)",borderRadius:8,overflow:"hidden"}}>
+                  <div style={{background:"var(--j-lav)",borderBottom:"1.5px solid var(--j-ink)",padding:"5px 10px",fontFamily:"'DM Mono',monospace",fontSize:9,fontWeight:600}}>🕯 Next 3 Candles — ดูอะไร</div>
+                  <div style={{padding:"8px 10px",display:"flex",flexDirection:"column",gap:5}}>
+                    {result.actionPlan.next3Candles.map((n:string,i:number)=>(
+                      <div key={i} style={{display:"flex",gap:8,fontFamily:"'DM Mono',monospace",fontSize:10,lineHeight:1.4}}>
+                        <span style={{color:"var(--j-soft)",flexShrink:0}}>{i+1}.</span>
+                        <span>{n}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-      </Win>
-
-      <Win title="⚠️ COACH REASONS" color="var(--j-butter)">
-        <div style={{display:"grid",gap:8}}>
-          {reasons.map((r,i)=>(
-            <div key={i} style={{fontFamily:"'DM Mono',monospace",fontSize:11,border:"2px solid var(--j-ink)",borderRadius:8,padding:"8px 10px",background:i===0?"#fbf6ea":"var(--j-win)"}}>
-              {i===0?"⚔️":"•"} {r}
-            </div>
-          ))}
-          <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",lineHeight:1.6}}>
-            ระบบนี้ฟรี 100% และไม่ได้อ่านภาพเอง: ใช้รูปเป็นหลักฐาน + ให้คุณติ๊กเงื่อนไข แล้วคำนวณคะแนนตามกฎ SMC Pro Max / Pullback / Sideway / Breakout / Reversal
           </div>
+        )}
+
+        {/* Reasons */}
+        {result.reasons?.length > 0 && (
+          <div style={{background:"var(--j-win)",border:"2.5px solid var(--j-ink)",borderRadius:10,overflow:"hidden",boxShadow:"3px 3px 0 var(--j-ink)"}}>
+            <div style={{background:"var(--j-peach)",borderBottom:"2px solid var(--j-ink)",padding:"7px 12px"}}>
+              <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,fontWeight:600}}>💬 เหตุผลจาก AI</span>
+            </div>
+            <div style={{padding:"10px 12px",display:"flex",flexDirection:"column",gap:6}}>
+              {result.reasons.map((r:string,i:number)=>(
+                <div key={i} style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+                  <span style={{color:"var(--j-soft)",fontFamily:"'DM Mono',monospace",fontSize:11,flexShrink:0}}>•</span>
+                  <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,lineHeight:1.5}}>{r}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Disclaimer */}
+        <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",textAlign:"center",lineHeight:1.6,padding:"0 8px"}}>
+          AI ช่วยคิด ไม่ใช่ตัดสินใจแทน · ยังต้องดูกราฟเองและใช้ Checklist ก่อนเข้าไม้เสมอ
         </div>
-      </Win>
+
+      </>)}
     </div>
   );
 }
+
+
 
 // ─── Discipline Lock overlay components (ใหม่) ────────────────────────────────
 function CooldownBanner({remainingMs}:{remainingMs:number}) {
@@ -2772,7 +2679,7 @@ export default function JournalPage() {
 
         {/* ── BATTLE COACH ── */}
         {view==="tools"&&(<BattleCoachPanel trades={trades} dailyStatus={dailyStatus} stats={stats} />)}
-        {view==="aiCoach"&&(<FreeAICoachPanel trades={trades} dailyStatus={dailyStatus} setLightbox={setLightbox} />)}
+        {view==="aiCoach"&&(<AICoachPanel dailyStatus={dailyStatus} setLightbox={setLightbox} />)}
 
       {/* Alert Popup */}
       {showAlert&&(dailyStatus.isHardStop||dailyStatus.isDayDone)&&(
