@@ -1184,6 +1184,17 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
     return await res.blob();
   };
 
+  // ใช้ Auth เดิมแบบเดียวกับระบบบันทึก Screenshot ของ Journal
+  // สำคัญ: ไม่สร้าง Anonymous User ใหม่ เพราะจะทำให้ user_id ไม่ตรง RLS / session เดิม
+  const ensureAiUser = async () => {
+    const { data:{user}, error } = await supabase.auth.getUser();
+    if (error) throw error;
+    if (!user) {
+      throw new Error("กรุณา Login ก่อน จึงจะบันทึก AI History ข้ามเครื่องได้");
+    }
+    return user;
+  };
+
   const uploadAiImage = async (dataUrl: string, side: "htf" | "ltf", userId: string) => {
     const ext = dataUrl.startsWith("data:image/png") ? "png" : "jpg";
     const path = `${userId}/${Date.now()}-${side}.${ext}`;
@@ -1200,13 +1211,18 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
     try {
       setHistoryLoading(true);
       const { data:{user} } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        setHistory([]);
+        return;
+      }
+
       const { data, error } = await supabase
         .from("ai_analyze_history")
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending:false })
         .limit(30);
+
       if (error) throw error;
       setHistory(data || []);
     } catch(e) {
@@ -1219,24 +1235,30 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
   const saveAnalyzeHistory = async (aiResult:any, htfDataUrl:string, ltfDataUrl:string) => {
     try {
       setSavingHistory(true);
-      const { data:{user} } = await supabase.auth.getUser();
-      if (!user) return;
+      const user = await ensureAiUser();
 
       const [htfUrl, ltfUrl] = await Promise.all([
         uploadAiImage(htfDataUrl, "htf", user.id),
         uploadAiImage(ltfDataUrl, "ltf", user.id),
       ]);
 
-      const { error: insErr } = await supabase.from("ai_analyze_history").insert({
+      const payload = {
         user_id: user.id,
         htf_image: htfUrl,
         ltf_image: ltfUrl,
         ai_result: aiResult,
         market: "XAUUSD",
         timeframe: "HTF+LTF",
-        version: "claude-ui-v1",
-      });
-      if (insErr) throw insErr;
+        version: "claude-ui-v2-auth-same-as-screenshot",
+      };
+
+      const { error: insErr } = await supabase
+        .from("ai_analyze_history")
+        .insert(payload);
+
+      if (insErr) {
+        throw new Error(`${insErr.message} | user_id=${user.id}`);
+      }
       await loadAnalyzeHistory();
     } catch(e:any) {
       console.error("AI history save error:", e);
