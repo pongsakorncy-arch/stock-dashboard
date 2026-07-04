@@ -112,13 +112,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No text in Claude response", content: data?.content }, { status: 500 });
 
     const text = textBlock.text;
-    const cleaned = text.replace(/^```json\s*|\s*```$/g, "").trim();
-
+    // ลอง parse หลายวิธี
     let parsed: any;
-    try { parsed = JSON.parse(cleaned); }
-    catch { return NextResponse.json({ error: "Could not parse Claude JSON", raw: cleaned.slice(0,300) }, { status: 500 }); }
 
-    return NextResponse.json(parsed);
+    // วิธี 1: ลบ code fence แล้ว parse
+    try {
+      const cleaned = text.replace(/^```json\s*|\s*```$/g, "").trim();
+      parsed = JSON.parse(cleaned);
+      return NextResponse.json(parsed);
+    } catch {}
+
+    // วิธี 2: ดึง JSON object ออกจาก text ที่มีข้อความปนมา
+    try {
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) {
+        parsed = JSON.parse(match[0]);
+        return NextResponse.json(parsed);
+      }
+    } catch {}
+
+    return NextResponse.json({ error: "Could not parse Claude JSON", raw: text.slice(0,300) }, { status: 500 });
   } catch (err: any) {
     return NextResponse.json({ error: "Route crashed", message: err?.message }, { status: 500 });
   }
