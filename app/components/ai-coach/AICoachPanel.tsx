@@ -1,47 +1,12 @@
 "use client";
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import { resizeImage, fileToDataUrl } from "@/lib/imageUtils";
+import { calcDailyStatus } from "@/lib/dailyStatus";
 
-import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
-
-type AICoachDailyStatus = {
-  todayLosses: number;
-  [key: string]: any;
-};
-
-type AICoachPanelProps = {
-  dailyStatus: AICoachDailyStatus;
-  setLightbox: (v: string | null) => void;
-};
-
-// Resize รูปก่อนส่ง AI — ลด token โดยยังคงรายละเอียดกราฟไว้พอสำหรับวิเคราะห์
-function resizeImage(dataUrl: string, maxW = 800, maxH = 600): Promise<string> {
-  return new Promise((resolve) => {
-    const img = new Image();
-
-    img.onload = () => {
-      const scale = Math.min(1, maxW / img.width, maxH / img.height);
-      const w = Math.round(img.width * scale);
-      const h = Math.round(img.height * scale);
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      canvas.getContext("2d")?.drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL("image/jpeg", 0.82));
-    };
-
-    img.onerror = () => resolve(dataUrl);
-    img.src = dataUrl;
-  });
-}
-
-function fileToDataUrl(file: File, cb: (v: string) => void) {
-  const reader = new FileReader();
-  reader.onload = () => cb(String(reader.result || ""));
-  reader.readAsDataURL(file);
-}
-
-export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelProps) {
+function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof calcDailyStatus>;setLightbox:(v:string|null)=>void}) {
   const AI_COACH_CACHE_KEY = "yok_ai_coach_cache_v3_smc";
+  const AI_BUCKET = "ai-coach-images";
   const [htfImg,setHtfImg] = useState("");
   const [ltfImg,setLtfImg] = useState("");
   const [loading,setLoading] = useState(false);
@@ -51,9 +16,7 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
   const [history,setHistory] = useState<any[]>([]);
   const [error,setError] = useState("");
   const [result,setResult] = useState<any>(null);
-
   const canAnalyze = htfImg && ltfImg && !loading;
-
   useEffect(() => {
     try {
       const saved = localStorage.getItem(AI_COACH_CACHE_KEY);
@@ -66,22 +29,17 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
     } catch {}
     loadAnalyzeHistory();
   }, []);
-
   useEffect(() => {
     try {
       localStorage.setItem(AI_COACH_CACHE_KEY, JSON.stringify({ htfImg, ltfImg, result }));
     } catch {}
   }, [htfImg, ltfImg, result]);
-
   const safeText = (v:any, fallback = "-") => {
     if (v === null || v === undefined || v === "") return fallback;
     return String(v);
   };
-
   const arr = (v:any): string[] => Array.isArray(v) ? v.filter(Boolean).map(String) : [];
-
   const clampPct = (v:any) => Math.min(100, Math.max(0, Number(v) || 0));
-
   const getSetupLabel = (key?: string) => {
     const map:Record<string,string> = {
       smcProMax: "SMC Pro Max",
@@ -94,7 +52,6 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
     };
     return map[String(key || "")] || safeText(key);
   };
-
   const getSetupEmoji = (key?: string) => {
     const map:Record<string,string> = {
       smcProMax: "🔵",
@@ -107,10 +64,8 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
     };
     return map[String(key || "")] || "📌";
   };
-
   const boolIcon = (v:any) => v ? "✓" : "✕";
   const boolBg = (v:any) => v ? "var(--j-mint)" : "var(--j-coral)";
-
   const loadAnalyzeHistory = async () => {
     try {
       setHistoryLoading(true);
@@ -126,7 +81,6 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
       setHistoryLoading(false);
     }
   };
-
   const saveAnalyzeHistory = async (aiResult:any, htfDataUrl:string, ltfDataUrl:string) => {
     try {
       setSavingHistory(true);
@@ -154,7 +108,6 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
       setSavingHistory(false);
     }
   };
-
   const restoreHistory = (row:any) => {
     setHtfImg(row.htf_image || "");
     setLtfImg(row.ltf_image || "");
@@ -169,7 +122,6 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
       }));
     } catch {}
   };
-
   const deleteHistory = async (id:string) => {
     if (!confirm("ลบรายการ Analyze นี้ใช่ไหม?")) return;
     const res = await fetch("/api/delete-ai-history", {
@@ -181,7 +133,6 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
     if (!res.ok) { setError(data?.error || data?.message || "Delete failed"); return; }
     setHistory(p => p.filter(x => x.id !== id));
   };
-
   const toggleFavorite = async (row:any) => {
     const next = !row.favorite;
     const res = await fetch("/api/favorite-ai-history", {
@@ -193,7 +144,6 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
     if (!res.ok) { setError(data?.error || data?.message || "Favorite update failed"); return; }
     setHistory(p => p.map(x => x.id === row.id ? {...x, favorite: next} : x));
   };
-
   const clearAICoach = () => {
     setHtfImg("");
     setLtfImg("");
@@ -201,10 +151,8 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
     setError("");
     try { localStorage.removeItem(AI_COACH_CACHE_KEY); } catch {}
   };
-
   const setHtfAndClear = (v:string) => { setHtfImg(v); setResult(null); setError(""); };
   const setLtfAndClear = (v:string) => { setLtfImg(v); setResult(null); setError(""); };
-
   const analyze = async () => {
     if(!canAnalyze) return;
     setLoading(true); setError("");
@@ -227,7 +175,6 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
       setLoading(false);
     }
   };
-
   const saveCurrentResultOnly = async () => {
     if (!result || !htfImg || !ltfImg || savingHistory) return;
     setError("");
@@ -240,7 +187,6 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
       setError(e?.message || "Save history failed");
     }
   };
-
   const UploadBox = ({title,label,img,setImg}:{title:string;label:string;img:string;setImg:(v:string)=>void}) => (
     <div style={{border:"2.5px solid var(--j-ink)",borderRadius:10,overflow:"hidden",boxShadow:"3px 3px 0 var(--j-ink)"}}>
       <div style={{background:"var(--j-lav)",borderBottom:"2px solid var(--j-ink)",padding:"6px 12px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -258,14 +204,12 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
       )}
     </div>
   );
-
   const MiniInfo = ({label,value,color="var(--j-win)",big=false}:{label:string;value:any;color?:string;big?:boolean}) => (
     <div style={{background:color,border:"1.5px solid var(--j-ink)",borderRadius:8,padding:"8px 10px",boxShadow:"1.5px 1.5px 0 var(--j-ink)"}}>
       <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",textTransform:"uppercase",marginBottom:2}}>{label}</div>
       <div style={{fontFamily:big?"'VT323',monospace":"'DM Mono',monospace",fontSize:big?24:11,lineHeight:1.35,fontWeight:big?400:700}}>{safeText(value)}</div>
     </div>
   );
-
   const Section = ({title,color,children}:{title:string;color:string;children:any}) => (
     <div style={{background:"var(--j-win)",border:"2.5px solid var(--j-ink)",borderRadius:10,overflow:"hidden",boxShadow:"3px 3px 0 var(--j-ink)"}}>
       <div style={{background:color,borderBottom:"2px solid var(--j-ink)",padding:"7px 12px"}}>
@@ -274,7 +218,6 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
       <div style={{padding:"10px 12px",display:"flex",flexDirection:"column",gap:8}}>{children}</div>
     </div>
   );
-
   const CheckRow = ({ok,label,detail,hard}:{ok:any;label:string;detail?:string;hard?:boolean}) => (
     <div style={{display:"grid",gridTemplateColumns:"28px 1fr",gap:9,alignItems:"start",background:ok?"var(--j-mint)":hard?"var(--j-coral)":"#fbf6ea",border:"1.5px solid var(--j-ink)",borderRadius:8,padding:"7px 9px",boxShadow:ok?"1.5px 1.5px 0 var(--j-ink)":"none"}}>
       <div style={{width:22,height:22,border:"2px solid var(--j-ink)",borderRadius:5,background:ok?"var(--j-ink)":"var(--j-win)",color:ok?"var(--j-win)":"var(--j-ink)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'VT323',monospace",fontSize:16}}>
@@ -286,7 +229,6 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
       </div>
     </div>
   );
-
   const verdictColor = result?.verdict === "เข้า" ? "var(--j-mint)" : result?.verdict === "รอ" ? "var(--j-butter)" : result?.verdict ? "var(--j-coral)" : "var(--j-win)";
   const verdictEmoji = result?.verdict === "เข้า" ? "🟢" : result?.verdict === "รอ" ? "🟡" : result?.verdict ? "🔴" : "⬜";
   const biasColor = result?.bias === "Bull" ? "var(--j-mint)" : result?.bias === "Bear" ? "var(--j-coral)" : "var(--j-lav)";
@@ -294,7 +236,6 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
   const setupScore = clampPct(result?.setupScore ?? 0);
   const c = result?.smcChecklist || {};
   const hardGateFail = result?.hardGateFail && result.hardGateFail !== "null" ? result.hardGateFail : null;
-
   const smcSteps = [
     {key:"step1_bos_choch", label:"1. BOS / CHoCH เกิดแล้ว", hard:false},
     {key:"step2_orderBlock", label:"2. หา Order Block", hard:false},
@@ -308,15 +249,12 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
     {key:"step10_m15Retest", label:"10. รอ M15 Retest แล้ว", hard:true},
     {key:"step11_sl_ready", label:"11. SL พร้อม / โดดทันที", hard:true},
   ];
-
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
-
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
         <UploadBox title="📊 HTF — M15" label="อัปโหลด screenshot M15" img={htfImg} setImg={setHtfAndClear}/>
         <UploadBox title="📈 LTF — M5/M1" label="อัปโหลด screenshot M5/M1" img={ltfImg} setImg={setLtfAndClear}/>
       </div>
-
       <button onClick={analyze} disabled={!canAnalyze}
         style={{width:"100%",padding:"14px",border:"2.5px solid var(--j-ink)",borderRadius:10,
           cursor:canAnalyze?"pointer":"not-allowed",
@@ -326,7 +264,6 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
           opacity:(!htfImg||!ltfImg)?0.5:1}}>
         {loading ? "⏳ AI กำลังเช็ก SMC Pro Max..." : (!htfImg||!ltfImg) ? "📸 อัปโหลดรูปทั้ง 2 ใบก่อน" : "🧠 ANALYZE — SMC PRO MAX"}
       </button>
-
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <button onClick={()=>{setShowHistory(v=>!v); if(!showHistory) loadAnalyzeHistory();}} className="j-chip" style={{fontSize:11,background:"var(--j-butter)"}}>
           📜 Analyze History {history.length ? `(${history.length})` : ""}
@@ -341,7 +278,6 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
         </button>
         {savingHistory && <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",alignSelf:"center"}}>saving history...</span>}
       </div>
-
       {showHistory && (
         <Section title="📜 Analyze History" color="var(--j-butter)">
           <button onClick={loadAnalyzeHistory} className="j-chip off" style={{fontSize:10,alignSelf:"flex-start"}}>refresh</button>
@@ -383,13 +319,11 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
           </div>
         </Section>
       )}
-
       {error && (
         <div style={{background:"var(--j-coral)",border:"2px solid var(--j-ink)",borderRadius:9,padding:"10px 14px",fontFamily:"'DM Mono',monospace",fontSize:11}}>
           ❌ {error}
         </div>
       )}
-
       {result && (() => {
         const hardGateRows = [
           { ok: c.step5_swept, label: "5. Liquidity ถูก Sweep", detail: "ยังไม่ sweep = ห้ามเข้า" },
@@ -405,9 +339,7 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
         const tradePermission = result.verdict === "เข้า" && allHardPassed && !hardGateFail;
         const permissionText = tradePermission ? "READY" : result.verdict === "รอ" ? "WAIT" : "NO TRADE";
         const permissionColor = tradePermission ? "var(--j-mint)" : permissionText === "WAIT" ? "var(--j-butter)" : "var(--j-coral)";
-
         return (<>
-
         <div style={{background:permissionColor,border:"3px solid var(--j-ink)",borderRadius:12,padding:"14px",boxShadow:"4px 4px 0 var(--j-ink)",textAlign:"center"}}>
           <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",textTransform:"uppercase",marginBottom:4}}>① MARKET VERDICT</div>
           <div style={{fontFamily:"'VT323',monospace",fontSize:50,lineHeight:1}}>
@@ -427,7 +359,6 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
             </div>
           )}
         </div>
-
         <Section title={`② HARD GATE — สำคัญที่สุด (${hardPass}/${hardGateRows.length})`} color={allHardPassed ? "var(--j-mint)" : "var(--j-coral)"}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
             {hardGateRows.map((row,i)=>(
@@ -448,13 +379,11 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
             </div>
           )}
         </Section>
-
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
           <MiniInfo label="Bias" value={result.bias === "Bull" ? "▲ Bull" : result.bias === "Bear" ? "▼ Bear" : "→ Neutral"} color={biasColor} big/>
           <MiniInfo label="Phase / Cycle" value={phaseValue} color="var(--j-sky)" big/>
           <MiniInfo label="Setup Score" value={`${setupScore}/100`} color={setupScore >= 80 ? "var(--j-mint)" : setupScore >= 55 ? "var(--j-butter)" : "var(--j-coral)"} big/>
         </div>
-
         {result.actionPlan && (
           <Section title="③ ACTION PLAN — เข้าได้เฉพาะเมื่อ Hard Gate ผ่าน" color={tradePermission ? "var(--j-mint)" : "var(--j-butter)"}>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -480,7 +409,6 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
             )}
           </Section>
         )}
-
         {result.waitFor && (
           <Section title="④ WAIT FOR — ถ้ายังไม่ครบ ให้รอสิ่งนี้" color="var(--j-butter)">
             {result.waitFor.keyLevel && <MiniInfo label="Key Level" value={result.waitFor.keyLevel} color="var(--j-sky)" big/>}
@@ -496,7 +424,6 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
             )}
           </Section>
         )}
-
         <Section title="⑤ MARKET CONTEXT / SETUP" color="var(--j-butter)">
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
             <MiniInfo label="HTF Zone" value={result.htfZone} color="#fbf6ea"/>
@@ -508,7 +435,6 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
             <div style={{height:"100%",width:`${setupScore}%`,background:setupScore>=80?"var(--j-mint)":setupScore>=55?"var(--j-butter)":"var(--j-coral)",transition:"width .4s"}}/>
           </div>
         </Section>
-
         {result.liquidityStatus && (
           <Section title="⑥ LIQUIDITY / SWEEP STATUS" color={result.liquidityStatus?.swept ? "var(--j-mint)" : "var(--j-coral)"}>
             <div style={{display:"grid",gridTemplateColumns:"110px 1fr",gap:8}}>
@@ -518,7 +444,6 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
             {result.liquidityStatus?.note && <MiniInfo label="Note" value={result.liquidityStatus.note} color="#fbf6ea"/>}
           </Section>
         )}
-
         <Section title="⑦ FULL SMC PRO MAX — 11 STEP CHECKLIST" color="var(--j-lav)">
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7}}>
             {smcSteps.map((s)=>(
@@ -526,7 +451,6 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
             ))}
           </div>
         </Section>
-
         {result.nonSmcSetup && (
           <Section title="⑧ NON-SMC BACKUP SETUP — ใช้เมื่อ SMC ไม่มา" color={result.nonSmcSetup?.active ? "var(--j-sky)" : "var(--j-win)"}>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -537,7 +461,6 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
             </div>
           </Section>
         )}
-
         {arr(result.reasons).length > 0 && (
           <Section title="⑨ AI REASONS — เหตุผลสรุป" color="var(--j-peach)">
             {arr(result.reasons).map((r:string,i:number)=>(
@@ -548,13 +471,13 @@ export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelP
             ))}
           </Section>
         )}
-
         <div style={{background:"#fbf6ea",border:"2px solid var(--j-ink)",borderRadius:9,padding:"10px",fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",textAlign:"center",lineHeight:1.6}}>
           กฎหลัก: Hard Gate ไม่ผ่าน = ห้ามฝืน · READY เท่านั้นถึงค่อยคำนวณ Lot/Risk · AI เป็น Checklist ช่วยตัดสินใจ ไม่ใช่สัญญาณบังคับเข้า
         </div>
-
       </>);
       })()}
     </div>
   );
 }
+
+export default AICoachPanel;
