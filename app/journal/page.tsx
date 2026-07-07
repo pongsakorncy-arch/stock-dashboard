@@ -2290,7 +2290,3 @@ export default function JournalPage() {
     </main>
   );
 }
-
-
-ปรับแก้หน้า นี้ให้เข้ากับ logic ที่เราคิดกันมา แล้วส่งไฟล์กลับมา
-app/journal/page.tsx
