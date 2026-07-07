@@ -54,7 +54,7 @@ Step 3: ระบุ Phase ปัจจุบัน → Trend / Pullback / Sidew
 
 export async function POST(req: NextRequest) {
   try {
-    const { htfImage, ltfImage, lossesToday = 0 } = await req.json();
+    const { htfImage, ltfImage, lossesToday = 0, currentPrice = "" } = await req.json();
 
     if (!htfImage || !ltfImage)
       return NextResponse.json({ error: "Missing images" }, { status: 400 });
@@ -68,7 +68,11 @@ export async function POST(req: NextRequest) {
       ? `⚠️ แพ้แล้ว ${lossesToday} ไม้ — โหมดเข้มงวด: ต้องผ่านทุก checklist ครบ 100% ถึงจะเข้าได้`
       : `แพ้ ${lossesToday} ไม้`;
 
-    const prompt = `${lossNote}
+    const priceNote = currentPrice
+      ? `\n⚠️ ราคาปัจจุบันของ XAUUSD = ${currentPrice} — ใช้ราคานี้เป็นฐานอ้างอิงในการอ่านโซน/Entry/SL/TP ทั้งหมด ห้ามเดาราคาเอง โซนทุกอันต้องอยู่ใกล้เคียงราคานี้`
+      : "";
+
+    const prompt = `${lossNote}${priceNote}
 HTF Image = M15 (โครงสร้าง + DZ/SZ + BOS/ChoCh)
 LTF Image = M5/M1 (Phase ปัจจุบัน + จุดพิจารณาเข้า)
 
