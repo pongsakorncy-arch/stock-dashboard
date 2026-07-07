@@ -1,10 +1,8 @@
 "use client";
-
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import AICoachPanel from "@/app/components/ai-coach/AICoachPanel";
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Direction   = "LONG"|"SHORT";
 type Result      = "WIN"|"LOSS"|"BE";
@@ -14,7 +12,6 @@ type TradeMode   = "SMC"|"SW_RANGE"|"SW_BREAKOUT"|"PULLBACK"|"M5_REVERSAL";
 type Emotion     = "😌 Calm"|"😎 Confident"|"😤 FOMO"|"😰 Fearful"|"😡 Revenge";
 type ExitReason  = "TP Hit"|"SL Hit"|"Manual"|"Rejection"|"MSS Failed"|"Other";
 type TradeStatus = "OPEN"|"CLOSED";
-
 type ChecklistSMC = {
   c1_trend: boolean;      // M15 วัฏจักร = TREND
   c2_bos: boolean;        // M15 BOS/CHoCH เกิดแล้ว
@@ -25,7 +22,6 @@ type ChecklistSMC = {
   c7_retest: boolean;     // M1 LTF Retest
   c8_mss: boolean;        // M1 MSS ผ่าน
 };
-
 type ChecklistSWRange = {
   c1_sw: boolean;         // M15 วัฏจักร = SW
   c2_level: boolean;      // ระบุกรอบบน/ล่างชัดเจน
@@ -33,27 +29,23 @@ type ChecklistSWRange = {
   c4_pa: boolean;         // M5 PA ยืนยัน Pa2
   c5_rr: boolean;         // RR ≥ 3
 };
-
 type ChecklistSWBreakout = {
   c1_sw: boolean;         // M15 กรอบ SW ชัดเจน
   c2_close: boolean;      // ราคาปิดออกนอกกรอบ (ไม่ใช่ Wick)
   c3_retest: boolean;     // รอ Retest กลับมาก่อน
   c4_noFomo: boolean;     // ยืนยันว่าไม่ FOMO
 };
-
 type ChecklistPullback = {
   c1_trend: boolean;      // M15 ระบุทิศเทรนด์หลัก
   c2_dzsz: boolean;       // ราคา Pullback มาที่ DZ/SZ ใหญ่
   c3_pa: boolean;         // M5 PA ยืนยันกลับตัว
   c4_short: boolean;      // เป้าหมายเก็บสั้น ขยันซอย
 };
-
 type ChecklistM5Rev = {
   c1_pa2: boolean;        // M5 Pa ที่ 2 ยืนยัน
   c2_dir: boolean;        // Buy=ยกโลว์ / Sell=กดไฮ
   c3_plan: boolean;       // วางแผนแล้วว่าตามเทรนด์=ถือยาว / สวน=รีบโดด
 };
-
 type Trade = {
   id: string;
   status: TradeStatus;
@@ -82,7 +74,6 @@ type Trade = {
   screenshotUrl: string;
   createdAt: string;
 };
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const money = (v: number) => {
   const abs = Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2 });
@@ -93,35 +84,28 @@ const KEY   = "yok_journal_v4";
 const KEY_OLD = "yok_journal_v3";
 const KOPEN = "yok_open_trade";
 const ALERT_ACK_KEY = "yok_journal_alert_ack_date";
-
 // ─── Discipline lock storage keys (ใหม่) ───────────────────────────────────────
 const COOLDOWN_KEY    = "yok_cooldown_until";     // epoch ms string — cooldown 15 นาทีหลัง LOSS 2 ติด
 const HARDLOCK_KEY     = "yok_hardlock_state";     // JSON {date, submitted, reflectionText, submittedAt}
 const FORCED_LOCK_KEY  = "yok_forced_lock_dates";  // JSON string[] — วันที่โดนล็อกข้ามวันจาก pattern ซ้ำ
-
 type HardlockState = { date: string; submitted: boolean; reflectionText: string; submittedAt: string };
-
 const loadCooldownUntil = (): number => { try { return Number(localStorage.getItem(COOLDOWN_KEY) || 0) || 0; } catch { return 0; } };
 const saveCooldownUntil = (ts: number) => { try { if (ts > 0) localStorage.setItem(COOLDOWN_KEY, String(ts)); else localStorage.removeItem(COOLDOWN_KEY); } catch {} };
-
 const loadHardlock = (): HardlockState | null => {
   try { const s = localStorage.getItem(HARDLOCK_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
 };
 const saveHardlock = (v: HardlockState | null) => {
   try { if (v) localStorage.setItem(HARDLOCK_KEY, JSON.stringify(v)); else localStorage.removeItem(HARDLOCK_KEY); } catch {}
 };
-
 const loadForcedLockDates = (): string[] => {
   try { return JSON.parse(localStorage.getItem(FORCED_LOCK_KEY) || "[]"); } catch { return []; }
 };
 const saveForcedLockDates = (v: string[]) => { try { localStorage.setItem(FORCED_LOCK_KEY, JSON.stringify(v)); } catch {} };
-
 function tomorrowStr(dateStr: string) {
   const d = new Date(dateStr + "T00:00:00");
   d.setDate(d.getDate() + 1);
   return d.toISOString().split("T")[0];
 }
-
 function getWeekDatesOf(dateStr: string): string[] {
   const base = new Date(dateStr + "T00:00:00");
   const dow = base.getDay();
@@ -135,14 +119,12 @@ function getWeekDatesOf(dateStr: string): string[] {
   }
   return out;
 }
-
 function fmtMMSS(ms: number) {
   const total = Math.max(0, Math.ceil(ms / 1000));
   const m = Math.floor(total / 60);
   const s = total % 60;
   return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
 }
-
 // migrate ข้อมูลจาก v3 → v4 (เพิ่ม status/mode/checklistJson/exitReason ให้ของเก่า)
 function migrateOldTrades(rawTrades: any[]): Trade[] {
   return (rawTrades || []).map((t: any) => ({
@@ -173,7 +155,6 @@ function migrateOldTrades(rawTrades: any[]): Trade[] {
     createdAt: t.createdAt || t.created_at || new Date().toISOString(),
   }));
 }
-
 const load = (): Trade[] => {
   try {
     const v4 = localStorage.getItem(KEY);
@@ -182,14 +163,12 @@ const load = (): Trade[] => {
       localStorage.setItem(KEY, JSON.stringify(migrated));
       return migrated;
     }
-
     const v3 = localStorage.getItem(KEY_OLD);
     if (v3) {
       const migrated = migrateOldTrades(JSON.parse(v3));
       localStorage.setItem(KEY, JSON.stringify(migrated));
       return migrated;
     }
-
     return [];
   } catch {
     localStorage.removeItem(KEY);
@@ -200,21 +179,16 @@ const load = (): Trade[] => {
 const save = (t: Trade[]) => localStorage.setItem(KEY, JSON.stringify(t));
 const loadOpen = (): Trade|null => { try { const s=localStorage.getItem(KOPEN); return s?JSON.parse(s):null; } catch { return null; } };
 const saveOpen = (t: Trade|null) => { if(t) localStorage.setItem(KOPEN,JSON.stringify(t)); else localStorage.removeItem(KOPEN); };
-
 const SESSIONS: Session[] = ["Tokyo","London","New York","Overlap"];
 const EMOTIONS: Emotion[] = ["😌 Calm","😎 Confident","😤 FOMO","😰 Fearful","😡 Revenge"];
 const EXIT_REASONS: ExitReason[] = ["TP Hit","SL Hit","Manual","Rejection","MSS Failed","Other"];
-
 const MAX_TRADES_PER_DAY = 3;
 const COOLDOWN_MS = 15 * 60 * 1000; // 15 นาที
-
 function pad2(n: number) { return String(n).padStart(2, "0"); }
-
 function nowTime24() {
   const d = new Date();
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
-
 function autoSessionFromTime(time: string): Session {
   const hour = Number((time || "00:00").split(":")[0]);
   if (hour >= 0 && hour < 8) return "Tokyo";
@@ -222,12 +196,10 @@ function autoSessionFromTime(time: string): Session {
   if (hour >= 14 && hour < 20) return "New York";
   return "Overlap";
 }
-
 function calcPL(direction: Direction, entry: number, exit: number, lot: number, isCent: boolean): number {
   const diff = direction==="LONG" ? exit-entry : entry-exit;
   return Math.round(diff*lot*(isCent?1:100)*100)/100;
 }
-
 function calcStats(trades: Trade[]) {
   const closed = trades.filter(t=>t.status==="CLOSED");
   if(!closed.length) return {total:0,wins:0,losses:0,be:0,winRate:0,totalPL:0,avgRR:0,best:0,worst:0,streak:0,streakType:""};
@@ -243,7 +215,6 @@ function calcStats(trades: Trade[]) {
   return {total:closed.length,wins,losses,be,winRate:wins/closed.length*100,totalPL,avgRR,
     best:Math.max(...pls),worst:Math.min(...pls),streak,streakType:first||""};
 }
-
 function calcDD(trades: Trade[]) {
   const closed=[...trades].filter(t=>t.status==="CLOSED").sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
   if(closed.length<2) return {dd:0,maxDD:0,ddPct:0,maxDDPct:0};
@@ -252,7 +223,6 @@ function calcDD(trades: Trade[]) {
   const currentDD=peak-cum, ddPct=peak>0?(currentDD/peak)*100:0, maxDDPct=peak>0?(maxDD/peak)*100:0;
   return {dd:currentDD,maxDD,ddPct,maxDDPct};
 }
-
 function calcDailyStatus(trades: Trade[], todayStr: string) {
   const todayTrades=[...trades].filter(t=>t.date===todayStr&&t.status==="CLOSED").sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
   let lossStreak=0;
@@ -267,7 +237,6 @@ function calcDailyStatus(trades: Trade[], todayStr: string) {
     todayBE:todayTrades.filter(t=>t.result==="BE").length,
     todayPL:todayTrades.reduce((s,t)=>s+t.totalPL,0),todayTrades};
 }
-
 function countHardStopDaysThisWeek(trades: Trade[], todayStr: string): number {
   const weekDates = getWeekDatesOf(todayStr).filter(d => d <= todayStr);
   let count = 0;
@@ -276,7 +245,6 @@ function countHardStopDaysThisWeek(trades: Trade[], todayStr: string): number {
   }
   return count;
 }
-
 // ─── PLChart ──────────────────────────────────────────────────────────────────
 function PLChart({trades}:{trades:Trade[]}) {
   const [tab,setTab]=useState<"equity"|"dd">("equity");
@@ -339,7 +307,6 @@ function PLChart({trades}:{trades:Trade[]}) {
     </div>
   );
 }
-
 // ─── DailyStatusBar ───────────────────────────────────────────────────────────
 function DailyStatusBar({status,cooldownRemainingMs,isHardLockToday,isForcedLockToday}:{status:ReturnType<typeof calcDailyStatus>;cooldownRemainingMs:number;isHardLockToday:boolean;isForcedLockToday:boolean}) {
   const {totalToday,lossStreak,isHardStop,isWarnBreak,isDayDone,todayWins,todayLosses,todayBE,todayPL} = status;
@@ -392,7 +359,6 @@ function DailyStatusBar({status,cooldownRemainingMs,isHardLockToday,isForcedLock
     </div>
   );
 }
-
 // ─── Win component ────────────────────────────────────────────────────────────
 function Win({title,color,children,controls=true}:{title:string;color:string;children:any;controls?:boolean}) {
   return (
@@ -405,7 +371,6 @@ function Win({title,color,children,controls=true}:{title:string;color:string;chi
     </div>
   );
 }
-
 // ─── Checklist UI helper ──────────────────────────────────────────────────────
 function CL({checked,label,onChange,warn}:{checked:boolean;label:string;onChange:(v:boolean)=>void;warn?:boolean}) {
   return (
@@ -417,7 +382,6 @@ function CL({checked,label,onChange,warn}:{checked:boolean;label:string;onChange
     </div>
   );
 }
-
 // ─── Mode labels ──────────────────────────────────────────────────────────────
 const MODE_INFO: Record<TradeMode,{label:string;color:string;emoji:string;desc:string}> = {
   SMC:          {label:"SMC Pro Max",     color:"var(--j-lav)",    emoji:"🔵",desc:"Trend เท่านั้น · BOS→OB→MSS"},
@@ -426,26 +390,21 @@ const MODE_INFO: Record<TradeMode,{label:string;color:string;emoji:string;desc:s
   PULLBACK:     {label:"Pullback",        color:"var(--j-peach)",  emoji:"🟠",desc:"DZ/SZ ใหญ่ · เก็บสั้น"},
   M5_REVERSAL:  {label:"M5 Reversal",     color:"var(--j-mint)",   emoji:"🟢",desc:"Pa2 ยืนยัน · Buy=ยกโลว์ / Sell=กดไฮ"},
 };
-
 const getModeInfo = (mode?: string | null) => {
   return MODE_INFO[mode as TradeMode] || MODE_INFO.SMC;
 };
-
 // ─── Default checklists ───────────────────────────────────────────────────────
 const defSMC       = ():ChecklistSMC       => ({c1_trend:false,c2_bos:false,c3_dzsz:false,c4_ob:false,c5_liq:false,c6_reject:false,c7_retest:false,c8_mss:false});
 const defSWRange   = ():ChecklistSWRange   => ({c1_sw:false,c2_level:false,c3_near:false,c4_pa:false,c5_rr:false});
 const defSWBreak   = ():ChecklistSWBreakout=> ({c1_sw:false,c2_close:false,c3_retest:false,c4_noFomo:false});
 const defPullback  = ():ChecklistPullback  => ({c1_trend:false,c2_dzsz:false,c3_pa:false,c4_short:false});
 const defM5Rev     = ():ChecklistM5Rev     => ({c1_pa2:false,c2_dir:false,c3_plan:false});
-
 const STARTING_CAPITAL=50, MONTHLY_GOAL=2000, TOTAL_TARGET=20000;
 const PHASES=[
   {id:1,label:"Phase 1",months:"Month 1–8",from:50,to:1000,color:"var(--j-coral)",risk:"$5/trade",focus:"No lot increase · journal every trade",reminder:"✦ Phase 1 : No FOMO · Journal every trade · R:R ≥ 1:2 only ✦"},
   {id:2,label:"Phase 2",months:"Month 9–18",from:1000,to:12000,color:"var(--j-butter)",risk:"$20–150/trade",focus:"Add $500/mo · win rate ≥ 55%",reminder:"✦ Phase 2 : Add capital regularly · Win rate ≥ 55% · No overtrade ✦"},
   {id:3,label:"Phase 3",months:"Month 19–24",from:12000,to:20000,color:"var(--j-mint)",risk:"$150–200/trade",focus:"Withdraw $2,000/mo · control DD",reminder:"✦ Phase 3 : Withdraw $2,000/mo · Control DD · You are almost there ✦"},
 ];
-
-
 const WEEKLY_GOALS = [
   { id:"w1", label:"Win 3 trades",        check:(t:Trade[])=>t.filter(x=>x.result==="WIN").length>=3 },
   { id:"w2", label:"R:R ≥ 2 × 3 trades", check:(t:Trade[])=>t.filter(x=>x.rr>=2).length>=3 },
@@ -453,7 +412,6 @@ const WEEKLY_GOALS = [
   { id:"w4", label:"Journal 5 sessions",  check:(t:Trade[])=>t.length>=5 },
   { id:"w5", label:"Win Rate ≥ 60%",      check:(t:Trade[])=>t.length>=3&&t.filter(x=>x.result==="WIN").length/t.length>=0.6 },
 ];
-
 function WeeklyGoals({ trades }: { trades: Trade[] }) {
   const now = new Date();
   const dow = now.getDay();
@@ -487,8 +445,6 @@ function WeeklyGoals({ trades }: { trades: Trade[] }) {
     </div>
   );
 }
-
-
 const BADGES = [
   { id:"b01", icon:"🔥", label:"First Blood",    desc:"First WIN trade",                 check:(t:Trade[])=>t.some(x=>x.result==="WIN") },
   { id:"b02", icon:"⚡", label:"Hat Trick",       desc:"3 WIN streak",                    check:(t:Trade[])=>{ let s=0,mx=0; [...t].sort((a,b)=>a.date.localeCompare(b.date)).forEach(x=>{if(x.result==="WIN"){s++;mx=Math.max(mx,s);}else s=0;}); return mx>=3; }},
@@ -519,7 +475,6 @@ const BADGES = [
       return ironCount>=3;
     }},
 ];
-
 function AchievementBadges({ trades }: { trades: Trade[] }) {
   const [expand, setExpand] = useState(false);
   const unlocked = BADGES.filter(b=>b.check(trades));
@@ -555,8 +510,6 @@ function AchievementBadges({ trades }: { trades: Trade[] }) {
     </div>
   );
 }
-
-
 function RoadmapWidget({ trades }: { trades: Trade[] }) {
   const totalPL=trades.reduce((s,t)=>s+t.totalPL,0);
   const currentEquity=Math.max(0,STARTING_CAPITAL+totalPL);
@@ -604,8 +557,6 @@ function RoadmapWidget({ trades }: { trades: Trade[] }) {
     </div>
   );
 }
-
-
 // ─── Battle Coach: Retro RPG Bars + Forex Sessions ───────────────────────────
 type ForexSessionInfo = {
   name: Session | "Sydney";
@@ -615,9 +566,7 @@ type ForexSessionInfo = {
   color: string;
   note: string;
 };
-
 type RetroBarTone = "mint" | "sky" | "lav" | "butter" | "coral" | "peach";
-
 type BattleCoachMetrics = {
   score: number;
   status: "READY" | "CAUTION" | "STAND DOWN";
@@ -633,27 +582,22 @@ type BattleCoachMetrics = {
   avgRR: number;
   notes: string[];
 };
-
 const FOREX_SESSIONS: ForexSessionInfo[] = [
   { name:"Sydney",   emoji:"🌏", openUtc:21, closeUtc:6,  color:"var(--j-peach)",  note:"Early liquidity" },
   { name:"Tokyo",    emoji:"🌙", openUtc:0,  closeUtc:9,  color:"var(--j-lav)",    note:"Asian range" },
   { name:"London",   emoji:"☀️", openUtc:7,  closeUtc:16, color:"var(--j-sky)",    note:"Main volatility" },
   { name:"New York", emoji:"🗽", openUtc:12, closeUtc:21, color:"var(--j-mint)",   note:"XAUUSD active" },
 ];
-
 function clampNum(v: number, min = 0, max = 100) {
   return Math.min(max, Math.max(min, Number.isFinite(v) ? v : 0));
 }
-
 function utcHourFloat(d: Date) {
   return d.getUTCHours() + d.getUTCMinutes()/60 + d.getUTCSeconds()/3600;
 }
-
 function isForexSessionOpen(session: ForexSessionInfo, nowUtcHour: number) {
   if (session.openUtc < session.closeUtc) return nowUtcHour >= session.openUtc && nowUtcHour < session.closeUtc;
   return nowUtcHour >= session.openUtc || nowUtcHour < session.closeUtc;
 }
-
 function sessionProgress(session: ForexSessionInfo, nowUtcHour: number) {
   const start = session.openUtc;
   const end = session.closeUtc <= start ? session.closeUtc + 24 : session.closeUtc;
@@ -661,40 +605,33 @@ function sessionProgress(session: ForexSessionInfo, nowUtcHour: number) {
   if (!isForexSessionOpen(session, nowUtcHour)) return 0;
   return Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100));
 }
-
 function hoursUntil(openUtc: number, nowUtcHour: number) {
   let diff = openUtc - nowUtcHour;
   if (diff < 0) diff += 24;
   return diff;
 }
-
 function fmtHours(v: number) {
   const h = Math.floor(v);
   const m = Math.round((v - h) * 60);
   return `${h}h ${String(m).padStart(2,"0")}m`;
 }
-
 function localWindowText(openUtc: number, closeUtc: number) {
   const toLocal = (h: number) => `${pad2((h + 7) % 24)}:00`;
   return `${toLocal(openUtc)}–${toLocal(closeUtc)} TH`;
 }
-
 function modeLabel(mode: TradeMode | string) {
   return getModeInfo(mode).label.replace(" Pro Max", "");
 }
-
 function calcModeWinRate(trades: Trade[], mode: TradeMode) {
   const list = trades.filter(t=>t.status==="CLOSED" && t.mode===mode);
   if (!list.length) return 0;
   return list.filter(t=>t.result==="WIN").length / list.length * 100;
 }
-
 function calcSessionWinRate(trades: Trade[], session: Session) {
   const list = trades.filter(t=>t.status==="CLOSED" && t.session===session);
   if (!list.length) return 0;
   return list.filter(t=>t.result==="WIN").length / list.length * 100;
 }
-
 function bestBy<T extends string>(items: readonly T[], scoreFn: (item:T)=>number, fallback:T) {
   let best = fallback;
   let bestScore = -1;
@@ -707,7 +644,6 @@ function bestBy<T extends string>(items: readonly T[], scoreFn: (item:T)=>number
   }
   return { item: best, score: Math.max(0, bestScore) };
 }
-
 function calcDiscipline(trades: Trade[], dailyStatus: ReturnType<typeof calcDailyStatus>) {
   const recent = trades.filter(t=>t.status==="CLOSED").slice(0, 12);
   if (!recent.length) return 72;
@@ -716,13 +652,11 @@ function calcDiscipline(trades: Trade[], dailyStatus: ReturnType<typeof calcDail
   const base = 65 + (beOrWin / recent.length) * 25 - fomo * 6 - dailyStatus.lossStreak * 8;
   return clampNum(base);
 }
-
 function calcBattleCoach(trades: Trade[], dailyStatus: ReturnType<typeof calcDailyStatus>, stats: ReturnType<typeof calcStats>): BattleCoachMetrics {
   const closed = trades.filter(t=>t.status==="CLOSED");
   const modes: TradeMode[] = ["SMC","SW_RANGE","SW_BREAKOUT","PULLBACK","M5_REVERSAL"];
   const bestMode = bestBy(modes, m=>calcModeWinRate(closed, m), "SMC");
   const bestSession = bestBy(SESSIONS, s=>calcSessionWinRate(closed, s), "London");
-
   const avgRR = Number(stats.avgRR || 0);
   const rrPower = clampNum(avgRR <= 0 ? 25 : Math.min(100, avgRR * 28));
   const setupPower = closed.length ? clampNum(bestMode.score || stats.winRate) : 65;
@@ -734,7 +668,6 @@ function calcBattleCoach(trades: Trade[], dailyStatus: ReturnType<typeof calcDai
   const dayDonePenalty = dailyStatus.isDayDone ? 18 : 0;
   const riskToday = clampNum((dailyStatus.todayLosses / MAX_TRADES_PER_DAY) * 100);
   const winRateToday = dailyStatus.totalToday ? (dailyStatus.todayWins / dailyStatus.totalToday) * 100 : 0;
-
   let score = 48;
   score += setupPower * 0.18;
   score += sessionEdge * 0.14;
@@ -743,27 +676,22 @@ function calcBattleCoach(trades: Trade[], dailyStatus: ReturnType<typeof calcDai
   score += dailyStatus.todayWins * 5;
   score -= todayLossPenalty + overTradePenalty + hardStopPenalty + dayDonePenalty;
   score = clampNum(score);
-
   const status = score >= 80 ? "READY" : score >= 50 ? "CAUTION" : "STAND DOWN";
   const tone: RetroBarTone = score >= 80 ? "mint" : score >= 50 ? "butter" : "coral";
-
   const notes: string[] = [];
   if (dailyStatus.isHardStop) notes.push("LOSS streak ถึงจุด Hard Stop แล้ว — วันนี้ควรปิดโหมดเทรด");
   else if (dailyStatus.isDayDone) notes.push("ครบจำนวนไม้ของวันแล้ว — เหลือหน้าที่แค่ review");
   else if (dailyStatus.lossStreak === 2) notes.push("LOSS 2 ติด — พักก่อนหนึ่งรอบ อย่ารีบเอาคืน");
   else if (score >= 80) notes.push("สภาพรวมพร้อม แต่ยังต้องให้ Checklist ผ่านก่อนเข้าไม้");
   else notes.push("ยังมีจุดที่ต้องเช็กเพิ่มก่อนเข้าเทรด");
-
   if (closed.length >= 3) {
     notes.push(`${modeLabel(bestMode.item)} เป็น setup ที่สถิติดีสุดใน Journal (${bestMode.score.toFixed(0)}% WR)`);
     notes.push(`${bestSession.item} เป็น session ที่มี edge สูงสุด (${bestSession.score.toFixed(0)}% WR)`);
   } else {
     notes.push("ข้อมูล Journal ยังน้อย — คะแนนบางส่วนเป็นค่าเริ่มต้นชั่วคราว");
   }
-
   if (avgRR < 1 && closed.length >= 3) notes.push("Avg RR ยังต่ำกว่า 1R — เน้นเข้าเฉพาะไม้ที่คุ้มความเสี่ยง");
   if (dailyStatus.todayPL < 0) notes.push(`วันนี้ติดลบ ${money(dailyStatus.todayPL)} — ลด lot และเลิกไล่ราคา`);
-
   return {
     score: Math.round(score),
     status,
@@ -780,7 +708,6 @@ function calcBattleCoach(trades: Trade[], dailyStatus: ReturnType<typeof calcDai
     notes,
   };
 }
-
 function RetroStatBar({label,value,max=100,tone="mint",right}:{label:string;value:number;max?:number;tone?:RetroBarTone;right?:string}) {
   const safeMax = max <= 0 ? 100 : max;
   const pct = Math.min(100, Math.max(0, (value / safeMax) * 100));
@@ -801,12 +728,10 @@ function RetroStatBar({label,value,max=100,tone="mint",right}:{label:string;valu
     </div>
   );
 }
-
 function BattleStatusBadge({metrics}:{metrics:BattleCoachMetrics}) {
   const emoji = metrics.status === "READY" ? "🟢" : metrics.status === "CAUTION" ? "🟡" : "🔴";
   return <div className={`j-signal-badge ${metrics.tone}`}><span>{emoji}</span><b>{metrics.status}</b></div>;
 }
-
 function BattleReadinessPanel({metrics,dailyStatus}:{metrics:BattleCoachMetrics;dailyStatus:ReturnType<typeof calcDailyStatus>}) {
   return (
     <div className="j-rpg-panel">
@@ -818,7 +743,6 @@ function BattleReadinessPanel({metrics,dailyStatus}:{metrics:BattleCoachMetrics;
         </div>
         <BattleStatusBadge metrics={metrics}/>
       </div>
-
       <div className="j-rpg-avatar-row battle-main">
         <div className="j-rpg-avatar battle-avatar">
           <div className="battle-score">
@@ -832,7 +756,6 @@ function BattleReadinessPanel({metrics,dailyStatus}:{metrics:BattleCoachMetrics;
           <RetroStatBar label="XP / AVG RR" value={metrics.rrPower} tone={metrics.rrPower >= 60 ? "sky" : "butter"} right={`${metrics.avgRR.toFixed(2)}R`} />
         </div>
       </div>
-
       <div className="j-rpg-grid battle-stat-grid">
         <div className="battle-mini-card">
           <div className="j-tool-label">SETUP POWER</div>
@@ -850,7 +773,6 @@ function BattleReadinessPanel({metrics,dailyStatus}:{metrics:BattleCoachMetrics;
           <RetroStatBar label="DANGER" value={metrics.riskToday} tone={metrics.riskToday >= 67 ? "coral" : metrics.riskToday >= 34 ? "butter" : "mint"} right={`${metrics.riskToday}%`} />
         </div>
       </div>
-
       <div className="j-rpg-command-box battle-command">
         <div className="j-rpg-command-title">COACH LOG</div>
         <div className="battle-log">
@@ -860,17 +782,14 @@ function BattleReadinessPanel({metrics,dailyStatus}:{metrics:BattleCoachMetrics;
     </div>
   );
 }
-
 function SessionMonitorPanel({trades}:{trades:Trade[]}) {
   const [now,setNow]=useState(new Date());
   useEffect(()=>{ const id=setInterval(()=>setNow(new Date()),1000); return ()=>clearInterval(id); },[]);
-
   const nowUtc = utcHourFloat(now);
   const openSessions = FOREX_SESSIONS.filter(s=>isForexSessionOpen(s,nowUtc));
   const isOverlap = isForexSessionOpen(FOREX_SESSIONS[2],nowUtc) && isForexSessionOpen(FOREX_SESSIONS[3],nowUtc);
   const nextSession = [...FOREX_SESSIONS].sort((a,b)=>hoursUntil(a.openUtc,nowUtc)-hoursUntil(b.openUtc,nowUtc))[0];
   const activity = isOverlap ? 92 : openSessions.length >= 2 ? 76 : openSessions.length === 1 ? 54 : 20;
-
   return (
     <div className="j-tool-stack">
       <div className="j-rpg-mini-header">
@@ -885,9 +804,7 @@ function SessionMonitorPanel({trades}:{trades:Trade[]}) {
           <small>{fmtHours(hoursUntil(nextSession.openUtc,nowUtc))}</small>
         </div>
       </div>
-
       <RetroStatBar label="SP / SESSION POWER" value={activity} tone={activity >= 75 ? "mint" : activity >= 45 ? "butter" : "coral"} right={`${activity}%`} />
-
       <div className="j-session-grid hp-style">
         {FOREX_SESSIONS.map(s=>{
           const open=isForexSessionOpen(s,nowUtc);
@@ -914,14 +831,12 @@ function SessionMonitorPanel({trades}:{trades:Trade[]}) {
           );
         })}
       </div>
-
       <div className="j-tool-tip">
         <b>Coach rule:</b> ถ้า Session Power สูง แต่วันนี้ครบ 3 ไม้แล้ว ให้หยุดตามระบบ · ถ้า Overlap เปิด ให้ลดความรีบและรอ Checklist ครบก่อนเสมอ
       </div>
     </div>
   );
 }
-
 function BattleCoachSummary({dailyStatus,stats}:{dailyStatus:ReturnType<typeof calcDailyStatus>;stats:ReturnType<typeof calcStats>}) {
   return (
     <div className="battle-summary-grid">
@@ -940,7 +855,6 @@ function BattleCoachSummary({dailyStatus,stats}:{dailyStatus:ReturnType<typeof c
     </div>
   );
 }
-
 function BattleCoachPanel({trades,dailyStatus,stats}:{trades:Trade[];dailyStatus:ReturnType<typeof calcDailyStatus>;stats:ReturnType<typeof calcStats>}) {
   const metrics = calcBattleCoach(trades,dailyStatus,stats);
   return (
@@ -949,25 +863,20 @@ function BattleCoachPanel({trades,dailyStatus,stats}:{trades:Trade[];dailyStatus
         <Win title="⚔️ BATTLE COACH.EXE" color="var(--j-lav)">
           <BattleReadinessPanel metrics={metrics} dailyStatus={dailyStatus} />
         </Win>
-
         <Win title="🌍 SESSION RADAR" color="var(--j-sky)">
           <SessionMonitorPanel trades={trades} />
         </Win>
       </div>
-
       <Win title="📟 TODAY'S BATTLE LOG" color="var(--j-butter)">
         <BattleCoachSummary dailyStatus={dailyStatus} stats={stats} />
       </Win>
     </div>
   );
 }
-
-
 // ─── Free AI Coach: Rule-Based Setup Scoring ─────────────────────────────────
 type CoachBias = "Bull" | "Bear" | "Neutral";
 type CoachCycle = "Trend" | "Pullback" | "Sideway";
 type CoachDirection = "BUY" | "SELL";
-
 type CoachState = {
   direction: CoachDirection;
   bias: CoachBias;
@@ -987,7 +896,6 @@ type CoachState = {
   pa2: boolean;
   dirConfirm: boolean;
 };
-
 type CoachScore = {
   mode: TradeMode;
   label: string;
@@ -995,7 +903,6 @@ type CoachScore = {
   score: number;
   note: string;
 };
-
 const defaultCoachState = (): CoachState => ({
   direction: "BUY",
   bias: "Bull",
@@ -1015,22 +922,18 @@ const defaultCoachState = (): CoachState => ({
   pa2: false,
   dirConfirm: false,
 });
-
 function score10(v: number) {
   return Math.round(clampNum(v, 0, 10) * 10) / 10;
 }
-
 function biasMatchScore(s: CoachState) {
   if (s.bias === "Neutral") return 0.5;
   if (s.direction === "BUY" && s.bias === "Bull") return 1;
   if (s.direction === "SELL" && s.bias === "Bear") return 1;
   return 0;
 }
-
 function calcFreeCoachScores(s: CoachState, dailyStatus: ReturnType<typeof calcDailyStatus>): CoachScore[] {
   const biasOk = biasMatchScore(s);
   const lossPenalty = dailyStatus.lossStreak >= 3 ? 1.4 : dailyStatus.lossStreak === 2 ? 0.7 : 0;
-
   const smc = score10(
     biasOk * 1.1 +
     (s.cycle === "Trend" || s.cycle === "Pullback" ? 1.0 : 0) +
@@ -1045,7 +948,6 @@ function calcFreeCoachScores(s: CoachState, dailyStatus: ReturnType<typeof calcD
     (s.rrGood ? 0.5 : 0) -
     lossPenalty
   );
-
   const pullback = score10(
     biasOk * 1.2 +
     (s.cycle === "Pullback" ? 2.0 : s.cycle === "Trend" ? 1.0 : 0) +
@@ -1058,7 +960,6 @@ function calcFreeCoachScores(s: CoachState, dailyStatus: ReturnType<typeof calcD
     (s.rrGood ? 0.7 : 0) -
     lossPenalty
   );
-
   const range = score10(
     (s.cycle === "Sideway" ? 2.6 : 0) +
     (s.nearRange ? 1.8 : 0) +
@@ -1069,7 +970,6 @@ function calcFreeCoachScores(s: CoachState, dailyStatus: ReturnType<typeof calcD
     (s.noFomo ? 0.8 : -1.2) -
     lossPenalty
   );
-
   const breakout = score10(
     (s.cycle === "Sideway" ? 1.4 : s.cycle === "Trend" ? 0.7 : 0) +
     (s.breakoutClose ? 2.5 : 0) +
@@ -1080,7 +980,6 @@ function calcFreeCoachScores(s: CoachState, dailyStatus: ReturnType<typeof calcD
     (s.rrGood ? 0.7 : 0) -
     lossPenalty
   );
-
   const reversal = score10(
     (s.pa2 ? 2.2 : 0) +
     (s.dirConfirm ? 1.6 : 0) +
@@ -1091,7 +990,6 @@ function calcFreeCoachScores(s: CoachState, dailyStatus: ReturnType<typeof calcD
     (s.rrGood ? 0.6 : 0) -
     lossPenalty
   );
-
   return [
     { mode:"SMC", label:"SMC Pro Max", emoji:"🥇", score:smc, note: smc >= 8.5 ? "A setup" : smc >= 7 ? "รอ confirm" : "ยังไม่ครบ" },
     { mode:"PULLBACK", label:"Pullback", emoji:"🥈", score:pullback, note: pullback >= 8.5 ? "เหมาะ" : pullback >= 7 ? "พอใช้" : "ยังไม่ใช่" },
@@ -1100,7 +998,6 @@ function calcFreeCoachScores(s: CoachState, dailyStatus: ReturnType<typeof calcD
     { mode:"M5_REVERSAL", label:"M1/M5 Reversal", emoji:"⚡", score:reversal, note: reversal >= 8 ? "กลับตัวใช้ได้" : "ยังไม่ชัด" },
   ].sort((a,b)=>b.score-a.score);
 }
-
 function coachVerdict(best: CoachScore, s: CoachState, dailyStatus: ReturnType<typeof calcDailyStatus>) {
   if (dailyStatus.lossStreak >= 3) return { text:"หยุด", color:"var(--j-coral)", emoji:"🛑", msg:"LOSS streak ถึง Hard Stop วันนี้ห้ามแก้มือ" };
   if (!s.noFomo) return { text:"ไม่เข้า", color:"var(--j-coral)", emoji:"🔴", msg:"มี FOMO / Revenge แทรก ระบบให้หยุดก่อน" };
@@ -1108,7 +1005,6 @@ function coachVerdict(best: CoachScore, s: CoachState, dailyStatus: ReturnType<t
   if (best.score >= 7.0) return { text:"รอ", color:"var(--j-butter)", emoji:"🟡", msg:"มีทรง แต่รอ confirm ให้ครบก่อนกด" };
   return { text:"ไม่เข้า", color:"var(--j-coral)", emoji:"🔴", msg:"คะแนนต่ำกว่ามาตรฐาน A setup" };
 }
-
 function coachReasons(s: CoachState, best: CoachScore, dailyStatus: ReturnType<typeof calcDailyStatus>) {
   const rs: string[] = [];
   if (dailyStatus.lossStreak >= 2) rs.push(`วันนี้ LOSS ${dailyStatus.lossStreak} ติด — เพิ่มความเข้มงวด`);
@@ -1120,7 +1016,6 @@ function coachReasons(s: CoachState, best: CoachScore, dailyStatus: ReturnType<t
   if (!rs.length) rs.push("เงื่อนไขหลักครบ — เล่นตามแผนได้");
   return rs.slice(0,3);
 }
-
 // resize รูปก่อนส่ง AI — ลด token 60-70% ไม่กระทบคุณภาพการวิเคราะห์
 function resizeImage(dataUrl: string, maxW = 800, maxH = 600): Promise<string> {
   return new Promise(resolve => {
@@ -1138,14 +1033,11 @@ function resizeImage(dataUrl: string, maxW = 800, maxH = 600): Promise<string> {
     img.src = dataUrl;
   });
 }
-
 function fileToDataUrl(file: File, cb: (v:string)=>void) {
   const reader = new FileReader();
   reader.onload = () => cb(String(reader.result || ""));
   reader.readAsDataURL(file);
 }
-
-
 function CooldownBanner({remainingMs}:{remainingMs:number}) {
   return (
     <div className="j-btn open-badge" style={{padding:"9px 14px",background:"var(--j-butter)",fontSize:12,cursor:"not-allowed",display:"flex",alignItems:"center",gap:8}}>
@@ -1154,7 +1046,6 @@ function CooldownBanner({remainingMs}:{remainingMs:number}) {
     </div>
   );
 }
-
 function HardLockBanner({onWriteReflection,submitted}:{onWriteReflection:()=>void;submitted:boolean}) {
   return (
     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
@@ -1169,7 +1060,6 @@ function HardLockBanner({onWriteReflection,submitted}:{onWriteReflection:()=>voi
     </div>
   );
 }
-
 function ForcedLockBanner() {
   return (
     <div style={{padding:"9px 14px",background:"#c98a8a",border:"2.5px solid var(--j-ink)",borderRadius:9,fontSize:12,fontFamily:"'Fredoka',sans-serif",fontWeight:700,color:"var(--j-win)",boxShadow:"3px 3px 0 var(--j-ink)"}}>
@@ -1177,7 +1067,6 @@ function ForcedLockBanner() {
     </div>
   );
 }
-
 function ReflectionModal({onSubmit,onClose,initialText}:{onSubmit:(text:string)=>void;onClose:()=>void;initialText:string}) {
   const [text,setText] = useState(initialText);
   return (
@@ -1220,7 +1109,6 @@ function ReflectionModal({onSubmit,onClose,initialText}:{onSubmit:(text:string)=
     </div>
   );
 }
-
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function JournalPage() {
   const [trades,setTrades]     = useState<Trade[]>([]);
@@ -1237,18 +1125,15 @@ export default function JournalPage() {
   const [showAlert,setShowAlert] = useState(false);
   const [uploading,setUploading] = useState(false);
   const [mounted,setMounted] = useState(false);
-
   // ── Discipline lock states (ใหม่) ──────────────────────────────────────────
   const [cooldownUntil,setCooldownUntil]   = useState(0);
   const [nowTick,setNowTick]               = useState(Date.now());
   const [hardlock,setHardlock]             = useState<HardlockState|null>(null);
   const [forcedLockDates,setForcedLockDates] = useState<string[]>([]);
   const [showReflection,setShowReflection] = useState(false);
-
   // ── Calendar states ────────────────────────────────────────────────────────
   const [calRef,setCalRef]           = useState(()=>{ const d=new Date(); return new Date(d.getFullYear(),d.getMonth(),1); });
   const [calSelected,setCalSelected] = useState<string|null>(null);
-
   // ── Checklist Phase state ──────────────────────────────────────────────────
   const [step,setStep]         = useState<"mode"|"checklist"|"entry">("mode");
   const [selMode,setSelMode]   = useState<TradeMode|null>(null);
@@ -1257,7 +1142,6 @@ export default function JournalPage() {
   const [clSWB,setClSWB]       = useState<ChecklistSWBreakout>(defSWBreak());
   const [clPB,setClPB]         = useState<ChecklistPullback>(defPullback());
   const [clM5,setClM5]         = useState<ChecklistM5Rev>(defM5Rev());
-
   // ── Entry form ─────────────────────────────────────────────────────────────
   const [entryDate,setEntryDate]   = useState(new Date().toISOString().split("T")[0]);
   const [entryTime,setEntryTime]   = useState(nowTime24());
@@ -1269,7 +1153,6 @@ export default function JournalPage() {
   const [lotInput,setLotInput]     = useState("0.10");
   const [riskAmount]               = useState(5);
   const [emotion,setEmotion]       = useState<Emotion>("😌 Calm");
-
   // ── Exit form ─────────────────────────────────────────────────────────────
   const [exitInput,setExitInput]   = useState("");
   const [exitPrices,setExitPrices] = useState<number[]>([]);
@@ -1277,25 +1160,21 @@ export default function JournalPage() {
   const [exitReason,setExitReason] = useState<ExitReason|"">("");
   const [exitNotes,setExitNotes]   = useState("");
   const [screenshotUrl,setScreenshotUrl] = useState("");
-
   const todayStr    = new Date().toISOString().split("T")[0];
   const dailyStatus = calcDailyStatus(trades, todayStr);
   const isCent      = accountType==="cent";
   const stats       = calcStats(trades);
-
   // ── Discipline lock derived state ──────────────────────────────────────────
   const cooldownRemainingMs = Math.max(0, cooldownUntil - nowTick);
   const isForcedLockToday = forcedLockDates.includes(todayStr);
   const isHardLockToday = (hardlock?.date === todayStr) || dailyStatus.isHardStop || isForcedLockToday;
   const isLockedFromTrading = isForcedLockToday || isHardLockToday || cooldownRemainingMs > 0;
   const needsReflection = isHardLockToday && !isForcedLockToday && !(hardlock?.date===todayStr && hardlock?.submitted);
-
   const setEntryTimeAuto = (time: string) => {
     const clean = time.slice(0,5);
     setEntryTime(clean);
     if (!sessionManual) setSession(autoSessionFromTime(clean));
   };
-
   const setNowEntryTime = () => {
     const d = new Date();
     const t = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
@@ -1304,9 +1183,7 @@ export default function JournalPage() {
     setSession(autoSessionFromTime(t));
     setSessionManual(false);
   };
-
   useEffect(()=>{ setMounted(true); },[]);
-
   // ── Boot ──────────────────────────────────────────────────────────────────
   useEffect(()=>{
     const lines=["JOURNAL.EXE","LOADING... 🥇"];
@@ -1318,14 +1195,12 @@ export default function JournalPage() {
     };
     setTimeout(next,100);
   },[]);
-
   // ── Load trades ───────────────────────────────────────────────────────────
   useEffect(()=>{
     const loadData = async () => {
       // โหลด localStorage ก่อน (เร็ว + migrate v3→v4 อัตโนมัติ)
       const local = load();
       if (local.length > 0) { setTrades(local); }
-
       // ถ้า login ให้ดึงจาก Supabase ด้วย
       try {
         const { data:{user} } = await supabase.auth.getUser();
@@ -1352,20 +1227,17 @@ export default function JournalPage() {
     };
     loadData();
     const op=loadOpen(); setOpenTrade(op);
-
     // ── โหลดสถานะ lock ที่ค้างไว้จาก localStorage ──
     setCooldownUntil(loadCooldownUntil());
     setHardlock(loadHardlock());
     setForcedLockDates(loadForcedLockDates());
   },[]);
-
   // ── Countdown ticker (อัปเดตทุกวินาทีตอน cooldown ทำงาน) ────────────────────
   useEffect(()=>{
     if (cooldownRemainingMs <= 0) return;
     const id = setInterval(()=>setNowTick(Date.now()), 1000);
     return ()=>clearInterval(id);
   },[cooldownRemainingMs>0]);
-
   // เคลียร์ cooldown อัตโนมัติเมื่อหมดเวลา
   useEffect(()=>{
     if (cooldownUntil > 0 && Date.now() >= cooldownUntil) {
@@ -1373,7 +1245,6 @@ export default function JournalPage() {
       setCooldownUntil(0);
     }
   },[nowTick, cooldownUntil]);
-
   // ── เตือนก่อนปิดแท็บถ้ายังไม่ได้เขียนสรุป (Hard Lock วันนี้) ──────────────────
   useEffect(()=>{
     const handler = (e: BeforeUnloadEvent) => {
@@ -1386,7 +1257,6 @@ export default function JournalPage() {
     window.addEventListener("beforeunload", handler);
     return ()=>window.removeEventListener("beforeunload", handler);
   },[needsReflection]);
-
   // ── Loss alert ────────────────────────────────────────────────────────────
   // แจ้งเตือนวันละ 1 ครั้ง หลังผู้ใช้กดรับทราบแล้วจะไม่เด้งซ้ำ
   // และจะรีเซ็ตอัตโนมัติเมื่อขึ้นวันใหม่หลังเที่ยงคืน
@@ -1396,7 +1266,6 @@ export default function JournalPage() {
       setShowAlert(false);
       return;
     }
-
     try {
       const ackDate = localStorage.getItem(ALERT_ACK_KEY);
       setShowAlert(ackDate !== todayStr);
@@ -1404,14 +1273,12 @@ export default function JournalPage() {
       setShowAlert(true);
     }
   },[trades,view,todayStr,dailyStatus.isHardStop,dailyStatus.isDayDone]);
-
   // ── Sparkle ───────────────────────────────────────────────────────────────
   const sparkle=()=>{
     const c=["var(--j-mint)","var(--j-pink)","var(--j-butter)","var(--j-lav)","var(--j-coral)","var(--j-sky)"];
     setPixels(Array.from({length:18},(_,i)=>({id:i,x:Math.random()*200-100,y:Math.random()*-120-20,c:c[Math.floor(Math.random()*c.length)]})));
     setTimeout(()=>setPixels([]),800);
   };
-
   // ── Checklist completeness ─────────────────────────────────────────────────
   const checklistComplete = () => {
     if(!selMode) return false;
@@ -1430,7 +1297,6 @@ export default function JournalPage() {
     if(selMode==="M5_REVERSAL") return clM5;
     return {};
   };
-
   // ── Save Open Trade (Pre-entry) ────────────────────────────────────────────
   const saveOpenTrade = async () => {
     if (isLockedFromTrading) return; // กันเหนียว: ล็อกอยู่ห้ามเปิดไม้เด็ดขาด
@@ -1451,7 +1317,6 @@ export default function JournalPage() {
     setEntryPrice(""); setSlPrice(""); setLotInput("0.10"); setEmotion("😌 Calm"); setSessionManual(false);
     setView("dashboard");
   };
-
   // ── Save Closed Trade (Post-exit) — ตรงนี้คือจุดที่ตรวจกฎ lock ทั้งหมด ────────
   const saveClosedTrade = async () => {
     if(!openTrade||!exitPrices.length) return;
@@ -1470,7 +1335,6 @@ export default function JournalPage() {
     const updated=[closed,...trades.filter(t=>t.id!==closed.id)];
     setTrades(updated); save(updated);
     setOpenTrade(null); saveOpen(null);
-
     // ── ตรวจ Loss Streak Rules หลังบันทึกไม้นี้ ──
     const newStatus = calcDailyStatus(updated, closed.date);
     if (closed.date === todayStr) {
@@ -1479,7 +1343,6 @@ export default function JournalPage() {
         saveCooldownUntil(0); setCooldownUntil(0);
         const hl: HardlockState = { date: todayStr, submitted:false, reflectionText:"", submittedAt:"" };
         saveHardlock(hl); setHardlock(hl);
-
         // เช็ค pattern ซ้ำในสัปดาห์: hard-stop ครบ 3 วันขึ้นไปในสัปดาห์นี้ → ล็อกวันถัดไปด้วย
         const weekCount = countHardStopDaysThisWeek(updated, todayStr);
         if (weekCount >= 3) {
@@ -1499,7 +1362,6 @@ export default function JournalPage() {
         saveCooldownUntil(0); setCooldownUntil(0);
       }
     }
-
     // supabase
     const {data:{user}}=await supabase.auth.getUser();
     if(user){
@@ -1519,13 +1381,11 @@ export default function JournalPage() {
     sparkle(); setSaving(true); setTimeout(()=>setSaving(false),900);
     setView("dashboard");
   };
-
   const submitReflection = (text: string) => {
     const hl: HardlockState = { date: todayStr, submitted:true, reflectionText:text, submittedAt:new Date().toISOString() };
     saveHardlock(hl); setHardlock(hl);
     setShowReflection(false);
   };
-
   const uploadScreenshot=async(file:File)=>{
     const {data:{user}}=await supabase.auth.getUser();
     if(!user){alert("Please log in");return;}
@@ -1539,13 +1399,11 @@ export default function JournalPage() {
     }catch{alert("Upload error");}
     setUploading(false);
   };
-
   const addExit=()=>{const v=parseFloat(exitInput);if(!isNaN(v)&&v>0){setExitPrices(p=>[...p,v]);setExitInput("");}};
   const parsePaste=()=>{
     const ns=pasteInput.split(/[\n,\s]+/).map(s=>parseFloat(s.replace(/,/g,""))).filter(n=>!isNaN(n)&&n>0);
     if(ns.length){setExitPrices(p=>[...p,...ns]);setPasteInput("");}
   };
-
   const updateOpenTradePatch = (patch: Partial<Trade>) => {
     setOpenTrade(prev => {
       if(!prev) return prev;
@@ -1554,7 +1412,6 @@ export default function JournalPage() {
       return next;
     });
   };
-
   const editTrade=(t:Trade)=>{
     // calendar / session → กดแก้ไข trade ที่ปิดแล้ว (เปิด exit view)
     setOpenTrade(t);
@@ -1565,20 +1422,16 @@ export default function JournalPage() {
     saveOpen(t);
     setView("exit");
   };
-
   const deleteTrade=async(t:Trade)=>{
     const ok = window.confirm(`ลบการเทรดวันที่ ${t.date} เวลา ${t.time} ใช่ไหม?`);
     if(!ok) return;
-
     const updated = trades.filter(x=>x.id!==t.id);
     setTrades(updated);
     save(updated);
-
     if(openTrade?.id===t.id){
       setOpenTrade(null);
       saveOpen(null);
     }
-
     try{
       const {data:{user}} = await supabase.auth.getUser();
       if(user){
@@ -1588,21 +1441,16 @@ export default function JournalPage() {
       console.error("Supabase delete error:",e);
     }
   };
-
   const filtered=filter==="ALL"?trades.filter(t=>t.status==="CLOSED"):trades.filter(t=>t.status==="CLOSED"&&t.result===filter);
-
   // ── P/L preview ───────────────────────────────────────────────────────────
   const previewPL = openTrade&&exitPrices.length
     ? exitPrices.map(ex=>calcPL(openTrade.direction,openTrade.entryPrice,ex,openTrade.lotPerOrder,isCent)).reduce((a,b)=>a+b,0)
     : 0;
-
   const totalPages = openTrade&&exitPrices.length
     ? Math.round(previewPL*100)/100 : 0;
-
   if (!mounted) {
     return <main style={{minHeight:"100vh",background:"#f1e9da"}} />;
   }
-
   return (
     <main className="j-root">
       <style>{`
@@ -1642,14 +1490,13 @@ export default function JournalPage() {
         .j-statlab{font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1px;color:var(--j-soft);text-transform:uppercase;margin-top:2px;}
         .j-mini{font-size:11px;font-weight:500;padding:3px 9px;border:1.5px solid var(--j-ink);border-radius:6px;}
         .j-tab{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.5px;padding:9px 12px;cursor:pointer;border:2px solid transparent;border-radius:7px 7px 0 0;background:transparent;color:var(--j-soft);font-weight:500;}
-        .j-tab.on{background:var(--j-win);border-color:var(--j-ink);border-bottom-color:var(--j-win);color:var(--j-ink);}
+        .j-tab.on{background:var(--j-lav);border-color:var(--j-ink);color:var(--j-ink);font-weight:700;}
         @keyframes savepulse{0%,100%{box-shadow:3px 3px 0 var(--j-ink)}50%{box-shadow:0 0 0 var(--j-ink),0 0 14px var(--j-mint)}}
         .j-saving{animation:savepulse .2s steps(2,end) 4;}
         @keyframes tabslide{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
         .j-tabcontent{animation:tabslide .15s steps(2,end) both;}
         .j-pixel{position:absolute;width:8px;height:8px;border:1.5px solid var(--j-ink);pointer-events:none;animation:pixelfly .7s steps(4,end) forwards;}
         @keyframes pixelfly{0%{opacity:1;transform:translate(0,0) scale(1)}50%{opacity:1;transform:translate(var(--px),var(--py)) scale(1.2)}100%{opacity:0;transform:translate(var(--px),calc(var(--py) + 20px)) scale(0)}}
-
         .j-cal-nav{width:24px;height:24px;border:2px solid var(--j-ink);border-radius:5px;background:var(--j-win);color:var(--j-ink);font-family:'DM Mono',monospace;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:1px 1px 0 var(--j-ink);}
         .j-cal-nav:active{transform:translate(1px,1px);box-shadow:none;}
         .j-cal-weekdays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;margin-bottom:8px;text-align:center;font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);letter-spacing:1px;}
@@ -1682,8 +1529,6 @@ export default function JournalPage() {
         .j-open-edit-grid.two{grid-template-columns:repeat(2,1fr);}
         .j-open-edit-note{margin-top:10px;background:#fbf6ea;border:1.5px dashed var(--j-ink);border-radius:8px;padding:8px 10px;font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);line-height:1.5;}
         @media(max-width:720px){.j-cal-grid{gap:5px}.j-cal-weekdays{gap:5px}.j-cal-cell{min-height:70px;padding:6px}.j-cal-pl{font-size:12px}.j-cal-count,.j-cal-mini{display:none}.j-cal-day{font-size:11px;top:5px;right:6px}.j-cal-trade-row{align-items:flex-start;flex-wrap:wrap}.j-cal-trade-row b{margin-left:auto}.j-cal-summary-grid,.j-open-edit-grid,.j-open-edit-grid.two{grid-template-columns:1fr 1fr}}
-
-
         .j-tools-screen{display:flex;flex-direction:column;gap:12px;}
         .j-tools-layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:12px;align-items:start;}
         .j-tool-label{font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px;}
@@ -1725,7 +1570,6 @@ export default function JournalPage() {
         .j-session-head b{display:block;font-family:'DM Mono',monospace;font-size:12px;line-height:1;color:var(--j-ink);}
         .j-session-head small{display:block;font-family:'DM Mono',monospace;font-size:8px;color:var(--j-soft);margin-top:3px;}
         .j-session-head em{margin-left:auto;font-style:normal;font-family:'DM Mono',monospace;font-size:8px;font-weight:700;border:1.5px solid var(--j-ink);border-radius:5px;padding:2px 5px;background:rgba(255,253,248,.65);}
-
         .battle-screen{gap:14px;}
         .battle-layout{grid-template-columns:minmax(0,1.12fr) 390px;}
         .battle-hero{background:linear-gradient(135deg,var(--j-lav),#fffdf8 68%);}
@@ -1749,19 +1593,16 @@ export default function JournalPage() {
         .battle-summary-card span{display:block;font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);text-transform:uppercase;letter-spacing:1px;}
         .battle-summary-card b{display:block;font-family:'VT323',monospace;font-size:30px;line-height:1;margin-top:3px;color:var(--j-ink);}
         .battle-summary-card small{display:block;font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);margin-top:2px;}
-
         @media(max-width:820px){.j-tools-layout,.battle-layout{grid-template-columns:1fr}.j-rpg-avatar-row,.battle-main{grid-template-columns:1fr}.j-rpg-avatar{min-height:76px}.battle-avatar{min-height:96px}.j-rpg-grid,.battle-stat-grid,.battle-summary-grid{grid-template-columns:1fr}.j-rpg-mini-header{align-items:flex-start;flex-direction:column}.j-tool-next{width:100%;}.j-rpg-top{align-items:flex-start;flex-direction:column}.j-signal-badge{width:100%;justify-content:center;}} 
-
         /* ─── Mobile First Polish ───────────────────────────────────────── */
         .j-page-shell{max-width:780px;margin:0 auto;padding:16px 12px 0;}
-        .j-tabs-wrap{max-width:780px;margin:14px auto 0;display:flex;gap:6px;border-bottom:2.5px solid var(--j-ink);}
+        .j-tabs-wrap{max-width:780px;margin:14px auto 0;display:flex;gap:8px;padding:0 12px 4px;overflow-x:auto;-webkit-overflow-scrolling:touch;border-bottom:none;} .j-tabs-wrap::-webkit-scrollbar{display:none;}
         .j-mobile-grid{min-width:0;}
         .j-input-pair{min-width:0;}
         input, textarea, button, select{max-width:100%;}
         img{max-width:100%;}
-
         @media(max-width:640px){
-          .j-root{padding-bottom:96px;background-size:12px 12px;overflow-x:hidden;}
+          .j-root{background-size:12px 12px;overflow-x:hidden;}
           .j-header-wrap{padding:8px 8px 0!important;}
           .j-page-shell{padding:10px 8px 0!important;max-width:100%!important;}
           .j-win{border-width:2px;border-radius:12px;box-shadow:2px 2px 0 var(--j-ink);margin-bottom:10px;}
@@ -1776,19 +1617,16 @@ export default function JournalPage() {
           .j-num{font-size:26px;}
           .j-stat{padding:8px 6px;border-width:2px;box-shadow:2px 2px 0 var(--j-ink);}
           .j-statlab{font-size:7px;}
-
           .j-header-wrap > .j-win{max-width:100%!important;margin:0!important;}
           .j-header-wrap .j-body{align-items:flex-start!important;gap:10px!important;}
           .j-header-wrap .j-body > div:first-child{width:100%;}
           .j-header-wrap .j-body > div:first-child div:first-child{font-size:28px!important;line-height:.9!important;}
           .j-header-wrap .j-body > div:last-child{width:100%;display:flex!important;flex-wrap:wrap!important;gap:8px!important;}
           .j-header-wrap .j-body > div:last-child button{width:100%;}
-
-          .j-tabs-wrap{position:fixed!important;left:0;right:0;bottom:0;z-index:990;max-width:none!important;margin:0!important;padding:7px 7px calc(7px + env(safe-area-inset-bottom))!important;display:flex!important;gap:6px!important;overflow-x:auto!important;white-space:nowrap!important;border-top:2.5px solid var(--j-ink)!important;border-bottom:0!important;background:rgba(241,233,218,.97)!important;box-shadow:0 -4px 0 rgba(90,77,66,.1);-webkit-overflow-scrolling:touch;}
+          .j-tabs-wrap{position:relative!important;left:auto;right:auto;bottom:auto;z-index:10;max-width:780px!important;margin:12px auto 0!important;padding:0 12px 4px!important;display:flex!important;gap:8px!important;overflow-x:auto!important;white-space:nowrap!important;border-top:none!important;border-bottom:none!important;background:transparent!important;box-shadow:none;-webkit-overflow-scrolling:touch;}
           .j-tabs-wrap::-webkit-scrollbar{display:none;}
-          .j-tab{flex:0 0 auto!important;min-width:78px!important;border:2px solid var(--j-ink)!important;border-radius:10px!important;background:var(--j-win)!important;padding:9px 8px!important;font-size:9px!important;line-height:1.15!important;text-align:center!important;box-shadow:1.5px 1.5px 0 var(--j-ink);}
+          .j-tab{flex:0 0 auto!important;border:2px solid var(--j-ink)!important;border-radius:20px!important;background:var(--j-win)!important;padding:9px 16px!important;font-size:12px!important;line-height:1.25!important;text-align:center!important;box-shadow:2px 2px 0 var(--j-ink);white-space:nowrap!important;display:flex!important;align-items:center!important;gap:5px!important;}
           .j-tab.on{background:var(--j-lav)!important;border-bottom-color:var(--j-ink)!important;color:var(--j-ink)!important;}
-
           .j-mobile-grid,.j-upload-grid,.j-tools-layout,.battle-layout,.j-open-edit-grid,.j-open-edit-grid.two{grid-template-columns:1fr!important;}
           .j-input-pair{grid-template-columns:1fr 1fr!important;}
           .j-cal-summary-grid,.battle-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
@@ -1796,7 +1634,6 @@ export default function JournalPage() {
           .j-rpg-avatar-row,.battle-main{grid-template-columns:1fr!important;}
           .j-rpg-avatar,.battle-avatar{min-height:80px!important;}
           .battle-score span{font-size:38px!important;}
-
           .j-cal-weekdays{gap:4px;font-size:8px;}
           .j-cal-grid{gap:4px;}
           .j-cal-cell{min-height:54px;padding:5px;border-width:1.5px;border-radius:7px;box-shadow:1px 1px 0 var(--j-ink);}
@@ -1804,7 +1641,6 @@ export default function JournalPage() {
           .j-cal-pl{font-size:10px;}
           .j-cal-count,.j-cal-mini{font-size:7px;}
           .j-cal-cell.today:after{display:none;}
-
           .grid{min-width:0;}
           .grid.grid-cols-2{gap:8px!important;}
           .space-y-4 > * + *{margin-top:10px!important;}
@@ -1813,13 +1649,10 @@ export default function JournalPage() {
           [style*="gridTemplateColumns"]{min-width:0;}
           textarea{min-height:76px!important;}
         }
-
         .open-badge{animation:blink .8s step-end infinite;}
       `}</style>
-
       {/* Boot */}
       {booting&&(<div className={`j-boot ${bootDone?"done":""}`}><div className="j-boot-logo">JOURNAL.EXE</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:13,color:"#c0e6d4",minHeight:40,whiteSpace:"pre"}}>{bootText}<span className="j-boot-cursor"/></div><div className="j-boot-bar"><div className="j-boot-fill"/></div><div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#c0e6d4",opacity:.6,letterSpacing:2}}>SMC · XAUUSD · TRUST YOUR OWN</div></div>)}
-
       {/* Header */}
       <div className="j-header-wrap" style={{padding:"14px 12px 0"}}>
         <div className="j-win" style={{maxWidth:780,margin:"0 auto"}}>
@@ -1834,7 +1667,6 @@ export default function JournalPage() {
             </div>
             <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
               <button onClick={()=>setAccountType(accountType==="cent"?"standard":"cent")} className="j-chip" style={{fontSize:11,background:accountType==="cent"?"var(--j-butter)":"var(--j-lav)"}}>{accountType==="cent"?"Cent":"Std"}</button>
-
               {/* ── Discipline Lock priority: Forced > HardLock > Cooldown > Open Trade > New Trade ── */}
               {isForcedLockToday ? (
                 <ForcedLockBanner/>
@@ -1869,14 +1701,11 @@ export default function JournalPage() {
           )}
         </div>
       </div>
-
       {/* Pixel sparkle */}
       <div style={{position:"fixed",top:"50%",left:"50%",pointerEvents:"none",zIndex:1000}}>
         {pixels.map(p=>(<div key={p.id} className="j-pixel" style={{"--px":`${p.x}px`,"--py":`${p.y}px`,background:p.c} as any}/>))}
       </div>
-
       <div className="j-page-shell" style={{maxWidth:780,margin:"0 auto",padding:"16px 12px 0"}}>
-
         {/* ── DASHBOARD ── */}
         {view==="dashboard"&&(
           <div className="space-y-4 j-tabcontent">
@@ -1925,7 +1754,6 @@ export default function JournalPage() {
             </Win>
           </div>
         )}
-
         {/* ── LIST ── */}
         {view==="list"&&(
           <div className="space-y-3 j-tabcontent">
@@ -1966,7 +1794,6 @@ export default function JournalPage() {
             {!filtered.length&&<p className="text-center py-10" style={{color:"var(--j-soft)"}}>No sessions</p>}
           </div>
         )}
-
         {/* ── CHECKLIST (Pre-Entry) ── */}
         {view==="checklist"&&(
           isLockedFromTrading ? (
@@ -1989,7 +1816,6 @@ export default function JournalPage() {
                 {step==="mode"?"Step 1/3 — เลือก Mode":step==="checklist"?"Step 2/3 — Checklist":"Step 3/3 — Entry Details"}
               </div>
             </div>
-
             {/* STEP 1: เลือก Mode */}
             {step==="mode"&&(
               <Win title="🎯 STEP 1 — วัฏจักรตอนนี้คืออะไร?" color="var(--j-lav)">
@@ -2010,7 +1836,6 @@ export default function JournalPage() {
                 </div>
               </Win>
             )}
-
             {/* STEP 2: Checklist */}
             {step==="checklist"&&selMode&&(()=>{
               const info=MODE_INFO[selMode];
@@ -2065,7 +1890,6 @@ export default function JournalPage() {
                 </Win>
               );
             })()}
-
             {/* STEP 3: Entry Details */}
             {step==="entry"&&selMode&&(
               <Win title={`${getModeInfo(selMode).emoji} STEP 3 — Entry Details`} color={getModeInfo(selMode).color}>
@@ -2148,7 +1972,6 @@ export default function JournalPage() {
           </div>
           )
         )}
-
         {/* ── EXIT (Post-Exit) ── */}
         {view==="exit"&&openTrade&&(
           <div className="space-y-4 j-tabcontent" style={{maxWidth:560,margin:"0 auto"}}>
@@ -2175,7 +1998,6 @@ export default function JournalPage() {
                     </select>
                   </div>
                 </div>
-
                 <div className="j-open-edit-grid" style={{marginTop:10}}>
                   <div>
                     <label className="j-lab">Direction</label>
@@ -2197,7 +2019,6 @@ export default function JournalPage() {
                     </select>
                   </div>
                 </div>
-
                 <div className="j-open-edit-grid" style={{marginTop:10}}>
                   <div>
                     <label className="j-lab">Entry</label>
@@ -2212,13 +2033,11 @@ export default function JournalPage() {
                     <input type="number" step="0.01" value={openTrade.lotPerOrder || ""} onChange={e=>{const lot=Number(e.target.value||0); updateOpenTradePatch({lotPerOrder:lot,lotInput:String(e.target.value||"")});}} className="j-in"/>
                   </div>
                 </div>
-
                 <div className="j-open-edit-note">
                   แก้ตรงนี้แล้วบันทึกทันทีในเครื่อง · ถ้าใส่ Exit price ไว้แล้ว ค่า P/L preview จะคำนวณใหม่ตาม Entry / SL / Lot ล่าสุด
                 </div>
               </div>
             </div>
-
             {/* Exit prices */}
             <Win title="📤 EXIT PRICES" color="var(--j-mint)">
               <div className="flex gap-2 mb-3">
@@ -2254,7 +2073,6 @@ export default function JournalPage() {
                 </div>
               )}
             </Win>
-
             {/* Exit reason + notes */}
             <Win title="📝 DEBRIEF" color="var(--j-peach)">
               <label className="j-lab">เหตุผลที่ออก</label>
@@ -2279,15 +2097,12 @@ export default function JournalPage() {
                 </label>
               )}
             </Win>
-
             <button onClick={saveClosedTrade} disabled={!exitPrices.length} className={`j-btn w-full ${saving?"j-saving":""}`} style={{padding:16,background:"var(--j-coral)",fontSize:16}}>
               {saving?"💾 SAVING...":"💾 ปิดไม้ — บันทึกสำเร็จ"}
             </button>
           </div>
         )}
-
       </div>
-
         {/* ── CALENDAR ── */}
         {(view as string)==="calendar"&&(()=>{
           const y = calRef.getFullYear();
@@ -2297,19 +2112,16 @@ export default function JournalPage() {
           const pad = (n:number) => String(n).padStart(2,"0");
           const key = (d:number) => `${y}-${pad(m+1)}-${pad(d)}`;
           const monthName = new Date(y,m,1).toLocaleString("en-US",{month:"long",year:"numeric"});
-
           const byDate: Record<string, Trade[]> = {};
           trades.filter(t=>t.status==="CLOSED").forEach(t=>{
             const safeDate = String(t.date || "").slice(0,10);
             if(!safeDate) return;
             (byDate[safeDate] ||= []).push(t);
           });
-
           const cells: (number|null)[] = [];
           for(let i=0;i<startDow;i++) cells.push(null);
           for(let d=1; d<=daysInMonth; d++) cells.push(d);
           while(cells.length % 7 !== 0) cells.push(null);
-
           const selTrades = calSelected ? (byDate[calSelected] || []) : [];
           const selectedPL = selTrades.reduce((s,t)=>s + Number(t.totalPL || 0),0);
           const monthKey = `${y}-${pad(m+1)}`;
@@ -2320,7 +2132,6 @@ export default function JournalPage() {
           const monthWinRate = monthTrades.length ? (monthWins/monthTrades.length)*100 : 0;
           const monthAvgRR = monthTrades.length ? monthTrades.reduce((s,t)=>s+Number(t.rr||0),0)/monthTrades.length : 0;
           const todayKey = new Date().toISOString().split("T")[0];
-
           return (
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               <div className="j-win">
@@ -2330,7 +2141,6 @@ export default function JournalPage() {
                   <button onClick={()=>setCalRef(new Date())} className="j-chip off" style={{fontSize:10,padding:"3px 8px",borderStyle:"solid"}}>Today</button>
                   <button onClick={()=>setCalRef(new Date(y,m+1,1))} className="j-cal-nav" aria-label="Next month">▶</button>
                 </div>
-
                 <div className="j-body">
                   <div className="j-cal-summary-grid">
                     <div className={`j-cal-summary-card ${monthPL>=0?"win":"loss"}`}><span>Month P/L</span><b>{monthPL>=0?"+":"-"}${Math.abs(monthPL).toFixed(2)}</b></div>
@@ -2343,11 +2153,9 @@ export default function JournalPage() {
                       ["S","Sun"],["M","Mon"],["T","Tue"],["W","Wed"],["T","Thu"],["F","Fri"],["S","Sat"]
                     ].map(([short,full],i)=><div key={i} title={full}>{short}</div>)}
                   </div>
-
                   <div className="j-cal-grid">
                     {cells.map((d,i)=>{
                       if(d===null) return <div key={i} className="j-cal-cell empty" />;
-
                       const k = key(d);
                       const dayTrades = byDate[k] || [];
                       const has = dayTrades.length > 0;
@@ -2360,7 +2168,6 @@ export default function JournalPage() {
                       const isSelected = calSelected === k;
                       const isToday = todayKey === k;
                       const plText = `${net>=0?"+":"-"}$${Math.abs(net).toFixed(2)}`;
-
                       return (
                         <button
                           key={i}
@@ -2387,7 +2194,6 @@ export default function JournalPage() {
                       );
                     })}
                   </div>
-
                   <div className="j-cal-legend">
                     <span><i style={{background:"var(--j-mint)"}}/> Win day</span>
                     <span><i style={{background:"var(--j-pink)"}}/> Loss day</span>
@@ -2395,7 +2201,6 @@ export default function JournalPage() {
                   </div>
                 </div>
               </div>
-
               {calSelected&&(
                 <Win title={`📋 ${calSelected} · ${selTrades.length} trade${selTrades.length>1?"s":""} · ${selectedPL>=0?"+":"-"}$${Math.abs(selectedPL).toFixed(2)}`} color="var(--j-peach)">
                   {selTrades.length===0 ? (
@@ -2429,7 +2234,6 @@ export default function JournalPage() {
                   )}
                 </Win>
               )}
-
               {!calSelected&&(
                 <div className="j-cal-empty-note">
                   แตะวันที่มีสีเพื่อดูรายการเทรด · ปุ่ม Today จะพากลับมาที่เดือนปัจจุบัน · สีเขียว/ชมพู/ม่วง = วันกำไร/ขาดทุน/BE
@@ -2438,12 +2242,9 @@ export default function JournalPage() {
             </div>
           );
         })()}
-
-
         {/* ── BATTLE COACH ── */}
         {view==="tools"&&(<BattleCoachPanel trades={trades} dailyStatus={dailyStatus} stats={stats} />)}
         {view==="aiCoach"&&(<AICoachPanel dailyStatus={dailyStatus} setLightbox={setLightbox} />)}
-
       {/* Alert Popup */}
       {showAlert&&(dailyStatus.isHardStop||dailyStatus.isDayDone)&&(
         <div style={{position:"fixed",inset:0,zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center",padding:20,background:"rgba(42,31,20,.85)",backdropFilter:"blur(3px)"}}>
@@ -2476,7 +2277,6 @@ export default function JournalPage() {
           </div>
         </div>
       )}
-
       {/* Reflection Modal — บังคับกรอกก่อนปิดแอปตอน Hard Lock */}
       {showReflection && (
         <ReflectionModal
@@ -2485,9 +2285,12 @@ export default function JournalPage() {
           onClose={()=>setShowReflection(false)}
         />
       )}
-
       {/* Lightbox */}
       {lightbox&&(<div onClick={()=>setLightbox(null)} style={{position:"fixed",inset:0,background:"rgba(90,77,66,.75)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:20,cursor:"zoom-out"}}><div style={{border:"3px solid var(--j-ink)",borderRadius:10,overflow:"hidden",boxShadow:"6px 6px 0 var(--j-ink)",background:"var(--j-win)"}}><div className="j-bar" style={{background:"var(--j-sky)"}}><span className="j-t">🖼 SCREENSHOT.bmp</span><span className="j-ctrl"><span>✕</span></span></div><img src={lightbox} alt="full" style={{display:"block",maxWidth:"90vw",maxHeight:"75vh",objectFit:"contain"}}/></div></div>)}
     </main>
   );
 }
+
+
+ปรับแก้หน้า นี้ให้เข้ากับ logic ที่เราคิดกันมา แล้วส่งไฟล์กลับมา
+app/journal/page.tsx
