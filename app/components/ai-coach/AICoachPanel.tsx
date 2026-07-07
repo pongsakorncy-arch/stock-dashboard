@@ -1,7 +1,47 @@
-function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof calcDailyStatus>;setLightbox:(v:string|null)=>void}) {
-  const AI_COACH_CACHE_KEY = "yok_ai_coach_cache_v3_smc";
-  const AI_BUCKET = "ai-coach-images";
+"use client";
 
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
+
+type AICoachDailyStatus = {
+  todayLosses: number;
+  [key: string]: any;
+};
+
+type AICoachPanelProps = {
+  dailyStatus: AICoachDailyStatus;
+  setLightbox: (v: string | null) => void;
+};
+
+// Resize รูปก่อนส่ง AI — ลด token โดยยังคงรายละเอียดกราฟไว้พอสำหรับวิเคราะห์
+function resizeImage(dataUrl: string, maxW = 800, maxH = 600): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+
+    img.onload = () => {
+      const scale = Math.min(1, maxW / img.width, maxH / img.height);
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext("2d")?.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", 0.82));
+    };
+
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+function fileToDataUrl(file: File, cb: (v: string) => void) {
+  const reader = new FileReader();
+  reader.onload = () => cb(String(reader.result || ""));
+  reader.readAsDataURL(file);
+}
+
+export default function AICoachPanel({ dailyStatus, setLightbox }: AICoachPanelProps) {
+  const AI_COACH_CACHE_KEY = "yok_ai_coach_cache_v3_smc";
   const [htfImg,setHtfImg] = useState("");
   const [ltfImg,setLtfImg] = useState("");
   const [loading,setLoading] = useState(false);
