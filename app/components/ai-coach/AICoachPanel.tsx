@@ -1,10 +1,38 @@
 "use client";
 import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabaseClient";
-import { resizeImage, fileToDataUrl } from "@/lib/imageUtils";
-import { calcDailyStatus } from "@/lib/dailyStatus";
+import { supabase } from "@/lib/supabase";
 
-function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof calcDailyStatus>;setLightbox:(v:string|null)=>void}) {
+// ── helper functions (inline กันปัญหา import path) ──
+function resizeImage(dataUrl: string, maxW = 800, maxH = 600): Promise<string> {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxW / img.width, maxH / img.height);
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", 0.82));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+function fileToDataUrl(file: File, cb: (v: string) => void) {
+  const reader = new FileReader();
+  reader.onload = () => cb(String(reader.result || ""));
+  reader.readAsDataURL(file);
+}
+
+// type สำหรับ dailyStatus (รับมาจาก props เท่านั้น ไม่ต้อง import calcDailyStatus)
+type DailyStatusShape = {
+  todayLosses: number;
+  [key: string]: any;
+};
+
+function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:DailyStatusShape;setLightbox:(v:string|null)=>void}) {
   const AI_COACH_CACHE_KEY = "yok_ai_coach_cache_v3_smc";
   const AI_BUCKET = "ai-coach-images";
   const [htfImg,setHtfImg] = useState("");
