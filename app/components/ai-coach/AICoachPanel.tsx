@@ -9,6 +9,7 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
   const AI_BUCKET = "ai-coach-images";
   const [htfImg,setHtfImg] = useState("");
   const [ltfImg,setLtfImg] = useState("");
+  const [currentPrice,setCurrentPrice] = useState("");
   const [loading,setLoading] = useState(false);
   const [savingHistory,setSavingHistory] = useState(false);
   const [historyLoading,setHistoryLoading] = useState(false);
@@ -24,6 +25,7 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
         const data = JSON.parse(saved);
         setHtfImg(data.htfImg || "");
         setLtfImg(data.ltfImg || "");
+        setCurrentPrice(data.currentPrice || "");
         setResult(data.result || null);
       }
     } catch {}
@@ -31,9 +33,9 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
   }, []);
   useEffect(() => {
     try {
-      localStorage.setItem(AI_COACH_CACHE_KEY, JSON.stringify({ htfImg, ltfImg, result }));
+      localStorage.setItem(AI_COACH_CACHE_KEY, JSON.stringify({ htfImg, ltfImg, result, currentPrice }));
     } catch {}
-  }, [htfImg, ltfImg, result]);
+  }, [htfImg, ltfImg, result, currentPrice]);
   const safeText = (v:any, fallback = "-") => {
     if (v === null || v === undefined || v === "") return fallback;
     return String(v);
@@ -147,6 +149,7 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
   const clearAICoach = () => {
     setHtfImg("");
     setLtfImg("");
+    setCurrentPrice("");
     setResult(null);
     setError("");
     try { localStorage.removeItem(AI_COACH_CACHE_KEY); } catch {}
@@ -163,7 +166,7 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
       const res = await fetch("/api/ai/analyze", {
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ htfImage:htfResized, ltfImage:ltfResized, lossesToday:dailyStatus.todayLosses }),
+        body: JSON.stringify({ htfImage:htfResized, ltfImage:ltfResized, lossesToday:dailyStatus.todayLosses, currentPrice }),
       });
       const data = await res.json();
       if(!res.ok) throw new Error(data?.error || data?.message || "API error");
@@ -254,6 +257,24 @@ function AICoachPanel({dailyStatus,setLightbox}:{dailyStatus:ReturnType<typeof c
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
         <UploadBox title="📊 HTF — M15" label="อัปโหลด screenshot M15" img={htfImg} setImg={setHtfAndClear}/>
         <UploadBox title="📈 LTF — M5/M1" label="อัปโหลด screenshot M5/M1" img={ltfImg} setImg={setLtfAndClear}/>
+      </div>
+      <div style={{border:"2.5px solid var(--j-ink)",borderRadius:10,overflow:"hidden",boxShadow:"3px 3px 0 var(--j-ink)"}}>
+        <div style={{background:"var(--j-butter)",borderBottom:"2px solid var(--j-ink)",padding:"6px 12px"}}>
+          <span style={{fontFamily:"'DM Mono',monospace",fontSize:11,fontWeight:600}}>💰 ราคาปัจจุบัน (ช่วยให้ AI อ่านโซนแม่นขึ้น)</span>
+        </div>
+        <div style={{padding:"10px 12px"}}>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={currentPrice}
+            onChange={e=>{const v=e.target.value; if(v===""||/^\d*\.?\d*$/.test(v)) setCurrentPrice(v);}}
+            placeholder="เช่น 4139.24"
+            style={{width:"100%",border:"2px solid var(--j-ink)",borderRadius:7,padding:"10px 12px",fontFamily:"'DM Mono',monospace",fontSize:15,fontWeight:700,background:"#fbf6ea",color:"var(--j-ink)",outline:"none"}}
+          />
+          <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",marginTop:6,lineHeight:1.5}}>
+            กรอกราคา XAUUSD ตอนนี้ (ดูจากมุมขวาบนของกราฟ) — AI จะยึดราคานี้เป็นฐาน ไม่ต้องเดาเอง ทำให้ Entry/SL/TP แม่นขึ้นมาก
+          </div>
+        </div>
       </div>
       <button onClick={analyze} disabled={!canAnalyze}
         style={{width:"100%",padding:"14px",border:"2.5px solid var(--j-ink)",borderRadius:10,
