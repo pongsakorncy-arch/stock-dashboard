@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import ThemeToggle from "@/components/ThemeToggle";
 import CurrencyToggle from "@/components/CurrencyToggle";
 import { useCurrency } from "@/hooks/useCurrency";
+import EquityCurve, { saveTodaySnapshot } from "@/components/EquityCurve";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type IndexData = {
@@ -17,7 +18,7 @@ type IndexData = {
   prevClose: number;
   sparkline: number[];
   color: string;
-  extPrice: number;   // pre/after market price
+  extPrice: number;
   extChange: number;
   extPct: number;
   extType: "pre" | "after" | "none";
@@ -53,7 +54,7 @@ function smoothLine(pts: [number, number][]): string {
   if (pts.length < 2) return pts.length ? `M ${pts[0][0]},${pts[0][1]}` : "";
   if (pts.length === 2) return `M ${pts[0][0]},${pts[0][1]} L ${pts[1][0]},${pts[1][1]}`;
   const d = [`M ${pts[0][0]},${pts[0][1]}`];
-  const t = 0.18; // ความเนียน
+  const t = 0.18;
   for (let i = 0; i < pts.length - 1; i++) {
     const p0 = pts[i === 0 ? 0 : i - 1];
     const p1 = pts[i];
@@ -68,7 +69,7 @@ function smoothLine(pts: [number, number][]): string {
   return d.join(" ");
 }
 
-// Count-up animation hook (นับเลขวิ่ง)
+// Count-up animation hook
 function useCountUp(target: number, duration = 900) {
   const [val, setVal] = useState(0);
   const fromRef = useRef(0);
@@ -78,7 +79,7 @@ function useCountUp(target: number, duration = 900) {
     let raf = 0;
     const tick = (now: number) => {
       const t = Math.min((now - startTime) / duration, 1);
-      const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
+      const eased = 1 - Math.pow(1 - t, 3);
       setVal(start + (target - start) * eased);
       if (t < 1) raf = requestAnimationFrame(tick);
       else fromRef.current = target;
@@ -133,8 +134,7 @@ function LiveClock() {
   const [session, setSession] = useState("");
   const [countdown, setCountdown] = useState("");
   useEffect(() => {
-    // เวลาเปิด-ปิดตลาดสหรัฐฯ (ใช้ EDT = UTC-4 แบบประมาณ)
-    const OPEN = 9.5 * 3600, CLOSE = 16 * 3600; // วินาทีในวัน (ET)
+    const OPEN = 9.5 * 3600, CLOSE = 16 * 3600;
     const fmt = (s: number) => {
       s = Math.max(0, Math.floor(s));
       const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
@@ -151,7 +151,6 @@ function LiveClock() {
     const tick = () => {
       const now = new Date();
       setTime(now.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
-      // เวลา ET (เลื่อน UTC -4 ชม.)
       const et = new Date(now.getTime() - 4 * 3600 * 1000);
       const day = et.getUTCDay();
       const sod = et.getUTCHours() * 3600 + et.getUTCMinutes() * 60 + et.getUTCSeconds();
@@ -162,7 +161,6 @@ function LiveClock() {
       else if (edtMin >= 240 && edtMin < 570) setSession("🟡 Pre-Market");
       else if (edtMin >= 960 && edtMin < 1200) setSession("🟡 After-Hours");
       else setSession("🔴 ตลาด US ปิด");
-      // นับถอยหลัง
       if (isOpen) setCountdown(`ปิดใน ${fmt(CLOSE - sod)}`);
       else setCountdown(`เปิดใน ${fmt(secsToNextOpen(day, sod))}`);
     };
@@ -187,7 +185,6 @@ function LiveClock() {
 
 // ─── Fetch helpers ────────────────────────────────────────────────────────────
 async function fetchQuote(sym: string, key: string) {
-  // Use crypto quote for BTC
   const endpoint = sym.includes(":")
     ? `https://finnhub.io/api/v1/crypto/candle?symbol=${sym}&resolution=D&from=${Math.floor(Date.now()/1000)-86400}&to=${Math.floor(Date.now()/1000)}&token=${key}`
     : `https://finnhub.io/api/v1/quote?symbol=${sym}&token=${key}`;
@@ -195,7 +192,6 @@ async function fetchQuote(sym: string, key: string) {
     const r = await fetch(endpoint);
     const d = await r.json();
     if (sym.includes(":")) {
-      // crypto candle returns c[] array
       const closes = Array.isArray(d.c) ? d.c : [];
       const c = closes[closes.length-1] || 0;
       const pc = closes[closes.length-2] || c;
@@ -205,30 +201,15 @@ async function fetchQuote(sym: string, key: string) {
   } catch { return { c:0, d:0, dp:0, pc:0, o:0 }; }
 }
 
-// Determine session: pre-market (<9:30 ET) or after-hours (>16:00 ET)
 function getMarketSession(): "pre" | "after" | "open" | "closed" {
   const now = new Date();
-  const etMin = now.getUTCHours() * 60 + now.getUTCMinutes() - 240; // EDT offset
+  const etMin = now.getUTCHours() * 60 + now.getUTCMinutes() - 240;
   const day = now.getUTCDay();
   if (day === 0 || day === 6) return "closed";
-  if (etMin >= 240 && etMin < 570) return "pre";    // 04:00–09:30
-  if (etMin >= 570 && etMin < 960) return "open";   // 09:30–16:00
-  if (etMin >= 960 && etMin < 1200) return "after"; // 16:00–20:00
+  if (etMin >= 240 && etMin < 570) return "pre";
+  if (etMin >= 570 && etMin < 960) return "open";
+  if (etMin >= 960 && etMin < 1200) return "after";
   return "closed";
-}
-
-async function fetchCandles(sym: string, key: string): Promise<number[]> {
-  const to = Math.floor(Date.now() / 1000);
-  const from = to - 86400 * 30;
-  // Use crypto endpoint for BTC
-  const endpoint = sym.includes(":")
-    ? `https://finnhub.io/api/v1/crypto/candle?symbol=${sym}&resolution=D&from=${from}&to=${to}&token=${key}`
-    : `https://finnhub.io/api/v1/stock/candle?symbol=${sym}&resolution=D&from=${from}&to=${to}&token=${key}`;
-  try {
-    const r = await fetch(endpoint);
-    const d = await r.json();
-    return Array.isArray(d.c) ? d.c.slice(-20) : [];
-  } catch { return []; }
 }
 
 // หุ้นในพอร์ต
@@ -238,7 +219,7 @@ const PORTFOLIO_TICKERS = [
   "TSM","UBER","RKLB","CRWD","TMDX"
 ];
 
-// Sector ETFs (SPDR) สำหรับ Sector Performance
+// Sector ETFs
 const SECTOR_ETFS: { name: string; sym: string }[] = [
   { name: "Technology", sym: "XLK" },
   { name: "Healthcare", sym: "XLV" },
@@ -260,7 +241,6 @@ async function fetchSectors(key: string): Promise<{ name: string; pct: number }[
     .map((r) => r.value);
 }
 
-// BTC จาก CoinGecko (ฟรี ไม่ต้องใช้ key, รองรับ CORS)
 async function fetchBTC(): Promise<{ c:number; d:number; dp:number; pc:number; o:number }> {
   try {
     const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true");
@@ -274,7 +254,6 @@ async function fetchBTC(): Promise<{ c:number; d:number; dp:number; pc:number; o
 
 async function fetchFearGreed(): Promise<{value:number;label:string}> {
   try {
-    // CNN Stock-Market Fear & Greed (ผ่าน API route ฝั่ง server)
     const r = await fetch("/api/fear-greed");
     const d = await r.json();
     const val = Number(d?.value ?? 50);
@@ -285,13 +264,10 @@ async function fetchFearGreed(): Promise<{value:number;label:string}> {
 
 async function fetchNews(key: string): Promise<NewsItem[]> {
   if (!key) return [];
-  
   const now = Math.floor(Date.now() / 1000);
-  const from = now - 86400 * 3; // ย้อนหลัง 3 วัน
-  
-  // สุ่มหยิบ 5 หุ้นมาดึงข่าว (ไม่เกิน rate limit)
+  const from = now - 86400 * 3;
   const picks = [...PORTFOLIO_TICKERS].sort(() => Math.random() - 0.5).slice(0, 5);
-  
+
   const results = await Promise.allSettled(
     picks.map(sym =>
       fetch(`https://finnhub.io/api/v1/company-news?symbol=${sym}&from=${new Date(from*1000).toISOString().split('T')[0]}&to=${new Date(now*1000).toISOString().split('T')[0]}&token=${key}`)
@@ -308,21 +284,15 @@ async function fetchNews(key: string): Promise<NewsItem[]> {
         })))
     )
   );
-  
-  const all: NewsItem[] = results
+
+  return results
     .filter((r): r is PromiseFulfilledResult<NewsItem[]> => r.status === "fulfilled")
     .flatMap(r => r.value)
     .filter(n => n.headline && n.headline.length > 10)
     .sort(() => Math.random() - 0.5)
     .slice(0, 8);
-    
-  return all;
 }
 
-// Top movers: fetch quotes for S&P500 + NASDAQ big caps in batches
-// We use Finnhub's market movers endpoint (free: /stock/market-status, gainers/losers via quote batches)
-// Finnhub free has: /stock/symbol for exchange listings → then batch quotes
-// Simpler approach: use a curated watchlist of ~50 major tickers
 const WATCHLIST = [
   "AAPL","MSFT","NVDA","GOOGL","AMZN","META","TSLA","AVGO","LLY","JPM",
   "V","UNH","XOM","MA","JNJ","PG","HD","MRK","ABBV","COST",
@@ -332,7 +302,6 @@ const WATCHLIST = [
 ];
 
 async function fetchTopMovers(key: string): Promise<{ gainers: Mover[]; losers: Mover[] }> {
-  // ดึงราคาหุ้นใหญ่ (จำกัดจำนวนกัน rate limit ของ free tier)
   const batch = WATCHLIST.slice(0, 24);
   const quotes = await Promise.allSettled(
     batch.map(async (sym) => {
@@ -344,7 +313,6 @@ async function fetchTopMovers(key: string): Promise<{ gainers: Mover[]; losers: 
     .filter((r): r is PromiseFulfilledResult<Mover> => r.status === "fulfilled" && r.value.price > 0)
     .map(r => r.value);
 
-  // แยกตามเครื่องหมายจริง → ไม่มีทางทับกัน และ losers ต้องติดลบจริงเท่านั้น
   const gainers = valid.filter(m => m.changePct > 0).sort((a, b) => b.changePct - a.changePct).slice(0, 5);
   const losers  = valid.filter(m => m.changePct < 0).sort((a, b) => a.changePct - b.changePct).slice(0, 5);
 
@@ -352,8 +320,6 @@ async function fetchTopMovers(key: string): Promise<{ gainers: Mover[]; losers: 
 }
 
 // ─── Index config ─────────────────────────────────────────────────────────────
-// หมายเหตุ: Finnhub free ไม่มีค่า index จริง (เช่น S&P 6,000 จุด) จึงใช้ราคา ETF ที่ track ดัชนีนั้นแทน
-// (% การเปลี่ยนแปลงตรงกับดัชนีจริง) — แสดง ticker ETF กำกับไว้ให้ตัวเลขไม่งง
 const INDEX_CONFIG = [
   { symbol: "SPY",  etf: "SPY", label: "S&P 500", color: "#4f7df3" },
   { symbol: "QQQ",  etf: "QQQ", label: "NASDAQ",  color: "#a78bfa" },
@@ -382,7 +348,6 @@ function usePortfolioSnapshot() {
       const pl = marketValue - totalCost;
       const plPct = totalCost > 0 ? (pl / totalCost) * 100 : 0;
 
-      // Daily P/L: sum of shares × (currentPrice - prevClose)
       const dailyPL = positions.reduce((s: number, p: any) => {
         if (!p.prevClose || !p.currentPrice) return s;
         return s + p.shares * (p.currentPrice - p.prevClose);
@@ -390,7 +355,6 @@ function usePortfolioSnapshot() {
       const prevValue = marketValue - dailyPL;
       const dailyPct = prevValue > 0 ? (dailyPL / prevValue) * 100 : 0;
 
-      // Pre/After market P/L
       const extPL = positions.reduce((s: number, p: any) => {
         if (!p.extPrice || !p.currentPrice || p.extType === "none") return s;
         return s + p.shares * (p.extPrice - p.currentPrice);
@@ -399,6 +363,18 @@ function usePortfolioSnapshot() {
       const extType = positions.find((p: any) => p.extType !== "none")?.extType || "none";
 
       setSnap({ value: marketValue, pl, plPct, dailyPL, dailyPct, count: positions.length, extPL, extPct, extType });
+
+      // ⭐ บันทึก snapshot ของวันนี้ (upsert — วันละ 1 record)
+      if (marketValue > 0) {
+        saveTodaySnapshot({
+          marketValue,
+          totalCost,
+          cash: 0,
+          totalPL: pl,
+          plPct,
+          count: positions.length,
+        });
+      }
     } catch {}
   }, []);
   return snap;
@@ -431,16 +407,13 @@ const DEMO_LOSERS: Mover[] = [
   { symbol: "SOFI", changePct: -10.51, change: -2.09, price: 17.75 },
 ];
 
-// ─── Economic Calendar (recurring-schedule estimate) ───────────────────────────
-// หมายเหตุ: คำนวณวันโดยประมาณจากรอบการประกาศจริงของสหรัฐฯ (อาจคลาดเคลื่อน ±1-2 วัน
-// เพราะ BLS/Fed กำหนดวันเอง) — Jobless Claims/Jobs Report แม่นยำ, ตัวอื่นเป็นค่าประมาณ
+// ─── Economic Calendar ────────────────────────────────────────────────────────
 type EconEvent = { date: Date; event: string; impact: "high"|"med"|"low" };
 
 function getEconomicEvents(): EconEvent[] {
   const now = new Date();
   const events: EconEvent[] = [];
 
-  // หา weekday ลำดับที่ n ของเดือน (weekday: 0=อา..6=ส, n เริ่มที่ 1)
   const nthWeekday = (y: number, m: number, weekday: number, n: number): Date | null => {
     const d = new Date(y, m, 1);
     let count = 0;
@@ -450,19 +423,17 @@ function getEconomicEvents(): EconEvent[] {
     }
     return null;
   };
-  // หาวัน weekday ถัดไป (รวมวันนี้)
   const nextWeekday = (from: Date, weekday: number): Date => {
     const d = new Date(from);
     d.setDate(d.getDate() + ((weekday - d.getDay() + 7) % 7));
     return d;
   };
 
-  // เดือนนี้ + เดือนหน้า (กันช่วงรอยต่อสิ้นเดือน)
   for (let mOff = 0; mOff <= 1; mOff++) {
     const base = new Date(now.getFullYear(), now.getMonth() + mOff, 1);
     const y = base.getFullYear(), m = base.getMonth();
 
-    const nfp = nthWeekday(y, m, 5, 1);              // ศุกร์แรก = Jobs Report
+    const nfp = nthWeekday(y, m, 5, 1);
     if (nfp) events.push({ date: nfp, event: "Jobs Report (NFP)", impact: "high" });
 
     events.push({ date: new Date(y, m, 12), event: "CPI (US)",   impact: "high" });
@@ -470,11 +441,10 @@ function getEconomicEvents(): EconEvent[] {
     events.push({ date: new Date(y, m, 13), event: "PPI",        impact: "med"  });
     events.push({ date: new Date(y, m, 15), event: "Retail Sales", impact: "high" });
 
-    const cs = nthWeekday(y, m, 5, 2);               // ศุกร์ที่ 2 = Consumer Sentiment
+    const cs = nthWeekday(y, m, 5, 2);
     if (cs) events.push({ date: cs, event: "Consumer Sentiment", impact: "low" });
   }
 
-  // Jobless Claims = ทุกพฤหัส (4 สัปดาห์ข้างหน้า)
   const thu = nextWeekday(now, 4);
   for (let i = 0; i < 4; i++) {
     events.push({ date: new Date(thu), event: "Jobless Claims", impact: "med" });
@@ -549,7 +519,6 @@ export default function Home() {
     const apiKey = process.env.NEXT_PUBLIC_FINNHUB_API_KEY ?? "";
 
     if (!apiKey) {
-      // Demo mode
       const sess = getMarketSession();
       setIndices(INDEX_CONFIG.map((cfg, i) => {
         const price = [5240.5, 18320.1, 183.2, 28.4, 91.3, 18.2][i];
@@ -582,7 +551,6 @@ export default function Home() {
           const price = Number(q.c || 0);
           const pc    = Number(q.pc || 0);
           const extCh = extP > 0 ? extP - price : 0;
-          // Generate sparkline from price change (simulated 20 points)
           const change = Number(q.dp || 0);
           const sparkline = Array.from({length:20},(_,i) => {
             const progress = i / 19;
@@ -663,28 +631,27 @@ export default function Home() {
   .ripple { position:relative; overflow:hidden; }
   .ripple:after { content:''; position:absolute; inset:0; background:radial-gradient(circle,#ffffff22 0%,transparent 70%); opacity:0; transition:opacity 0.3s; }
   .ripple:active:after { opacity:1; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+  .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
 `}</style>
 <main className="min-h-screen bg-[var(--bg)] text-[var(--tx)]" style={{ fontFamily: "'Inter','Noto Sans Thai',sans-serif" }}>
 
       {/* ── Header ── */}
       <header className="border-b border-[var(--border)] px-3 py-2 flex items-center justify-between bg-[var(--bg)]/90 backdrop-blur sticky top-0 z-30">
-        {/* Logo */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-black font-black text-xs flex-shrink-0">T</div>
           <span className="font-bold text-sm tracking-tight hidden sm:block">TRUSH YOUR OWN</span>
         </div>
 
-        {/* Clock — center on mobile */}
         <div className="flex-1 flex justify-center sm:justify-end sm:mr-4">
           <LiveClock />
         </div>
 
-        {/* Actions */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          <button onClick={fetchAll} disabled={loading}
+          <button onClick={() => fetchAll()} disabled={loading}
             className="w-8 h-8 flex items-center justify-center bg-[var(--fill)] hover:bg-[var(--fill-strong)] rounded-lg text-sm transition-colors disabled:opacity-40"
             title="Refresh">
-            <span className={loading ? "animate-spin inline-block" : ""}>{loading ? "⟳" : "⟳"}</span>
+            <span className={loading ? "animate-spin inline-block" : ""}>⟳</span>
           </button>
           <CurrencyToggle currency={currency} rate={rate} lastUpdate={rateUpdate} onToggle={toggleCurrency} />
           <ThemeToggle />
@@ -707,19 +674,15 @@ export default function Home() {
                 borderColor: `${l.accent}33`,
                 background: `linear-gradient(160deg, ${l.accent}22, ${l.accent}0a 45%, transparent)`,
               }}>
-              {/* corner glow */}
               <div className="absolute -right-6 -top-6 w-20 h-20 rounded-full blur-2xl opacity-40 group-hover:opacity-75 transition-opacity duration-300 pointer-events-none"
                 style={{ background: l.accent }}/>
-              {/* big faint icon */}
               <div className="absolute -right-1 -bottom-2 text-4xl opacity-[0.08] group-hover:opacity-[0.14] transition-opacity duration-300 select-none -rotate-12 pointer-events-none">{l.icon}</div>
-              {/* icon chip */}
               <div className="relative mb-2 w-11 h-11 rounded-xl flex items-center justify-center text-xl transition-transform duration-300 group-hover:scale-110 group-hover:-translate-y-0.5"
                 style={{ background: `${l.accent}26`, boxShadow: `inset 0 0 0 1px ${l.accent}44` }}>
                 {l.icon}
               </div>
               <p className="font-black text-xs text-[var(--tx)] text-center leading-tight relative">{l.label}</p>
               <p className="text-[10px] text-[var(--tx-4)] mt-0.5 text-center relative">{l.sub}</p>
-              {/* arrow hint */}
               <span className="absolute top-2.5 right-3 text-xs font-black opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300"
                 style={{ color: l.accent }}>→</span>
             </Link>
@@ -733,14 +696,13 @@ export default function Home() {
           <div className="relative bg-gradient-to-br from-[#141416] to-[#0d0d0f] border border-[var(--border-2)] rounded-2xl p-5 overflow-hidden text-[#fff]"
             style={{ boxShadow: portfolio.pl>=0 ? "0 0 40px #10b98118, 0 0 80px #10b98108" : "0 0 40px #ef444418, 0 0 80px #ef444408" }}>
 
-            {/* Background glow orb */}
             <div className="absolute -top-10 -right-10 w-48 h-48 rounded-full pointer-events-none"
               style={{ background: portfolio.pl>=0 ? "radial-gradient(circle,#10b98122,transparent 70%)" : "radial-gradient(circle,#ef444422,transparent 70%)" }}/>
             <div className="absolute -bottom-8 -left-8 w-32 h-32 rounded-full pointer-events-none"
               style={{ background: "radial-gradient(circle,#f0aa4f18,transparent 70%)" }}/>
 
             {/* Badge row */}
-            <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center gap-2 mb-3 relative">
               <span className="text-[10px] text-[var(--tx-4)] uppercase tracking-widest">พอร์ตของฉัน</span>
               <div className="flex gap-1.5 ml-auto">
                 {portfolio.plPct >= 20 && (
@@ -762,13 +724,12 @@ export default function Home() {
             </div>
 
             {/* Main value */}
-            <p className="text-3xl font-black tracking-tight leading-none tabular-nums">
+            <p className="text-3xl font-black tracking-tight leading-none tabular-nums relative">
               {fmtMoney(animatedValue)}
             </p>
 
-            {/* Progress ring + Daily bar */}
-            <div className="flex items-center gap-3 mt-3 mb-3">
-              {/* Progress arc — % กำไรเทียบเป้า 30% */}
+            {/* Progress ring + กำไรสะสม */}
+            <div className="flex items-center gap-3 mt-3 relative">
               <div className="relative flex-shrink-0">
                 <svg width="52" height="52" viewBox="0 0 52 52">
                   <circle cx="26" cy="26" r="22" fill="none" stroke="var(--border)" strokeWidth="4"/>
@@ -784,37 +745,21 @@ export default function Home() {
                   </text>
                 </svg>
               </div>
-
-              {/* Mini sparkline */}
               <div className="flex-1">
-                <svg viewBox="0 0 120 32" className="w-full h-8" preserveAspectRatio="none">
-                  <defs>
-                    <linearGradient id="sparkGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={portfolio.pl>=0?"#10b981":"#ef4444"} stopOpacity="0.4"/>
-                      <stop offset="100%" stopColor={portfolio.pl>=0?"#10b981":"#ef4444"} stopOpacity="0"/>
-                    </linearGradient>
-                  </defs>
-                  {/* Simulated equity curve from pl% (เส้นโค้งเนียน) */}
-                  {(() => {
-                    const raw = [0,2,1,4,3,6,5,8,7,10,9,12,11,14,13,portfolio.plPct];
-                    const pts: [number, number][] = raw.map((v,i,a)=>[
-                      (i/(a.length-1))*120,
-                      32 - Math.max(0, Math.min(v/Math.max(portfolio.plPct,1)*28, 28))
-                    ]);
-                    const line = smoothLine(pts);
-                    return (
-                      <>
-                        <path d={`${line} L 120,32 L 0,32 Z`} fill="url(#sparkGrad)"/>
-                        <path d={line} fill="none" stroke={portfolio.pl>=0?"#10b981":"#ef4444"} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round"/>
-                      </>
-                    );
-                  })()}
-                </svg>
+                <p className="text-[10px] text-[var(--tx-5)]">กำไรสะสม</p>
+                <p className={`text-lg font-black ${portfolio.pl>=0?"text-emerald-400":"text-red-400"}`}>
+                  {portfolio.pl>=0?"+":""}{fmtMoney(portfolio.pl)}
+                </p>
               </div>
             </div>
 
+            {/* ⭐ Equity Curve จริง — มีปุ่มช่วงเวลา */}
+            <div className="relative">
+              <EquityCurve fallbackValue={portfolio.value}/>
+            </div>
+
             {/* Daily bar */}
-            <div className="mb-3">
+            <div className="mb-3 mt-3 relative">
               <div className="flex justify-between text-[10px] text-[var(--tx-5)] mb-1">
                 <span>วันนี้</span>
                 <span className={portfolio.dailyPL>=0?"text-sky-400":"text-orange-400"}>
@@ -833,7 +778,7 @@ export default function Home() {
             </div>
 
             {/* P/L stats */}
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2 relative">
               <div className="bg-black/20 rounded-xl p-3 border border-[var(--border)]">
                 <p className="text-[10px] text-[var(--tx-4)] mb-0.5">กำไร/ขาดทุนรวม</p>
                 <p className={`text-sm font-black ${portfolio.pl>=0?"text-emerald-400":"text-red-400"}`}>
@@ -848,7 +793,7 @@ export default function Home() {
               </div>
             </div>
 
-            <p className="text-[10px] text-[var(--tx-6)] mt-2">{portfolio.count} หลักทรัพย์ · {lastRefresh}</p>
+            <p className="text-[10px] text-[var(--tx-6)] mt-2 relative">{portfolio.count} หลักทรัพย์ · {lastRefresh}</p>
           </div>
 
           {/* Indices compact 6 chips */}
@@ -866,7 +811,6 @@ export default function Home() {
                   <p className={`text-[10px] font-bold mt-0.5 ${pos?"text-emerald-400":"text-red-400"}`}>
                     {pos?"▲":"▼"} {Math.abs(idx.changePct).toFixed(2)}%
                   </p>
-                  {/* Mini sparkline */}
                   {idx.sparkline.length > 1 && (
                     <div className="mt-1.5">
                       <Sparkline data={idx.sparkline} color={pos?idx.color:"#ef4444"}/>
@@ -919,7 +863,6 @@ export default function Home() {
 
           {/* TOP GAINERS / LOSERS */}
           <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl overflow-hidden col-span-2">
-            {/* Tab bar */}
             <div className="flex border-b border-[var(--border)]">
               <button
                 onClick={() => setMoversTab("gainers")}
@@ -1010,12 +953,12 @@ export default function Home() {
                   )}
                 </>
               ) : (
-                <p className="text-xs text-[var(--tx-5)] py-1">กด "✨ วิเคราะห์" เพื่อให้ AI ดูพอร์ตและแนะนำครับ</p>
+                <p className="text-xs text-[var(--tx-5)] py-1">กด &quot;✨ วิเคราะห์&quot; เพื่อให้ AI ดูพอร์ตและแนะนำครับ</p>
               )}
             </div>
           </div>
 
-          {/* News ภาษาไทย */}
+          {/* News */}
           <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl overflow-hidden">
             <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1043,7 +986,7 @@ export default function Home() {
               ))}
             </div>
           </div>
-          </div>{/* end left col */}
+          </div>
 
           {/* Right column */}
           <div className="flex flex-col gap-4">
@@ -1092,7 +1035,6 @@ export default function Home() {
                 ))}
               </div>
             </div>
-
 
           </div>
         </div>
