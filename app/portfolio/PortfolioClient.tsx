@@ -886,6 +886,11 @@ export default function PortfolioClient() {
                       </td>
                       <td className="px-2 py-3">
                         <div className="flex items-center justify-center gap-1">
+                          <Link href={`/chart?symbol=${p.ticker}&exchange=NASDAQ&tf=60`}
+      className="ripple px-1.5 py-1 text-xs bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 rounded font-bold"
+      title="ดูกราฟ">
+      📈
+    </Link>
                           <button onClick={()=>openBuy(p.ticker)} className="ripple px-1.5 py-1 text-xs bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded font-bold">
                             <span className="hidden sm:inline">ซื้อ</span><span className="sm:hidden">+</span>
                           </button>
