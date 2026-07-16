@@ -6,6 +6,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import CurrencyToggle from "@/components/CurrencyToggle";
 import { useCurrency } from "@/hooks/useCurrency";
 import EquityCurve, { saveTodaySnapshot } from "@/components/EquityCurve";
+import { supabase } from "@/lib/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type IndexData = {
@@ -334,49 +335,108 @@ function usePortfolioSnapshot() {
   const [snap, setSnap] = useState({
     value: 0, pl: 0, plPct: 0, dailyPL: 0, dailyPct: 0, count: 0, extPL: 0, extPct: 0, extType: "none",
   });
+
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem("yok_portfolio_v4");
-      if (!saved) return;
-      const positions = JSON.parse(saved);
-      const marketValue = positions.reduce(
-        (s: number, p: any) => s + p.shares * (p.currentPrice || p.avgCost), 0
-      );
-      const totalCost = positions.reduce(
-        (s: number, p: any) => s + p.shares * p.avgCost, 0
-      );
-      const pl = marketValue - totalCost;
-      const plPct = totalCost > 0 ? (pl / totalCost) * 100 : 0;
+    let cancelled = false;
 
-      const dailyPL = positions.reduce((s: number, p: any) => {
-        if (!p.prevClose || !p.currentPrice) return s;
-        return s + p.shares * (p.currentPrice - p.prevClose);
-      }, 0);
-      const prevValue = marketValue - dailyPL;
-      const dailyPct = prevValue > 0 ? (dailyPL / prevValue) * 100 : 0;
+    const loadMainPortfolio = async () => {
+      try {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError || !user) return;
 
-      const extPL = positions.reduce((s: number, p: any) => {
-        if (!p.extPrice || !p.currentPrice || p.extType === "none") return s;
-        return s + p.shares * (p.extPrice - p.currentPrice);
-      }, 0);
-      const extPct = marketValue > 0 ? (extPL / marketValue) * 100 : 0;
-      const extType = positions.find((p: any) => p.extType !== "none")?.extType || "none";
+        const { data: mainGroup, error: groupError } = await supabase
+          .from("portfolio_groups")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("is_default", true)
+          .maybeSingle();
 
-      setSnap({ value: marketValue, pl, plPct, dailyPL, dailyPct, count: positions.length, extPL, extPct, extType });
+        if (groupError || !mainGroup?.id) {
+          console.error("Load main portfolio group failed:", groupError);
+          return;
+        }
 
-      // ⭐ บันทึก snapshot ของวันนี้ (upsert — วันละ 1 record)
-      if (marketValue > 0) {
-        saveTodaySnapshot({
-          marketValue,
-          totalCost,
-          cash: 0,
-          totalPL: pl,
+        const { data: rows, error: positionsError } = await supabase
+          .from("portfolios")
+          .select("ticker, shares, avg_cost, current_price, prev_close")
+          .eq("user_id", user.id)
+          .eq("portfolio_id", mainGroup.id)
+          .order("ticker", { ascending: true });
+
+        if (positionsError) {
+          console.error("Load main portfolio positions failed:", positionsError);
+          return;
+        }
+
+        const positions = (rows || []).map((p: any) => ({
+          ticker: p.ticker,
+          shares: Number(p.shares) || 0,
+          avgCost: Number(p.avg_cost) || 0,
+          currentPrice: Number(p.current_price) || 0,
+          prevClose: Number(p.prev_close) || 0,
+          extPrice: 0,
+          extType: "none",
+        }));
+
+        const marketValue = positions.reduce(
+          (sum: number, p: any) => sum + p.shares * (p.currentPrice || p.avgCost),
+          0
+        );
+        const totalCost = positions.reduce(
+          (sum: number, p: any) => sum + p.shares * p.avgCost,
+          0
+        );
+        const pl = marketValue - totalCost;
+        const plPct = totalCost > 0 ? (pl / totalCost) * 100 : 0;
+
+        const dailyPL = positions.reduce((sum: number, p: any) => {
+          if (!p.prevClose || !p.currentPrice) return sum;
+          return sum + p.shares * (p.currentPrice - p.prevClose);
+        }, 0);
+        const prevValue = marketValue - dailyPL;
+        const dailyPct = prevValue > 0 ? (dailyPL / prevValue) * 100 : 0;
+
+        if (cancelled) return;
+
+        setSnap({
+          value: marketValue,
+          pl,
           plPct,
+          dailyPL,
+          dailyPct,
           count: positions.length,
+          extPL: 0,
+          extPct: 0,
+          extType: "none",
         });
+
+        // Cache เฉพาะพอร์ตหลัก เพื่อรองรับ component เก่าที่ยังอ่าน localStorage
+        try {
+          localStorage.setItem("yok_portfolio_v4", JSON.stringify(positions));
+        } catch {}
+
+        if (marketValue > 0) {
+          saveTodaySnapshot({
+            marketValue,
+            totalCost,
+            cash: 0,
+            totalPL: pl,
+            plPct,
+            count: positions.length,
+          });
+        }
+      } catch (error) {
+        console.error("Load main portfolio snapshot failed:", error);
       }
-    } catch {}
+    };
+
+    loadMainPortfolio();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
   return snap;
 }
 
