@@ -79,6 +79,8 @@ export default function PortfolioClient() {
   const [showHistory, setShowHistory]   = useState(false);
   const [isTrading, setIsTrading]       = useState(false);
   const tradeTimeoutRef                 = useRef<NodeJS.Timeout|null>(null);
+  // ป้องกัน refresh ราคาที่เริ่มก่อนการแก้ไข/ลบ เขียนข้อมูลเก่ากลับเข้า Supabase
+  const positionsMutationRef             = useRef(0);
 
   // ── NEW: Alerts & Rebalance ────────────────────────────────────────────────
   const [showAlerts, setShowAlerts]           = useState(false);
@@ -358,6 +360,8 @@ export default function PortfolioClient() {
 
   // ── refreshPrices + S/R Alert check ─────────────────────────────────
   const refreshPrices = async () => {
+    const refreshVersion = positionsMutationRef.current;
+    const refreshGroupId = activeGroupId;
     const cur = positionsRef.current;
     if (!cur.length) return;
     setIsRefreshing(true);
@@ -369,6 +373,16 @@ export default function PortfolioClient() {
       const extType: "pre"|"after"|"none" = sess==="pre"||sess==="after" ? sess : "none";
       return { ...p, currentPrice: c||p.currentPrice, prevClose: pc||p.prevClose, extPrice, extPct, extType, targetAlloc: p.targetAlloc };
     }));
+    // ถ้าระหว่างโหลดราคามีการซื้อ/ขาย/แก้ไข/ลบ หรือสลับพอร์ตแล้ว
+    // ห้ามนำ snapshot เก่ากลับมาเขียนทับข้อมูลล่าสุด
+    if (
+      refreshVersion !== positionsMutationRef.current ||
+      refreshGroupId !== activeGroupId
+    ) {
+      setIsRefreshing(false);
+      return;
+    }
+
     await syncPositions(updated);
 
     // ── Check S/R Alerts ────────────────────────────────────────────────
@@ -565,16 +579,55 @@ export default function PortfolioClient() {
 
   async function deletePosition(ticker: string) {
     if (!confirm(`ลบ ${ticker} ออกจากพอร์ต?`)) return;
-    const newPos = positions.filter(p => p.ticker !== ticker);
-    setPositions(newPos);
-    try { localStorage.setItem(`yok_portfolio_v4__${activeGroupId}`, JSON.stringify(newPos)); } catch {}
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user && activeGroupId) {
-      const { error } = await supabase.from("portfolios").delete()
-        .eq("user_id", user.id).eq("portfolio_id", activeGroupId).eq("ticker", ticker);
-      if (!error) showToast(`✓ ลบ ${ticker} แล้ว`);
-      else showToast("❌ ลบไม่สำเร็จ", "error");
+
+    const groupId = activeGroupId;
+    if (!groupId) {
+      showToast("ไม่พบพอร์ตที่กำลังใช้งาน", "error");
+      return;
     }
+
+    // invalidate refresh ราคาทุกตัวที่กำลังทำงานด้วย snapshot เก่า
+    positionsMutationRef.current += 1;
+
+    const beforeDelete = positionsRef.current;
+    const newPos = beforeDelete.filter(p => p.ticker !== ticker);
+
+    // อัปเดตทั้ง state และ ref ทันที เพื่อไม่ให้ interval รอบใหม่เห็นหุ้นตัวเก่า
+    positionsRef.current = newPos;
+    setPositions(newPos);
+
+    try {
+      localStorage.setItem(`yok_portfolio_v4__${groupId}`, JSON.stringify(newPos));
+      localStorage.setItem("yok_portfolio_v4", JSON.stringify(newPos));
+    } catch {}
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      positionsRef.current = beforeDelete;
+      setPositions(beforeDelete);
+      showToast("กรุณา Login ใหม่", "error");
+      return;
+    }
+
+    const { error } = await supabase.from("portfolios").delete()
+      .eq("user_id", user.id)
+      .eq("portfolio_id", groupId)
+      .eq("ticker", ticker);
+
+    if (error) {
+      // rollback หน้าจอเมื่อฐานข้อมูลลบไม่สำเร็จ
+      positionsRef.current = beforeDelete;
+      setPositions(beforeDelete);
+      try {
+        localStorage.setItem(`yok_portfolio_v4__${groupId}`, JSON.stringify(beforeDelete));
+        localStorage.setItem("yok_portfolio_v4", JSON.stringify(beforeDelete));
+      } catch {}
+      console.error("deletePosition error", error);
+      showToast(`❌ ลบ ${ticker} ไม่สำเร็จ: ${error.message}`, "error");
+      return;
+    }
+
+    showToast(`✓ ลบ ${ticker} แล้ว`);
   }
 
   function saveTrade() {
@@ -596,6 +649,9 @@ export default function PortfolioClient() {
       setFormError(`สัดส่วนเป้าหมายรวมเกิน 100% — หุ้นอื่นในพอร์ตนี้ใช้ไปแล้ว ${othersTarget.toFixed(1)}% เหลือตั้งได้สูงสุด ${remain.toFixed(1)}%`);
       return;
     }
+
+    // ยกเลิกผล refresh ราคาที่เริ่มจากข้อมูลก่อนการทำรายการนี้
+    positionsMutationRef.current += 1;
 
     if (editingTicker) {
       syncPositions(cur.map(p =>
