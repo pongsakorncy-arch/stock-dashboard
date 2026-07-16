@@ -108,6 +108,11 @@ function TradingViewChart({ symbol, exchange, interval, studies }: {
         "paneProperties.backgroundType":                    "solid",
         "scalesProperties.textColor":                       "#71717a",
         "scalesProperties.backgroundColor":                 "#0d0d0f",
+        // ⭐ เพิ่ม 4 บรรทัดนี้
+  "paneProperties.vertGridProperties.color": "rgba(0,0,0,0)",
+  "paneProperties.horzGridProperties.color": "rgba(0,0,0,0)",
+  "paneProperties.vertGridProperties.style": 0,
+  "paneProperties.horzGridProperties.style": 0,
       },
     });
     containerRef.current.querySelector(`#${widgetId}`)?.appendChild(script);
