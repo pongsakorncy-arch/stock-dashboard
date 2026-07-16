@@ -130,39 +130,35 @@ function TradingViewChart({
         : `${tvExchange[exchange] || "NASDAQ"}:${symbol}`;
     const script = document.createElement("script");
     script.src =
-      "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-    script.async = true;
-    script.innerHTML = JSON.stringify({
-      autosize: true,
-      symbol: tvSym,
-      interval,
-      timezone: "Asia/Bangkok",
-      theme: "dark",
-      style: "8",
-      locale: "th_TH",
-      toolbar_bg: "#0d0d0f",
-      enable_publishing: false,
-      hide_top_toolbar: false,
-      hide_legend: false,
-      save_image: true,
-      hide_side_toolbar: false,
-      withdateranges: true,
-      allow_symbol_change: false,
-      container_id: widgetId,
-      studies,
-      overrides: {
-        "mainSeriesProperties.candleStyle.upColor": "#10b981",
-        "mainSeriesProperties.candleStyle.downColor": "#ef4444",
-        "mainSeriesProperties.candleStyle.borderUpColor": "#10b981",
-        "mainSeriesProperties.candleStyle.borderDownColor": "#ef4444",
-        "mainSeriesProperties.candleStyle.wickUpColor": "#10b981",
-        "mainSeriesProperties.candleStyle.wickDownColor": "#ef4444",
-        "paneProperties.background": "#0d0d0f",
-        "paneProperties.backgroundType": "solid",
-        "scalesProperties.textColor": "#71717a",
-        "scalesProperties.backgroundColor": "#0d0d0f",
-        "paneProperties.vertGridProperties.color": "rgba(0,0,0,0)",
-        "paneProperties.horzGridProperties.color": "rgba(0,0,0,0)",
+  "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+
+script.async = true;
+
+script.innerHTML = JSON.stringify({
+  autosize: true,
+  symbol: tvSym,
+  interval,
+
+  timezone: "Asia/Bangkok",
+  theme: "dark",
+  style: "8",
+  locale: "th_TH",
+
+  backgroundColor: "#0d0d0f",
+  gridColor: "rgba(0,0,0,0)",
+
+  withdateranges: true,
+  hide_side_toolbar: false,
+  allow_symbol_change: false,
+  hide_top_toolbar: false,
+  hide_legend: false,
+  hide_volume: true,
+  save_image: true,
+  enable_publishing: false,
+
+  container_id: widgetId,
+  studies: ["RSI@tv-basicstudies"],
+
       },
     });
     containerRef.current.querySelector(`#${widgetId}`)?.appendChild(script);
