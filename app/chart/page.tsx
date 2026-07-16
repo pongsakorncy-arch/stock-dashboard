@@ -93,7 +93,7 @@ function TradingViewChart({ symbol, exchange, interval, studies }: {
     script.async = true;
     script.innerHTML = JSON.stringify({
       autosize: true, symbol: tvSym, interval,
-      timezone: "Asia/Bangkok", theme: "dark", style: "1", locale: "th_TH",
+      timezone: "Asia/Bangkok", theme: "dark", style: "8", locale: "th_TH",
       toolbar_bg: "#0d0d0f", enable_publishing: false,
       hide_top_toolbar: false, hide_legend: false, save_image: true,
       container_id: widgetId, studies,
