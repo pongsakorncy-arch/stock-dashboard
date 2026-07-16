@@ -15,6 +15,8 @@ const COLORS = [
   "#a78bfa","#fb923c","#34d399","#f472b6","#60a5fa",
 ];
 
+const GROUP_ICONS = ["💼","📊","⚖️","🚀","💎","🎯","🏦","📈","🌱","🔥","💰","🧭"];
+
 function money(v: number) {
   return v.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 });
 }
@@ -31,28 +33,15 @@ type SortDir = "asc"|"desc";
 type PLMode = "total"|"daily";
 type AccountType = "cent"|"standard";
 
-// ─── Initial Data ─────────────────────────────────────────────────────────────
-const INITIAL: Position[] = [
-  { ticker:"GOOGL", name:"อัลฟาเบท",      shares:7.1646262,  avgCost:240.83, currentPrice:0, prevClose:0, targetAlloc:0, extPrice:0, extPct:0, extType:"none" },
-  { ticker:"AMZN",  name:"แอมะซอน",       shares:10.5848651, avgCost:222.19, currentPrice:0, prevClose:0, targetAlloc:0, extPrice:0, extPct:0, extType:"none" },
-  { ticker:"ASML",  name:"อาเอสเอ็มแอล",  shares:1.120274,   avgCost:750.37, currentPrice:0, prevClose:0, targetAlloc:0, extPrice:0, extPct:0, extType:"none" },
-  { ticker:"MSFT",  name:"ไมโครซอฟท์",    shares:4.5660891,  avgCost:456.60, currentPrice:0, prevClose:0, targetAlloc:0, extPrice:0, extPct:0, extType:"none" },
-  { ticker:"META",  name:"Meta",           shares:2.9587672,  avgCost:627.48, currentPrice:0, prevClose:0, targetAlloc:0, extPrice:0, extPct:0, extType:"none" },
-  { ticker:"NVDA",  name:"เอ็นวิเดีย",    shares:7.9079846,  avgCost:156.18, currentPrice:0, prevClose:0, targetAlloc:0, extPrice:0, extPct:0, extType:"none" },
-  { ticker:"RBRK",  name:"Rubrik Inc",     shares:22.4047329, avgCost:62.39,  currentPrice:0, prevClose:0, targetAlloc:0, extPrice:0, extPct:0, extType:"none" },
-  { ticker:"ALAB",  name:"Astera Labs",    shares:3.7271679,  avgCost:133.28, currentPrice:0, prevClose:0, targetAlloc:0, extPrice:0, extPct:0, extType:"none" },
-  { ticker:"NVO",   name:"โนโว นอร์ดิสค์",shares:34.6614128, avgCost:48.19,  currentPrice:0, prevClose:0, targetAlloc:0, extPrice:0, extPct:0, extType:"none" },
-  { ticker:"NFLX",  name:"เน็ตฟลิกซ์",    shares:17.7666769, avgCost:101.18, currentPrice:0, prevClose:0, targetAlloc:0, extPrice:0, extPct:0, extType:"none" },
-  { ticker:"AMD",   name:"เอเอ็มดี",       shares:2.4819359,  avgCost:199.32, currentPrice:0, prevClose:0, targetAlloc:0, extPrice:0, extPct:0, extType:"none" },
-  { ticker:"SOFI",  name:"SoFi Technologies",shares:63.2978785,avgCost:19.84, currentPrice:0, prevClose:0, targetAlloc:0, extPrice:0, extPct:0, extType:"none" },
-  { ticker:"PLTR",  name:"Palantir",       shares:7.560984,   avgCost:140.91, currentPrice:0, prevClose:0, targetAlloc:0, extPrice:0, extPct:0, extType:"none" },
-  { ticker:"IONQ",  name:"IONQ Inc",       shares:12.3795114, avgCost:48.39,  currentPrice:0, prevClose:0, targetAlloc:0, extPrice:0, extPct:0, extType:"none" },
-  { ticker:"TSM",   name:"ทีเอสเอ็มซี",   shares:1.3873869,  avgCost:252.07, currentPrice:0, prevClose:0, targetAlloc:0, extPrice:0, extPct:0, extType:"none" },
-  { ticker:"UBER",  name:"อูเบอร์",        shares:8.1490212,  avgCost:73.51,  currentPrice:0, prevClose:0, targetAlloc:0, extPrice:0, extPct:0, extType:"none" },
-  { ticker:"RKLB",  name:"Rocket Lab",     shares:5.4644484,  avgCost:91.36,  currentPrice:0, prevClose:0, targetAlloc:0, extPrice:0, extPct:0, extType:"none" },
-  { ticker:"CRWD",  name:"คราวด์สไตรก์",  shares:0.8078283,  avgCost:371.37, currentPrice:0, prevClose:0, targetAlloc:0, extPrice:0, extPct:0, extType:"none" },
-  { ticker:"TMDX",  name:"TransMedics",    shares:5.6205782,  avgCost:98.46,  currentPrice:0, prevClose:0, targetAlloc:0, extPrice:0, extPct:0, extType:"none" },
-];
+// ⭐ พอร์ต (portfolio group) — ชื่อ/ไอคอนตั้งเองได้ทั้งหมด
+type PortfolioGroup = {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  is_default: boolean;
+  sort_order: number;
+};
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function PortfolioClient() {
@@ -103,6 +92,17 @@ export default function PortfolioClient() {
   const [tgAlerts,       setTgAlerts]       = useState<any[]>([]);
   const [tgLoading,      setTgLoading]      = useState(false);
   const [tgForm,         setTgForm]         = useState({ ticker: "", price: "", condition: "above" as "above"|"below", label: "" });
+
+  // ── ⭐ Multi-Portfolio (Groups) ─────────────────────────────────────────────
+  const [groups, setGroups]               = useState<PortfolioGroup[]>([]);
+  const [activeGroupId, setActiveGroupId] = useState<string>("");
+  const [groupsLoaded, setGroupsLoaded]   = useState(false);
+  const [showGroupModal, setShowGroupModal] = useState<{mode:"create"|"rename";id?:string}|null>(null);
+  const [groupNameInput, setGroupNameInput] = useState("");
+  const [groupIconInput, setGroupIconInput] = useState("💼");
+  const [showGroupMenu, setShowGroupMenu]   = useState<string|null>(null);
+
+  const activeGroup = groups.find(g => g.id === activeGroupId) || null;
 
   const fetchTgAlerts = async () => {
     setTgLoading(true);
@@ -174,12 +174,102 @@ export default function PortfolioClient() {
     setNotifPermission(perm as "default"|"denied"|"granted");
   };
 
-  // ── Load from Supabase ───────────────────────────────────────────────────────
+  // ── ⭐ Load Portfolio Groups (ทำก่อนโหลดหุ้น) ──────────────────────────────
   useEffect(() => {
+    const loadGroups = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setGroupsLoaded(true); return; }
+
+      let { data } = await supabase.from("portfolio_groups").select("*")
+        .eq("user_id", user.id).order("sort_order", { ascending: true });
+
+      // user ใหม่ที่ยังไม่มีพอร์ตเลย → สร้าง "พอร์ตหลัก" ให้อัตโนมัติ
+      if (!data || data.length === 0) {
+        const { data: created } = await supabase.from("portfolio_groups").insert({
+          user_id: user.id, name: "พอร์ตหลัก", icon: "💼", is_default: true, sort_order: 0,
+        }).select().single();
+        data = created ? [created] : [];
+      }
+
+      setGroups(data || []);
+
+      const saved = typeof window !== "undefined" ? localStorage.getItem("yok_active_portfolio_id") : null;
+      const validSaved = data?.find(g => g.id === saved);
+      const initial = validSaved ? saved! : (data?.find(g => g.is_default)?.id || data?.[0]?.id || "");
+      setActiveGroupId(initial);
+      setGroupsLoaded(true);
+    };
+    loadGroups();
+  }, []);
+
+  // จำพอร์ตที่เลือกล่าสุดไว้
+  useEffect(() => {
+    if (activeGroupId) localStorage.setItem("yok_active_portfolio_id", activeGroupId);
+  }, [activeGroupId]);
+
+  // ปิดเมนู ⋯ เมื่อคลิกที่อื่น
+  useEffect(() => {
+    if (!showGroupMenu) return;
+    const close = () => setShowGroupMenu(null);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [showGroupMenu]);
+
+  // ── ⭐ Group CRUD ───────────────────────────────────────────────────────────
+  const createGroup = async () => {
+    const name = groupNameInput.trim();
+    if (!name) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data, error } = await supabase.from("portfolio_groups").insert({
+      user_id: user.id, name, icon: groupIconInput, is_default: false, sort_order: groups.length,
+    }).select().single();
+    if (data) {
+      setGroups(prev => [...prev, data]);
+      setActiveGroupId(data.id);
+      showToast(`✓ สร้างพอร์ต "${data.name}" แล้ว`);
+    } else {
+      showToast("สร้างพอร์ตไม่สำเร็จ", "error");
+    }
+    setShowGroupModal(null); setGroupNameInput(""); setGroupIconInput("💼");
+  };
+
+  const renameGroup = async (id: string) => {
+    const name = groupNameInput.trim();
+    if (!name) return;
+    await supabase.from("portfolio_groups").update({ name, icon: groupIconInput }).eq("id", id);
+    setGroups(prev => prev.map(g => g.id === id ? { ...g, name, icon: groupIconInput } : g));
+    showToast("✓ แก้ไขพอร์ตแล้ว");
+    setShowGroupModal(null); setGroupNameInput(""); setGroupIconInput("💼");
+  };
+
+  const deleteGroup = async (id: string) => {
+    const g = groups.find(x => x.id === id);
+    if (!g) return;
+    if (g.is_default) { showToast("ลบพอร์ตหลักไม่ได้", "error"); return; }
+    if (groups.length <= 1) { showToast("ต้องมีอย่างน้อย 1 พอร์ต", "error"); return; }
+    if (!confirm(`ลบพอร์ต "${g.name}" ทั้งหมด? หุ้น เงินสด และประวัติในพอร์ตนี้จะหายถาวร`)) return;
+
+    await supabase.from("portfolio_groups").delete().eq("id", id); // FK cascade ลบ positions/settings/trades ให้อัตโนมัติ
+    const next = groups.filter(x => x.id !== id);
+    setGroups(next);
+    if (activeGroupId === id) {
+      const def = next.find(x => x.is_default) || next[0];
+      setActiveGroupId(def.id);
+    }
+    try { localStorage.removeItem(`yok_portfolio_v4__${id}`); } catch {}
+    showToast(`✓ ลบพอร์ต "${g.name}" แล้ว`);
+  };
+
+  // ── ⭐ Load positions/cash/history — scoped ตามพอร์ตที่เลือกอยู่ ────────────
+  useEffect(() => {
+    if (!groupsLoaded || !activeGroupId) return;
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const { data } = await supabase.from("portfolios").select("*").eq("user_id", user.id);
+
+      const { data } = await supabase.from("portfolios").select("*")
+        .eq("user_id", user.id).eq("portfolio_id", activeGroupId);
       if (data && data.length > 0) {
         setPositions(data.map((r: any) => ({
           ticker: r.ticker, name: r.name || r.ticker,
@@ -191,31 +281,42 @@ export default function PortfolioClient() {
       } else {
         setPositions([]);
       }
-      const { data: s } = await supabase.from("user_settings").select("cash").eq("user_id", user.id).single();
-      if (s) setCash(Number(s.cash)||0);
-      // Load trade history
-      const { data: trades } = await supabase.from("portfolio_trades").select("*").eq("user_id", user.id).order("created_at", {ascending: false});
-      if (trades) setTradeHistory(trades);
+
+      const { data: s } = await supabase.from("user_settings").select("cash")
+        .eq("user_id", user.id).eq("portfolio_id", activeGroupId).maybeSingle();
+      setCash(s ? Number(s.cash) || 0 : 0);
+
+      const { data: trades } = await supabase.from("portfolio_trades").select("*")
+        .eq("user_id", user.id).eq("portfolio_id", activeGroupId).order("created_at", { ascending: false });
+      setTradeHistory(trades || []);
+
+      // อนุญาตให้ auto-refresh ราคาทำงานใหม่สำหรับพอร์ตที่เพิ่งสลับมา
+      autoRefreshed.current = false;
     };
     load();
-  }, []);
+  }, [activeGroupId, groupsLoaded]);
 
   const saveToSupabase = async (userId: string, pos: Position[]) => {
+    if (!activeGroupId) return;
     const rows = pos.map(p => ({
-      user_id: userId, ticker: p.ticker, name: p.name,
+      user_id: userId, portfolio_id: activeGroupId, ticker: p.ticker, name: p.name,
       shares: p.shares, avg_cost: p.avgCost,
       current_price: p.currentPrice, prev_close: p.prevClose,
       target_alloc: p.targetAlloc, updated_at: new Date().toISOString(),
     }));
-    await supabase.from("portfolios").upsert(rows, { onConflict: "user_id,ticker" });
-    localStorage.setItem("yok_portfolio_v4", JSON.stringify(pos));
+    await supabase.from("portfolios").upsert(rows, { onConflict: "user_id,portfolio_id,ticker" });
+    try {
+      localStorage.setItem(`yok_portfolio_v4__${activeGroupId}`, JSON.stringify(pos));
+      // mirror พอร์ตที่กำลังดูอยู่ไว้ให้หน้า Dashboard/Chart อ่านได้ (ใช้ชั่วคราวจนกว่าจะทำตัวเลือกพอร์ตที่หน้านั้นด้วย)
+      localStorage.setItem("yok_portfolio_v4", JSON.stringify(pos));
+    } catch {}
   };
 
   const recordTrade = async (ticker: string, type: "buy"|"sell", shares: number, price: number, costBefore: number, costAfter: number, pl: number) => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user || !activeGroupId) return;
     await supabase.from("portfolio_trades").insert({
-      user_id: user.id, ticker, type, shares, price,
+      user_id: user.id, portfolio_id: activeGroupId, ticker, type, shares, price,
       amount: shares * price,
       avg_cost_before: costBefore,
       avg_cost_after: costAfter,
@@ -225,13 +326,10 @@ export default function PortfolioClient() {
   };
 
   const syncPositions = async (newPos: Position[]) => {
-    console.log("syncPositions called, positions:", newPos.length);
     setPositions(newPos);
     const { data: { user } } = await supabase.auth.getUser();
-    console.log("user:", user?.id);
     if (user) {
       await saveToSupabase(user.id, newPos);
-      console.log("saveToSupabase done");
     }
   };
 
@@ -258,7 +356,7 @@ export default function PortfolioClient() {
     } catch { return { c:0, pc:0, o:0 }; }
   }
 
-  // ── MODIFIED: refreshPrices + S/R Alert check ─────────────────────────────────
+  // ── refreshPrices + S/R Alert check ─────────────────────────────────
   const refreshPrices = async () => {
     const cur = positionsRef.current;
     if (!cur.length) return;
@@ -273,8 +371,8 @@ export default function PortfolioClient() {
     }));
     await syncPositions(updated);
 
-    // ── NEW: Check S/R Alerts ────────────────────────────────────────────────
-    const ALERT_PCT = 1.0; // แจ้งเตือนเมื่อราคาห่างจากแนวรับ/ต้าน ≤ 1%
+    // ── Check S/R Alerts ────────────────────────────────────────────────
+    const ALERT_PCT = 1.0;
     for (const pos of updated) {
       if (!pos.currentPrice) continue;
       try {
@@ -316,7 +414,7 @@ export default function PortfolioClient() {
       autoRefreshed.current = true;
       refreshPrices();
     }
-  }, [positions.length]);
+  }, [positions.length, activeGroupId]);
 
   useEffect(() => {
     if (!positions.length || isTrading) return;
@@ -327,8 +425,10 @@ export default function PortfolioClient() {
   const saveCash = async (val: number) => {
     setCash(val); setShowCashEdit(false);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    await supabase.from("user_settings").upsert({ user_id: user.id, cash: val, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+    if (!user || !activeGroupId) return;
+    await supabase.from("user_settings").upsert({
+      user_id: user.id, portfolio_id: activeGroupId, cash: val, updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id,portfolio_id" });
   };
 
   // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -417,9 +517,9 @@ export default function PortfolioClient() {
     setModal({type:"edit",ticker});
   }
 
+  // S/R ยังคง global ตาม ticker (ไม่ผูกกับพอร์ต เพราะแนวรับ/ต้านเป็นของราคาหุ้นตัวนั้น ไม่ใช่ของพอร์ต)
   async function loadSR(ticker: string) {
     try {
-      // โหลดจาก Supabase ก่อน
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data } = await supabase
@@ -435,7 +535,6 @@ export default function PortfolioClient() {
           return;
         }
       }
-      // fallback: localStorage
       const d = JSON.parse(localStorage.getItem(`sr_${ticker}`) || "{}");
       setSrInvest(d.invest||""); setSrS(d.s||["","",""]); setSrR(d.r||["","",""]);
     } catch {
@@ -445,9 +544,7 @@ export default function PortfolioClient() {
 
   async function saveSR(invest: string, s: string[], r: string[]) {
     if (!formTicker) return;
-    // เซฟ localStorage ไว้ด้วย (fallback)
     localStorage.setItem(`sr_${formTicker}`, JSON.stringify({invest,s,r}));
-    // เซฟ Supabase
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -470,11 +567,11 @@ export default function PortfolioClient() {
     if (!confirm(`ลบ ${ticker} ออกจากพอร์ต?`)) return;
     const newPos = positions.filter(p => p.ticker !== ticker);
     setPositions(newPos);
-    localStorage.setItem("yok_portfolio_v4", JSON.stringify(newPos));
+    try { localStorage.setItem(`yok_portfolio_v4__${activeGroupId}`, JSON.stringify(newPos)); } catch {}
     const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { error } = await supabase.from("portfolios").delete().eq("user_id", user.id).eq("ticker", ticker);
-      console.log("delete error:", error);
+    if (user && activeGroupId) {
+      const { error } = await supabase.from("portfolios").delete()
+        .eq("user_id", user.id).eq("portfolio_id", activeGroupId).eq("ticker", ticker);
       if (!error) showToast(`✓ ลบ ${ticker} แล้ว`);
       else showToast("❌ ลบไม่สำเร็จ", "error");
     }
@@ -485,20 +582,18 @@ export default function PortfolioClient() {
     const sym = formTicker.toUpperCase().trim();
     const qty = parseFloat(formShares);
     const tradePrice = parseFloat(formPrice);
-    console.log("saveTrade called:", {sym, qty, tradePrice, mode, editingTicker});
     const target = parseFloat(formTarget)||0;
     const cur = positionsRef.current;
     if (!sym) { setFormError("กรุณาใส่ Ticker"); return; }
     if (isNaN(qty)||qty<=0) { setFormError("จำนวนหุ้นต้องมากกว่า 0"); return; }
     if (isNaN(tradePrice)||tradePrice<=0) { setFormError("ราคาต้องมากกว่า 0"); return; }
 
-    // ── Lock target allocation: รวมทุกหุ้นต้องไม่เกิน 100% ──
-    // sum ของหุ้นอื่นๆ (ไม่นับตัวที่กำลังแก้/เพิ่ม) + target ใหม่
+    // ── Lock target allocation: รวมทุกหุ้นในพอร์ตนี้ต้องไม่เกิน 100% ──
     const selfKey = editingTicker || sym;
     const othersTarget = cur.reduce((s,p) => p.ticker===selfKey ? s : s + (p.targetAlloc||0), 0);
-    if (othersTarget + target > 100.01) { // +0.01 กัน floating point
+    if (othersTarget + target > 100.01) {
       const remain = Math.max(0, 100 - othersTarget);
-      setFormError(`สัดส่วนเป้าหมายรวมเกิน 100% — หุ้นอื่นใช้ไปแล้ว ${othersTarget.toFixed(1)}% เหลือตั้งได้สูงสุด ${remain.toFixed(1)}%`);
+      setFormError(`สัดส่วนเป้าหมายรวมเกิน 100% — หุ้นอื่นในพอร์ตนี้ใช้ไปแล้ว ${othersTarget.toFixed(1)}% เหลือตั้งได้สูงสุด ${remain.toFixed(1)}%`);
       return;
     }
 
@@ -540,7 +635,6 @@ export default function PortfolioClient() {
     }
     showToast(`✓ บันทึก ${sym} แล้ว`);
     closeModal();
-    // Prevent auto-refresh for 3 seconds after trade
     setIsTrading(true);
     if (tradeTimeoutRef.current) clearTimeout(tradeTimeoutRef.current);
     tradeTimeoutRef.current = setTimeout(() => setIsTrading(false), 3000);
@@ -558,7 +652,7 @@ export default function PortfolioClient() {
     );
   }
 
-  // ── NEW: Get all S/R data for Alerts section ──────────────────────────────────
+  // ── Get all S/R data for Alerts section ──────────────────────────────────
   function getAllSRData() {
     if (typeof window === "undefined") return [];
     type SRRow = {
@@ -576,21 +670,18 @@ export default function PortfolioClient() {
         const resists:  number[] = (srData.r || []).map(Number).filter((v: number) => v > 0);
         supports.forEach((lv, i) => {
           const dist = ((pos.currentPrice - lv) / lv) * 100;
-          // Support: dist > 0 = price above support (normal) | dist < 0 = price broke through support
           results.push({ ticker: pos.ticker, currentPrice: pos.currentPrice, level: lv, type: "S", n: i+1, dist, crossed: pos.currentPrice < lv });
         });
         resists.forEach((lv, i) => {
           const dist = ((pos.currentPrice - lv) / lv) * 100;
-          // Resistance: dist < 0 = price below resistance (normal) | dist > 0 = price broke through resistance
           results.push({ ticker: pos.ticker, currentPrice: pos.currentPrice, level: lv, type: "R", n: i+1, dist, crossed: pos.currentPrice > lv });
         });
       } catch { /* ignore */ }
     });
-    // Sort by distance ascending (closest alerts first)
     return results.sort((a, b) => Math.abs(a.dist) - Math.abs(b.dist));
   }
 
-  // ── NEW: Calculate Rebalance ──────────────────────────────────────────────────
+  // ── Calculate Rebalance ──────────────────────────────────────────────────────
   function calcRebalance() {
     const addInvest = parseFloat(rebalanceInvest) || 0;
     const newTotal  = marketValue + addInvest;
@@ -636,6 +727,8 @@ export default function PortfolioClient() {
       .shimmer { background: linear-gradient(90deg,#1f1f23 25%,#2a2a30 50%,#1f1f23 75%); background-size:400px 100%; animation: shimmer 1.4s infinite linear; }
       .toast-in { animation: toastIn 0.3s cubic-bezier(0.22,1,0.36,1) both; }
       .pulse-alert { animation: pulseAlert 1.5s ease-in-out infinite; }
+      .scrollbar-none::-webkit-scrollbar { display: none; }
+      .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
       @keyframes fadeInUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
       @keyframes countUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
       @keyframes glowG { 0%,100%{text-shadow:0 0 0 #10b981} 50%{text-shadow:0 0 12px #10b98188} }
@@ -659,7 +752,7 @@ export default function PortfolioClient() {
           <CurrencyToggle currency={currency} rate={rate} lastUpdate={rateUpdate} onToggle={toggleCurrency}/>
           <button onClick={refreshPrices} disabled={isRefreshing}
             className="px-3 py-2 bg-yellow-400 hover:bg-yellow-300 text-black text-xs font-bold rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1">
-            <span className={isRefreshing?"animate-spin":""}>{isRefreshing?"⟳":"⟳"}</span>
+            <span className={isRefreshing?"animate-spin":""}>⟳</span>
             <span className="hidden sm:block">{isRefreshing?"กำลังโหลด...":"อัปเดตราคา"}</span>
           </button>
           <button onClick={async()=>{await supabase.auth.signOut();window.location.href="/login";}}
@@ -671,6 +764,49 @@ export default function PortfolioClient() {
       </div>
 
       <div className="px-4 py-4 max-w-screen-2xl mx-auto space-y-4">
+
+        {/* ── ⭐ Portfolio Switcher ── */}
+        <div className="flex items-center gap-2 overflow-x-auto scrollbar-none fade-up pb-1">
+          {groups.map(g => {
+            const active = g.id === activeGroupId;
+            return (
+              <div key={g.id} className="relative flex-shrink-0">
+                <button
+                  onClick={() => setActiveGroupId(g.id)}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border transition-colors ${
+                    active
+                      ? "bg-yellow-400 text-black border-yellow-400"
+                      : "bg-[var(--surface)] text-[var(--tx-3)] border-[var(--border)] hover:border-[var(--border-2)]"
+                  }`}>
+                  <span>{g.icon}</span>
+                  <span>{g.name}</span>
+                </button>
+                {active && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowGroupMenu(showGroupMenu===g.id ? null : g.id); }}
+                    className="absolute -right-1.5 -top-1.5 w-4 h-4 bg-[var(--surface)] border border-[var(--border-2)] rounded-full text-[9px] flex items-center justify-center text-[var(--tx-4)] hover:text-[var(--tx-2)]">
+                    ⋯
+                  </button>
+                )}
+                {showGroupMenu === g.id && (
+                  <div onClick={e=>e.stopPropagation()}
+                    className="absolute top-full mt-1 left-0 z-20 bg-[var(--surface)] border border-[var(--border-2)] rounded-lg shadow-xl overflow-hidden min-w-[110px]">
+                    <button onClick={()=>{ setGroupNameInput(g.name); setGroupIconInput(g.icon); setShowGroupModal({mode:"rename", id:g.id}); setShowGroupMenu(null); }}
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--hover)] whitespace-nowrap">✎ แก้ไขชื่อ</button>
+                    {!g.is_default && (
+                      <button onClick={()=>{ deleteGroup(g.id); setShowGroupMenu(null); }}
+                        className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-400/10 whitespace-nowrap">🗑 ลบพอร์ต</button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          <button onClick={() => { setGroupNameInput(""); setGroupIconInput("💼"); setShowGroupModal({mode:"create"}); }}
+            className="flex-shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold border border-dashed border-[var(--border-2)] text-[var(--tx-4)] hover:text-[var(--tx-2)] hover:border-zinc-500 transition-colors">
+            + พอร์ตใหม่
+          </button>
+        </div>
 
         {/* ── Stats ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 fade-up">
@@ -733,11 +869,9 @@ export default function PortfolioClient() {
 
         {/* ── Donut ── */}
         <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 flex items-center gap-4 fade-up-1">
-          {/* Donut circle */}
           <div className="relative flex-shrink-0 w-28 h-28">
             <div className="w-28 h-28 rounded-full transition-all duration-300"
               style={{background:`conic-gradient(${donutGradient})`, transform:"rotate(-90deg)"}}/>
-            {/* Inner circle */}
             <div className="absolute inset-3 bg-[var(--surface)] rounded-full flex flex-col items-center justify-center">
               {hoveredIdx!==null && sorted[hoveredIdx] ? (
                 <>
@@ -753,7 +887,7 @@ export default function PortfolioClient() {
                 </>
               ) : (
                 <>
-                  <span className="text-[9px] text-[var(--tx-4)] leading-none">พอร์ต</span>
+                  <span className="text-[9px] text-[var(--tx-4)] leading-none">{activeGroup?.icon || "💼"} {activeGroup?.name || "พอร์ต"}</span>
                   <span className="text-xs font-black text-[var(--tx)] leading-none mt-0.5">{positions.length} หุ้น</span>
                   <span className="text-[8px] text-[var(--tx-4)] leading-none mt-0.5">{fmtMoney(marketValue)}</span>
                 </>
@@ -761,7 +895,6 @@ export default function PortfolioClient() {
             </div>
           </div>
 
-          {/* Legend */}
           <div className="flex-1 overflow-hidden">
             <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 max-h-28 overflow-hidden">
               {sorted.slice(0,10).map((p,i) => {
@@ -780,6 +913,9 @@ export default function PortfolioClient() {
                   </div>
                 );
               })}
+              {!sorted.length && (
+                <p className="text-[11px] text-[var(--tx-5)] col-span-2">ยังไม่มีหุ้นในพอร์ตนี้</p>
+              )}
             </div>
           </div>
         </div>
@@ -867,12 +1003,10 @@ export default function PortfolioClient() {
                       <td className="px-3 py-3 min-w-[140px] hidden md:table-cell">
                         {targetPct>0 ? (
                           <div className="space-y-0.5">
-                            {/* Bar */}
                             <div className="h-3 bg-[var(--fill)] rounded-md overflow-hidden flex relative border border-[var(--border-2)]">
                               <div className="h-full rounded-md z-10" style={{width:`${Math.min((allocNow/targetPct)*100,100)}%`,background:allocNow<targetPct?COLORS[idx%COLORS.length]:"#f97316",opacity:0.85}}/>
                               {allocNow<targetPct && <div className="h-full" style={{width:`${Math.max(0,100-((allocNow/targetPct)*100))}%`,background:"#10b98111"}}/>}
                             </div>
-                            {/* Info line */}
                             <div className="flex items-center justify-between text-[8px]">
                               <span className="text-[var(--tx-3)]">{allocNow.toFixed(1)}% / {targetPct.toFixed(1)}%</span>
                               <span className={`font-bold ${allocDiff!==null&&allocDiff>0?"text-orange-400":"text-emerald-400"}`}>
@@ -887,10 +1021,10 @@ export default function PortfolioClient() {
                       <td className="px-2 py-3">
                         <div className="flex items-center justify-center gap-1">
                           <Link href={`/chart?symbol=${p.ticker}&exchange=NASDAQ&tf=60`}
-      className="ripple px-1.5 py-1 text-xs bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 rounded font-bold"
-      title="ดูกราฟ">
-      📈
-    </Link>
+                            className="ripple px-1.5 py-1 text-xs bg-purple-500/20 text-purple-400 hover:bg-purple-500/30 rounded font-bold"
+                            title="ดูกราฟ">
+                            📈
+                          </Link>
                           <button onClick={()=>openBuy(p.ticker)} className="ripple px-1.5 py-1 text-xs bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded font-bold">
                             <span className="hidden sm:inline">ซื้อ</span><span className="sm:hidden">+</span>
                           </button>
@@ -914,13 +1048,13 @@ export default function PortfolioClient() {
           <div className="border-t border-[var(--border)] p-4">
             <button onClick={()=>{setMode("buy");setFormTicker("");setFormShares("");setFormPrice("");setFormName("");setFormAlloc("");setFormTarget("");setEditingTicker(null);setFormError("");setModalTab("trade");setModal({type:"buy",ticker:""}); }}
               className="w-full py-2.5 border border-dashed border-[var(--border-2)] hover:border-zinc-500 text-[var(--tx-4)] hover:text-[var(--tx-2)] rounded-lg text-sm">
-              + เพิ่มหุ้นใหม่
+              + เพิ่มหุ้นใหม่ (ในพอร์ต {activeGroup?.name || "-"})
             </button>
           </div>
         </div>
       </div>
 
-      {/* ── Modal ── */}
+      {/* ── Trade Modal ── */}
       {modal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
           onClick={e=>{if(e.target===e.currentTarget)closeModal();}}>
@@ -1088,13 +1222,13 @@ export default function PortfolioClient() {
                               </td>
                               {resists.map((r,ri)=>{
                                 const sh = inv/s;
-                                const pl = (r-s)*sh;
+                                const plCalc = (r-s)*sh;
                                 const pv = ((r-s)/s)*100;
-                                const pos = pl>=0;
+                                const posCalc = plCalc>=0;
                                 return (
-                                  <td key={ri} className={`px-2 py-2 text-center border-l border-[var(--border)] ${pos?"bg-emerald-400/5":"bg-red-400/5"}`}>
-                                    <p className={`font-black ${pos?"text-emerald-400":"text-red-400"}`}>{pos?"+":"-"}${Math.abs(pl).toFixed(0)}</p>
-                                    <p className={pos?"text-emerald-600":"text-red-600"}>({pos?"+":""}{pv.toFixed(1)}%)</p>
+                                  <td key={ri} className={`px-2 py-2 text-center border-l border-[var(--border)] ${posCalc?"bg-emerald-400/5":"bg-red-400/5"}`}>
+                                    <p className={`font-black ${posCalc?"text-emerald-400":"text-red-400"}`}>{posCalc?"+":"-"}${Math.abs(plCalc).toFixed(0)}</p>
+                                    <p className={posCalc?"text-emerald-600":"text-red-600"}>({posCalc?"+":""}{pv.toFixed(1)}%)</p>
                                   </td>
                                 );
                               })}
@@ -1124,13 +1258,13 @@ export default function PortfolioClient() {
                     placeholder="เช่น เอ็นวิเดีย" value={formName} onChange={e=>setFormName(e.target.value)}/>
                 </div>
                 <div>
-                  <label className="text-xs text-[var(--tx-3)] mb-1 block">สัดส่วนเป้าหมาย (%)</label>
+                  <label className="text-xs text-[var(--tx-3)] mb-1 block">สัดส่วนเป้าหมายในพอร์ตนี้ (%)</label>
                   {(() => {
                     const selfKey = editingTicker || formTicker.toUpperCase().trim();
                     const othersTarget = positions.reduce((s,p) => p.ticker===selfKey ? s : s + (p.targetAlloc||0), 0);
                     const remain = Math.max(0, 100 - othersTarget);
-                    const cur = parseFloat(formTarget) || 0;
-                    const willTotal = othersTarget + cur;
+                    const curVal = parseFloat(formTarget) || 0;
+                    const willTotal = othersTarget + curVal;
                     const over = willTotal > 100.01;
                     return (
                       <>
@@ -1140,22 +1274,20 @@ export default function PortfolioClient() {
                           value={formTarget}
                           onChange={e=>{
                             const v = e.target.value;
-                            // clamp ไม่ให้พิมพ์เกินที่เหลือ (ปล่อยว่างได้)
                             const n = parseFloat(v);
                             if (v==="" || isNaN(n)) { setFormTarget(v); return; }
                             if (n > remain) setFormTarget(remain.toFixed(1));
                             else setFormTarget(v);
                           }}/>
                         <div className="flex items-center justify-between mt-1 text-[10px]">
-                          <span className="text-[var(--tx-4)]">หุ้นอื่นใช้ไป {othersTarget.toFixed(1)}% · เหลือ <span className="text-purple-400 font-bold">{remain.toFixed(1)}%</span></span>
+                          <span className="text-[var(--tx-4)]">หุ้นอื่นในพอร์ตนี้ใช้ไป {othersTarget.toFixed(1)}% · เหลือ <span className="text-purple-400 font-bold">{remain.toFixed(1)}%</span></span>
                           <span className={`font-bold ${over?"text-red-400":willTotal>=99.5&&willTotal<=100.5?"text-emerald-400":"text-[var(--tx-4)]"}`}>
                             {over ? "⚠️ เกิน 100%" : `รวม ${willTotal.toFixed(1)}%`}
                           </span>
                         </div>
-                        {/* mini progress bar */}
                         <div className="mt-1 h-1.5 bg-[var(--fill)] rounded-full overflow-hidden flex">
                           <div className="h-full bg-zinc-600" style={{width:`${Math.min(othersTarget,100)}%`}}/>
-                          <div className={`h-full ${over?"bg-red-500":"bg-purple-400"}`} style={{width:`${Math.min(cur,Math.max(0,100-othersTarget))}%`}}/>
+                          <div className={`h-full ${over?"bg-red-500":"bg-purple-400"}`} style={{width:`${Math.min(curVal,Math.max(0,100-othersTarget))}%`}}/>
                         </div>
                       </>
                     );
@@ -1220,10 +1352,46 @@ export default function PortfolioClient() {
         </div>
       )}
 
+      {/* ── ⭐ Portfolio Group Modal (สร้าง/แก้ไข) ── */}
+      {showGroupModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={e=>{if(e.target===e.currentTarget) setShowGroupModal(null);}}>
+          <div className="bg-[var(--surface)] border border-[var(--border-2)] rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={e=>e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-4">{showGroupModal.mode==="create" ? "สร้างพอร์ตใหม่" : "แก้ไขพอร์ต"}</h2>
+            <div className="mb-3">
+              <label className="text-xs text-[var(--tx-3)] mb-1 block">ไอคอน</label>
+              <div className="flex gap-2 flex-wrap">
+                {GROUP_ICONS.map(ic => (
+                  <button key={ic} onClick={()=>setGroupIconInput(ic)}
+                    className={`w-9 h-9 rounded-lg flex items-center justify-center text-lg border transition-colors ${groupIconInput===ic?"bg-yellow-400/20 border-yellow-400":"border-[var(--border-2)] hover:border-zinc-500"}`}>
+                    {ic}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="mb-4">
+              <label className="text-xs text-[var(--tx-3)] mb-1 block">ชื่อพอร์ต</label>
+              <input autoFocus value={groupNameInput} onChange={e=>setGroupNameInput(e.target.value)}
+                onKeyDown={e=>{ if(e.key==="Enter") (showGroupModal.mode==="create" ? createGroup() : renameGroup(showGroupModal.id!)); }}
+                placeholder="พิมพ์ชื่อพอร์ตของพี่เอง"
+                className="w-full bg-[var(--surface-2)] border border-[var(--border-2)] focus:border-yellow-400 rounded-lg px-3 py-2.5 text-sm outline-none"/>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={()=>setShowGroupModal(null)} className="flex-1 py-2.5 bg-[var(--fill)] text-[var(--tx-3)] rounded-xl text-sm font-bold">ยกเลิก</button>
+              <button onClick={()=> showGroupModal.mode==="create" ? createGroup() : renameGroup(showGroupModal.id!)}
+                disabled={!groupNameInput.trim()}
+                className="flex-1 py-2.5 bg-yellow-400 hover:bg-yellow-300 disabled:opacity-40 text-black rounded-xl text-sm font-bold">
+                {showGroupModal.mode==="create" ? "✓ สร้าง" : "✓ บันทึก"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Trade History ── */}
       <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl overflow-hidden fade-up mt-4 mx-4">
         <button onClick={() => setShowHistory(!showHistory)} className="w-full p-4 border-b border-[var(--border)] hover:bg-[var(--hover)] transition-colors flex items-center justify-between">
-          <h2 className="text-sm font-bold text-[var(--tx)]">📜 ประวัติการซื้อขาย ({tradeHistory.length})</h2>
+          <h2 className="text-sm font-bold text-[var(--tx)]">📜 ประวัติการซื้อขาย · {activeGroup?.name || "-"} ({tradeHistory.length})</h2>
           <span className={`text-xs transition-transform ${showHistory?"rotate-180":""}`}>▼</span>
         </button>
         {showHistory && (
@@ -1280,10 +1448,9 @@ export default function PortfolioClient() {
         )}
       </div>
 
-      {/* ── NEW: Price Alerts (S/R) ───────────────────────────────────────────────── */}
+      {/* ── Price Alerts (S/R) ───────────────────────────────────────────────── */}
       {(() => {
         const allSR = showAlerts ? getAllSRData() : [];
-        // Count close alerts for badge (always compute)
         const closeSRCount = (() => {
           if (typeof window === "undefined") return 0;
           let count = 0;
@@ -1375,7 +1542,6 @@ export default function PortfolioClient() {
                             : isNear
                             ? "bg-yellow-400/20 text-yellow-400"
                             : "bg-[var(--fill)] text-[var(--tx-4)]";
-                          // Direction text
                           let dirText = "";
                           if (row.type === "S") {
                             dirText = row.crossed ? "⚠️ ทะลุแนวรับลงมา" : "✅ ราคาเหนือแนวรับ";
@@ -1452,7 +1618,6 @@ export default function PortfolioClient() {
 
         {showTgAlerts && (
           <div className="border-t border-[var(--border)] p-4 space-y-4">
-            {/* form ตั้ง alert ใหม่ */}
             <div className="bg-[var(--surface-2)] rounded-xl p-3 space-y-2">
               <p className="text-xs font-bold text-[var(--tx-3)] uppercase tracking-wider">+ ตั้ง Alert ใหม่</p>
               <div className="grid grid-cols-2 gap-2">
@@ -1494,7 +1659,6 @@ export default function PortfolioClient() {
               </button>
             </div>
 
-            {/* รายการ alerts */}
             {tgLoading ? (
               <p className="text-center text-xs text-[var(--tx-5)] py-4">กำลังโหลด...</p>
             ) : tgAlerts.length === 0 ? (
@@ -1528,7 +1692,7 @@ export default function PortfolioClient() {
         )}
       </div>
 
-      {/* ── NEW: Rebalance Calculator ──────────────────────────────────────────────── */}
+      {/* ── Rebalance Calculator ──────────────────────────────────────────────── */}
       {(() => {
         const rebalData  = showRebalance ? calcRebalance() : [];
         const totalBuy   = rebalData.filter(r => r.action === "buy").reduce((s, r) => s + r.diffValue, 0);
@@ -1555,7 +1719,6 @@ export default function PortfolioClient() {
 
             {showRebalance && (
               <div className="border-t border-[var(--border)] p-4 space-y-4">
-                {/* Input + Warning */}
                 <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
                   <div>
                     <label className="text-[10px] text-[var(--tx-4)] uppercase tracking-wider mb-1 block font-bold">
@@ -1583,7 +1746,6 @@ export default function PortfolioClient() {
                   </div>
                 ) : (
                   <>
-                    {/* Summary Cards */}
                     <div className="grid grid-cols-3 gap-3">
                       <div className="bg-emerald-400/10 border border-emerald-400/20 rounded-xl p-3 text-center">
                         <p className="text-[10px] text-emerald-400 font-black uppercase mb-1">ซื้อเพิ่ม</p>
@@ -1610,7 +1772,6 @@ export default function PortfolioClient() {
                       </div>
                     </div>
 
-                    {/* Rebalance Table */}
                     <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
                       <table className="w-full text-sm">
                         <thead className="bg-[var(--surface-2)]">
