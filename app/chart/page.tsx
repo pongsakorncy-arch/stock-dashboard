@@ -455,7 +455,7 @@ function ChartPageInner() {
   const [symbol,        setSymbol]        = useState("XAUUSD");
   const [exchange,      setExchange]      = useState("FX_IDC");
   const [interval,      setInterval]      = useState("60"); // ⭐ default H1
-  const [activeStudies, setActiveStudies] = useState<string[]>(["RSI@tv-basicstudies","Volume@tv-basicstudies"]);
+  const [activeStudies, setActiveStudies] = useState<string[]>(["RSI@tv-basicstudies"]);
   const [tab,           setTab]           = useState<"portfolio"|"watchlist">("watchlist");
   const [search,        setSearch]        = useState("");
   const [showSymbolSheet, setShowSymbolSheet] = useState(false);
