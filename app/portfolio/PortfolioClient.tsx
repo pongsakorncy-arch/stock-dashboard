@@ -15,6 +15,8 @@ const COLORS = [
   "#a78bfa","#fb923c","#34d399","#f472b6","#60a5fa",
 ];
 
+const PORTFOLIO_BUILD_TAG = "CUSTOM-V2-20260716";
+
 const GROUP_ICONS = ["💼","📊","⚖️","🚀","💎","🎯","🏦","📈","🌱","🔥","💰","🧭"];
 
 function money(v: number) {
@@ -41,6 +43,7 @@ type PortfolioGroup = {
   color: string;
   is_default: boolean;
   sort_order: number;
+  source: "main" | "custom";
 };
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -81,6 +84,10 @@ export default function PortfolioClient() {
   const tradeTimeoutRef                 = useRef<NodeJS.Timeout|null>(null);
   // ป้องกัน refresh ราคาที่เริ่มก่อนการแก้ไข/ลบ เขียนข้อมูลเก่ากลับเข้า Supabase
   const positionsMutationRef             = useRef(0);
+  const activeGroupIdRef                  = useRef("");
+  const groupLoadRequestRef               = useRef(0);
+  // Tombstone: หุ้นที่ผู้ใช้สั่งลบ ห้ามงาน async เก่า upsert กลับมา
+  const deletedPositionKeysRef             = useRef<Set<string>>(new Set());
 
   // ── NEW: Alerts & Rebalance ────────────────────────────────────────────────
   const [showAlerts, setShowAlerts]           = useState(false);
@@ -176,149 +183,237 @@ export default function PortfolioClient() {
     setNotifPermission(perm as "default"|"denied"|"granted");
   };
 
-  // ── ⭐ Load Portfolio Groups (ทำก่อนโหลดหุ้น) ──────────────────────────────
+  // ── ⭐ Load Portfolio Groups ───────────────────────────────────────────────
+  // พอร์ตหลักอ่านจาก portfolio_groups/portfolios เดิม
+  // พอร์ตที่สร้างใหม่อ่านจาก custom_portfolios/custom_portfolio_positions เท่านั้น
   useEffect(() => {
     const loadGroups = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setGroupsLoaded(true); return; }
 
-      let { data } = await supabase.from("portfolio_groups").select("*")
-        .eq("user_id", user.id).order("sort_order", { ascending: true });
+      let { data: mainRows } = await supabase.from("portfolio_groups").select("*")
+        .eq("user_id", user.id).eq("is_default", true).order("sort_order", { ascending: true });
 
-      // user ใหม่ที่ยังไม่มีพอร์ตเลย → สร้าง "พอร์ตหลัก" ให้อัตโนมัติ
-      if (!data || data.length === 0) {
+      if (!mainRows || mainRows.length === 0) {
         const { data: created } = await supabase.from("portfolio_groups").insert({
           user_id: user.id, name: "พอร์ตหลัก", icon: "💼", is_default: true, sort_order: 0,
         }).select().single();
-        data = created ? [created] : [];
+        mainRows = created ? [created] : [];
       }
 
-      setGroups(data || []);
+      const { data: customRows, error: customError } = await supabase
+        .from("custom_portfolios")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("sort_order", { ascending: true });
 
+      if (customError) {
+        console.error("load custom portfolios error", customError);
+        showToast("ยังไม่พบตารางพอร์ตใหม่ กรุณารัน SQL ที่ให้ไว้", "error");
+      }
+
+      const combined: PortfolioGroup[] = [
+        ...(mainRows || []).map((g: any) => ({ ...g, source: "main" as const })),
+        ...(customRows || []).map((g: any) => ({
+          ...g, is_default: false, color: g.color || "", source: "custom" as const,
+        })),
+      ];
+
+      setGroups(combined);
       const saved = typeof window !== "undefined" ? localStorage.getItem("yok_active_portfolio_id") : null;
-      const validSaved = data?.find(g => g.id === saved);
-      const initial = validSaved ? saved! : (data?.find(g => g.is_default)?.id || data?.[0]?.id || "");
+      const validSaved = combined.find(g => g.id === saved);
+      const initial = validSaved?.id || combined.find(g => g.is_default)?.id || combined[0]?.id || "";
+      activeGroupIdRef.current = initial;
       setActiveGroupId(initial);
       setGroupsLoaded(true);
     };
     loadGroups();
   }, []);
 
-  // จำพอร์ตที่เลือกล่าสุดไว้
   useEffect(() => {
+    activeGroupIdRef.current = activeGroupId;
+    positionsMutationRef.current += 1;
+    groupLoadRequestRef.current += 1;
     if (activeGroupId) localStorage.setItem("yok_active_portfolio_id", activeGroupId);
   }, [activeGroupId]);
 
-  // ปิดเมนู ⋯ เมื่อคลิกที่อื่น
-  useEffect(() => {
-    if (!showGroupMenu) return;
-    const close = () => setShowGroupMenu(null);
-    window.addEventListener("click", close);
-    return () => window.removeEventListener("click", close);
-  }, [showGroupMenu]);
-
-  // ── ⭐ Group CRUD ───────────────────────────────────────────────────────────
   const createGroup = async () => {
     const name = groupNameInput.trim();
     if (!name) return;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const { data, error } = await supabase.from("portfolio_groups").insert({
-      user_id: user.id, name, icon: groupIconInput, is_default: false, sort_order: groups.length,
+
+    const customCount = groups.filter(g => g.source === "custom").length;
+    const { data, error } = await supabase.from("custom_portfolios").insert({
+      user_id: user.id,
+      name,
+      icon: groupIconInput,
+      sort_order: customCount + 1,
     }).select().single();
-    if (data) {
-      setGroups(prev => [...prev, data]);
-      setActiveGroupId(data.id);
-      showToast(`✓ สร้างพอร์ต "${data.name}" แล้ว`);
-    } else {
-      showToast("สร้างพอร์ตไม่สำเร็จ", "error");
+
+    if (error || !data) {
+      console.error("create custom portfolio error", error);
+      showToast(error ? `สร้างพอร์ตไม่สำเร็จ: ${error.message}` : "สร้างพอร์ตไม่สำเร็จ", "error");
+      return;
     }
+
+    const newGroup: PortfolioGroup = {
+      ...data,
+      is_default: false,
+      color: data.color || "",
+      source: "custom",
+    };
+    setGroups(prev => [...prev, newGroup]);
+    positionsRef.current = [];
+    setPositions([]);
+    setCash(0);
+    setTradeHistory([]);
+    setActiveGroupId(data.id);
+    showToast(`✓ สร้างพอร์ต "${data.name}" แบบโล่งแล้ว`);
     setShowGroupModal(null); setGroupNameInput(""); setGroupIconInput("💼");
   };
 
   const renameGroup = async (id: string) => {
     const name = groupNameInput.trim();
     if (!name) return;
-    await supabase.from("portfolio_groups").update({ name, icon: groupIconInput }).eq("id", id);
-    setGroups(prev => prev.map(g => g.id === id ? { ...g, name, icon: groupIconInput } : g));
+    const g = groups.find(x => x.id === id);
+    if (!g) return;
+    const table = g.source === "custom" ? "custom_portfolios" : "portfolio_groups";
+    const { error } = await supabase.from(table).update({ name, icon: groupIconInput }).eq("id", id);
+    if (error) { showToast(`แก้ไขไม่ได้: ${error.message}`, "error"); return; }
+    setGroups(prev => prev.map(x => x.id === id ? { ...x, name, icon: groupIconInput } : x));
     showToast("✓ แก้ไขพอร์ตแล้ว");
     setShowGroupModal(null); setGroupNameInput(""); setGroupIconInput("💼");
   };
 
   const deleteGroup = async (id: string) => {
     const g = groups.find(x => x.id === id);
-    if (!g) return;
-    if (g.is_default) { showToast("ลบพอร์ตหลักไม่ได้", "error"); return; }
-    if (groups.length <= 1) { showToast("ต้องมีอย่างน้อย 1 พอร์ต", "error"); return; }
-    if (!confirm(`ลบพอร์ต "${g.name}" ทั้งหมด? หุ้น เงินสด และประวัติในพอร์ตนี้จะหายถาวร`)) return;
+    if (!g) { showToast("ไม่พบพอร์ตนี้", "error"); return; }
+    if (g.source !== "custom" || g.is_default) {
+      showToast("พอร์ตหลักถูกล็อก ลบไม่ได้", "error");
+      return;
+    }
+    if (!confirm(`ลบพอร์ต "${g.name}" ทั้งหมด? หุ้น เงินสด และประวัติจะหายถาวร`)) return;
 
-    await supabase.from("portfolio_groups").delete().eq("id", id); // FK cascade ลบ positions/settings/trades ให้อัตโนมัติ
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { showToast("กรุณา Login ใหม่", "error"); return; }
+
+    const { data, error } = await supabase.from("custom_portfolios")
+      .delete().eq("id", id).eq("user_id", user.id).select("id");
+    if (error || !data?.length) {
+      showToast(error ? `ลบพอร์ตไม่ได้: ${error.message}` : "ลบพอร์ตไม่ได้", "error");
+      return;
+    }
+
     const next = groups.filter(x => x.id !== id);
     setGroups(next);
-    if (activeGroupId === id) {
-      const def = next.find(x => x.is_default) || next[0];
-      setActiveGroupId(def.id);
-    }
+    setShowGroupMenu(null);
+    const main = next.find(x => x.source === "main") || next[0];
+    positionsRef.current = [];
+    setPositions([]); setCash(0); setTradeHistory([]);
+    setActiveGroupId(main?.id || "");
     try { localStorage.removeItem(`yok_portfolio_v4__${id}`); } catch {}
     showToast(`✓ ลบพอร์ต "${g.name}" แล้ว`);
   };
 
-  // ── ⭐ Load positions/cash/history — scoped ตามพอร์ตที่เลือกอยู่ ────────────
+  const getStorageTables = (group: PortfolioGroup) => group.source === "custom"
+    ? {
+        positions: "custom_portfolio_positions",
+        settings: "custom_portfolio_settings",
+        trades: "custom_portfolio_trades",
+        foreignKey: "custom_portfolio_id",
+      }
+    : {
+        positions: "portfolios",
+        settings: "user_settings",
+        trades: "portfolio_trades",
+        foreignKey: "portfolio_id",
+      };
+
+  // ── Load positions/cash/history ตามชนิดพอร์ต ───────────────────────────────
   useEffect(() => {
     if (!groupsLoaded || !activeGroupId) return;
+    const group = groups.find(g => g.id === activeGroupId);
+    if (!group) return;
+    const groupId = group.id;
+    const tables = getStorageTables(group);
+    const requestId = ++groupLoadRequestRef.current;
+
+    positionsRef.current = [];
+    setPositions([]);
+    setCash(0);
+    setTradeHistory([]);
+
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data } = await supabase.from("portfolios").select("*")
-        .eq("user_id", user.id).eq("portfolio_id", activeGroupId);
-      if (data && data.length > 0) {
-        setPositions(data.map((r: any) => ({
-          ticker: r.ticker, name: r.name || r.ticker,
-          shares: Number(r.shares), avgCost: Number(r.avg_cost),
-          currentPrice: Number(r.current_price)||0, prevClose: Number(r.prev_close)||0,
-          targetAlloc: Number(r.target_alloc)||0,
-          extPrice: 0, extPct: 0, extType: "none" as const,
-        })));
-      } else {
-        setPositions([]);
-      }
+      const { data, error } = await supabase.from(tables.positions).select("*")
+        .eq("user_id", user.id).eq(tables.foreignKey, groupId);
+      if (error) { console.error("load positions error", error); return; }
+      if (requestId !== groupLoadRequestRef.current || groupId !== activeGroupIdRef.current) return;
 
-      const { data: s } = await supabase.from("user_settings").select("cash")
-        .eq("user_id", user.id).eq("portfolio_id", activeGroupId).maybeSingle();
-      setCash(s ? Number(s.cash) || 0 : 0);
+      const loadedPositions: Position[] = (data || []).map((r: any) => ({
+        ticker: r.ticker, name: r.name || r.ticker,
+        shares: Number(r.shares), avgCost: Number(r.avg_cost),
+        currentPrice: Number(r.current_price) || 0, prevClose: Number(r.prev_close) || 0,
+        targetAlloc: Number(r.target_alloc) || 0,
+        extPrice: 0, extPct: 0, extType: "none" as const,
+      }));
+      positionsRef.current = loadedPositions;
+      setPositions(loadedPositions);
 
-      const { data: trades } = await supabase.from("portfolio_trades").select("*")
-        .eq("user_id", user.id).eq("portfolio_id", activeGroupId).order("created_at", { ascending: false });
+      const { data: setting } = await supabase.from(tables.settings).select("cash")
+        .eq("user_id", user.id).eq(tables.foreignKey, groupId).maybeSingle();
+      if (requestId !== groupLoadRequestRef.current || groupId !== activeGroupIdRef.current) return;
+      setCash(setting ? Number(setting.cash) || 0 : 0);
+
+      const { data: trades } = await supabase.from(tables.trades).select("*")
+        .eq("user_id", user.id).eq(tables.foreignKey, groupId)
+        .order("created_at", { ascending: false });
+      if (requestId !== groupLoadRequestRef.current || groupId !== activeGroupIdRef.current) return;
       setTradeHistory(trades || []);
-
-      // อนุญาตให้ auto-refresh ราคาทำงานใหม่สำหรับพอร์ตที่เพิ่งสลับมา
       autoRefreshed.current = false;
     };
     load();
-  }, [activeGroupId, groupsLoaded]);
+  }, [activeGroupId, groupsLoaded, groups]);
 
-  const saveToSupabase = async (userId: string, pos: Position[]) => {
-    if (!activeGroupId) return;
+  const saveToSupabase = async (userId: string, groupId: string, pos: Position[]) => {
+    const group = groups.find(g => g.id === groupId);
+    if (!group || groupId !== activeGroupIdRef.current) return;
+    const tables = getStorageTables(group);
     const rows = pos.map(p => ({
-      user_id: userId, portfolio_id: activeGroupId, ticker: p.ticker, name: p.name,
-      shares: p.shares, avg_cost: p.avgCost,
-      current_price: p.currentPrice, prev_close: p.prevClose,
-      target_alloc: p.targetAlloc, updated_at: new Date().toISOString(),
+      user_id: userId,
+      [tables.foreignKey]: groupId,
+      ticker: p.ticker,
+      name: p.name,
+      shares: p.shares,
+      avg_cost: p.avgCost,
+      current_price: p.currentPrice,
+      prev_close: p.prevClose,
+      target_alloc: p.targetAlloc,
+      updated_at: new Date().toISOString(),
     }));
-    await supabase.from("portfolios").upsert(rows, { onConflict: "user_id,portfolio_id,ticker" });
+    if (rows.length > 0) {
+      const conflict = `user_id,${tables.foreignKey},ticker`;
+      const { error } = await supabase.from(tables.positions).upsert(rows, { onConflict: conflict });
+      if (error) throw error;
+    }
     try {
-      localStorage.setItem(`yok_portfolio_v4__${activeGroupId}`, JSON.stringify(pos));
-      // mirror พอร์ตที่กำลังดูอยู่ไว้ให้หน้า Dashboard/Chart อ่านได้ (ใช้ชั่วคราวจนกว่าจะทำตัวเลือกพอร์ตที่หน้านั้นด้วย)
+      localStorage.setItem(`yok_portfolio_v4__${groupId}`, JSON.stringify(pos));
       localStorage.setItem("yok_portfolio_v4", JSON.stringify(pos));
     } catch {}
   };
 
   const recordTrade = async (ticker: string, type: "buy"|"sell", shares: number, price: number, costBefore: number, costAfter: number, pl: number) => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !activeGroupId) return;
-    await supabase.from("portfolio_trades").insert({
-      user_id: user.id, portfolio_id: activeGroupId, ticker, type, shares, price,
+    const group = groups.find(g => g.id === activeGroupIdRef.current);
+    if (!user || !group) return;
+    const tables = getStorageTables(group);
+    await supabase.from(tables.trades).insert({
+      user_id: user.id,
+      [tables.foreignKey]: group.id,
+      ticker, type, shares, price,
       amount: shares * price,
       avg_cost_before: costBefore,
       avg_cost_after: costAfter,
@@ -327,12 +422,45 @@ export default function PortfolioClient() {
     });
   };
 
-  const syncPositions = async (newPos: Position[]) => {
+  const syncPositions = async (
+    newPos: Position[],
+    guard?: { mutationVersion: number; groupId: string }
+  ) => {
+    if (guard && (
+      guard.mutationVersion !== positionsMutationRef.current ||
+      guard.groupId !== activeGroupIdRef.current
+    )) return false;
+    positionsRef.current = newPos;
     setPositions(newPos);
     const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      await saveToSupabase(user.id, newPos);
-    }
+    if (!user) return false;
+    if (guard && (
+      guard.mutationVersion !== positionsMutationRef.current ||
+      guard.groupId !== activeGroupIdRef.current
+    )) return false;
+    await saveToSupabase(user.id, guard?.groupId || activeGroupIdRef.current, newPos);
+    return true;
+  };
+
+  const syncPricesOnly = async (
+    newPos: Position[],
+    guard: { mutationVersion: number; groupId: string }
+  ) => {
+    if (guard.mutationVersion !== positionsMutationRef.current || guard.groupId !== activeGroupIdRef.current) return false;
+    const group = groups.find(g => g.id === guard.groupId);
+    if (!group) return false;
+    const tables = getStorageTables(group);
+    positionsRef.current = newPos;
+    setPositions(newPos);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+    if (guard.mutationVersion !== positionsMutationRef.current || guard.groupId !== activeGroupIdRef.current) return false;
+    const results = await Promise.all(newPos.map(p => supabase.from(tables.positions)
+      .update({ current_price: p.currentPrice, prev_close: p.prevClose, updated_at: new Date().toISOString() })
+      .eq("user_id", user.id).eq(tables.foreignKey, guard.groupId).eq("ticker", p.ticker)));
+    const failed = results.find(r => r.error);
+    if (failed?.error) { console.error("syncPricesOnly error", failed.error); return false; }
+    return true;
   };
 
   // ── Market session ────────────────────────────────────────────────────────────
@@ -383,11 +511,32 @@ export default function PortfolioClient() {
       return;
     }
 
-    await syncPositions(updated);
+    // ใช้เฉพาะหุ้นที่ยังอยู่จริง ณ ตอนนี้ แล้ว merge เฉพาะข้อมูลราคา
+    const priceByTicker = new Map(updated.map(p => [p.ticker, p]));
+    const latestHoldings = positionsRef.current.map(p => {
+      const quoted = priceByTicker.get(p.ticker);
+      return quoted ? {
+        ...p,
+        currentPrice: quoted.currentPrice,
+        prevClose: quoted.prevClose,
+        extPrice: quoted.extPrice,
+        extPct: quoted.extPct,
+        extType: quoted.extType,
+      } : p;
+    });
+
+    const synced = await syncPricesOnly(latestHoldings, {
+      mutationVersion: refreshVersion,
+      groupId: refreshGroupId,
+    });
+    if (!synced) {
+      setIsRefreshing(false);
+      return;
+    }
 
     // ── Check S/R Alerts ────────────────────────────────────────────────
     const ALERT_PCT = 1.0;
-    for (const pos of updated) {
+    for (const pos of latestHoldings) {
       if (!pos.currentPrice) continue;
       try {
         const srRaw = localStorage.getItem(`sr_${pos.ticker}`);
@@ -439,10 +588,16 @@ export default function PortfolioClient() {
   const saveCash = async (val: number) => {
     setCash(val); setShowCashEdit(false);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user || !activeGroupId) return;
-    await supabase.from("user_settings").upsert({
-      user_id: user.id, portfolio_id: activeGroupId, cash: val, updated_at: new Date().toISOString(),
-    }, { onConflict: "user_id,portfolio_id" });
+    const group = groups.find(g => g.id === activeGroupIdRef.current);
+    if (!user || !group) return;
+    const tables = getStorageTables(group);
+    const { error } = await supabase.from(tables.settings).upsert({
+      user_id: user.id,
+      [tables.foreignKey]: group.id,
+      cash: val,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: `user_id,${tables.foreignKey}` });
+    if (error) showToast(`บันทึกเงินสดไม่ได้: ${error.message}`, "error");
   };
 
   // ── Stats ─────────────────────────────────────────────────────────────────────
@@ -578,28 +733,18 @@ export default function PortfolioClient() {
   }
 
   async function deletePosition(ticker: string) {
-    if (!confirm(`ลบ ${ticker} ออกจากพอร์ต?`)) return;
+    const normalizedTicker = ticker.toUpperCase().trim();
+    if (!confirm(`ลบ ${normalizedTicker} ออกจากพอร์ตนี้?`)) return;
 
-    const groupId = activeGroupId;
-    if (!groupId) {
-      showToast("ไม่พบพอร์ตที่กำลังใช้งาน", "error");
-      return;
-    }
-
-    // invalidate refresh ราคาทุกตัวที่กำลังทำงานด้วย snapshot เก่า
-    positionsMutationRef.current += 1;
-
+    const group = groups.find(g => g.id === activeGroupIdRef.current);
+    if (!group) { showToast("ไม่พบพอร์ตที่กำลังใช้งาน", "error"); return; }
+    const tables = getStorageTables(group);
     const beforeDelete = positionsRef.current;
-    const newPos = beforeDelete.filter(p => p.ticker !== ticker);
+    const newPos = beforeDelete.filter(p => p.ticker.toUpperCase() !== normalizedTicker);
 
-    // อัปเดตทั้ง state และ ref ทันที เพื่อไม่ให้ interval รอบใหม่เห็นหุ้นตัวเก่า
+    positionsMutationRef.current += 1;
     positionsRef.current = newPos;
     setPositions(newPos);
-
-    try {
-      localStorage.setItem(`yok_portfolio_v4__${groupId}`, JSON.stringify(newPos));
-      localStorage.setItem("yok_portfolio_v4", JSON.stringify(newPos));
-    } catch {}
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -609,25 +754,25 @@ export default function PortfolioClient() {
       return;
     }
 
-    const { error } = await supabase.from("portfolios").delete()
+    const { data, error } = await supabase.from(tables.positions)
+      .delete()
       .eq("user_id", user.id)
-      .eq("portfolio_id", groupId)
-      .eq("ticker", ticker);
+      .eq(tables.foreignKey, group.id)
+      .eq("ticker", normalizedTicker)
+      .select("ticker");
 
-    if (error) {
-      // rollback หน้าจอเมื่อฐานข้อมูลลบไม่สำเร็จ
+    if (error || !data?.length) {
       positionsRef.current = beforeDelete;
       setPositions(beforeDelete);
-      try {
-        localStorage.setItem(`yok_portfolio_v4__${groupId}`, JSON.stringify(beforeDelete));
-        localStorage.setItem("yok_portfolio_v4", JSON.stringify(beforeDelete));
-      } catch {}
-      console.error("deletePosition error", error);
-      showToast(`❌ ลบ ${ticker} ไม่สำเร็จ: ${error.message}`, "error");
+      showToast(error ? `ลบไม่ได้: ${error.message}` : `ไม่พบ ${normalizedTicker} ในพอร์ตนี้`, "error");
       return;
     }
 
-    showToast(`✓ ลบ ${ticker} แล้ว`);
+    try {
+      localStorage.setItem(`yok_portfolio_v4__${group.id}`, JSON.stringify(newPos));
+      localStorage.setItem("yok_portfolio_v4", JSON.stringify(newPos));
+    } catch {}
+    showToast(`✓ ลบ ${normalizedTicker} แล้ว`);
   }
 
   function saveTrade() {
@@ -661,6 +806,7 @@ export default function PortfolioClient() {
       closeModal(); return;
     }
     if (mode==="buy") {
+      // ผู้ใช้ซื้อกลับด้วยตัวเอง จึงอนุญาตให้สร้าง ticker นี้อีกครั้ง
       const ex = cur.find(p=>p.ticker===sym);
       if (!ex) {
         syncPositions([...cur, {ticker:sym,name:formName||sym,shares:qty,avgCost:tradePrice,currentPrice:tradePrice,prevClose:0,targetAlloc:target,extPrice:0,extPct:0,extType:"none"}]);
@@ -800,7 +946,7 @@ export default function PortfolioClient() {
         <div className="flex items-center gap-2">
           <Link href="/" className="text-[var(--tx-4)] hover:text-[var(--tx)] text-xs transition-colors">← หน้าแรก</Link>
           <span className="text-[var(--tx-6)] hidden sm:block">|</span>
-          <h1 className="text-xs font-bold tracking-tight hidden sm:block">TRUSH YOUR OWN · พอร์ต</h1>
+          <h1 className="text-xs font-bold tracking-tight hidden sm:block">TRUSH YOUR OWN · พอร์ต <span className="ml-2 text-[9px] text-yellow-400">{PORTFOLIO_BUILD_TAG}</span></h1>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[10px] text-[var(--tx-5)] hidden sm:block">อัปเดต: {lastUpdated}</span>
@@ -839,18 +985,18 @@ export default function PortfolioClient() {
                 </button>
                 {active && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); setShowGroupMenu(showGroupMenu===g.id ? null : g.id); }}
-                    className="absolute -right-1.5 -top-1.5 w-4 h-4 bg-[var(--surface)] border border-[var(--border-2)] rounded-full text-[9px] flex items-center justify-center text-[var(--tx-4)] hover:text-[var(--tx-2)]">
+                    onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setShowGroupMenu(showGroupMenu===g.id ? null : g.id); }}
+                    className="absolute -right-2 -top-2 w-6 h-6 bg-[var(--surface)] border border-[var(--border-2)] rounded-full text-[9px] flex items-center justify-center text-[var(--tx-4)] hover:text-[var(--tx-2)]">
                     ⋯
                   </button>
                 )}
                 {showGroupMenu === g.id && (
-                  <div onClick={e=>e.stopPropagation()}
+                  <div onPointerDown={e=>e.stopPropagation()} onClick={e=>e.stopPropagation()}
                     className="absolute top-full mt-1 left-0 z-20 bg-[var(--surface)] border border-[var(--border-2)] rounded-lg shadow-xl overflow-hidden min-w-[110px]">
                     <button onClick={()=>{ setGroupNameInput(g.name); setGroupIconInput(g.icon); setShowGroupModal({mode:"rename", id:g.id}); setShowGroupMenu(null); }}
                       className="w-full text-left px-3 py-2 text-xs hover:bg-[var(--hover)] whitespace-nowrap">✎ แก้ไขชื่อ</button>
                     {!g.is_default && (
-                      <button onClick={()=>{ deleteGroup(g.id); setShowGroupMenu(null); }}
+                      <button onClick={async()=>{ await deleteGroup(g.id); }}
                         className="w-full text-left px-3 py-2 text-xs text-red-400 hover:bg-red-400/10 whitespace-nowrap">🗑 ลบพอร์ต</button>
                     )}
                   </div>
@@ -863,6 +1009,44 @@ export default function PortfolioClient() {
             + พอร์ตใหม่
           </button>
         </div>
+
+        {/* ── Portfolio actions: แสดงชัดเจน ไม่ซ่อนในเมนู ⋯ ── */}
+        {activeGroup && (
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 fade-up">
+            <div className="min-w-0">
+              <p className="text-[10px] text-[var(--tx-5)]">พอร์ตที่กำลังใช้งาน</p>
+              <p className="truncate text-sm font-bold">{activeGroup.icon} {activeGroup.name}</p>
+            </div>
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setGroupNameInput(activeGroup.name);
+                  setGroupIconInput(activeGroup.icon);
+                  setShowGroupModal({ mode: "rename", id: activeGroup.id });
+                  setShowGroupMenu(null);
+                }}
+                className="rounded-lg border border-[var(--border-2)] bg-[var(--fill)] px-3 py-2 text-xs font-bold text-[var(--tx-2)] hover:bg-[var(--fill-strong)]"
+              >
+                ✎ แก้ไขชื่อ
+              </button>
+
+              {activeGroup.source === "custom" && !activeGroup.is_default ? (
+                <button
+                  type="button"
+                  onClick={() => deleteGroup(activeGroup.id)}
+                  className="rounded-lg border border-red-500/40 bg-red-500/15 px-3 py-2 text-xs font-black text-red-400 hover:bg-red-500/25"
+                >
+                  🗑 ลบพอร์ต
+                </button>
+              ) : (
+                <span className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[10px] font-bold text-emerald-400">
+                  🔒 พอร์ตหลักลบไม่ได้
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* ── Stats ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 fade-up">
