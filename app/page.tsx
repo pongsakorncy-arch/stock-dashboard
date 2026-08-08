@@ -431,9 +431,11 @@ function usePortfolioSnapshot() {
     };
 
     loadMainPortfolio();
+    const id = setInterval(loadMainPortfolio, 60000);
 
     return () => {
       cancelled = true;
+      clearInterval(id);
     };
   }, []);
 
@@ -543,6 +545,7 @@ export default function Home() {
   const [aiAnalysis, setAiAnalysis] = useState<string>("");
   const [aiLoading, setAiLoading]   = useState(false);
   const [aiExpanded, setAiExpanded] = useState(false);
+  const [equityStats, setEquityStats] = useState<{ isATH: boolean; allTimeHigh: number }>({ isATH: false, allTimeHigh: 0 });
   const portfolio = usePortfolioSnapshot();
   const animatedValue = useCountUp(portfolio.value);
   const { currency, rate, lastUpdate: rateUpdate, toggleCurrency, format: fmtMoney } = useCurrency();
@@ -775,7 +778,7 @@ export default function Home() {
                     🔥 Best Day
                   </span>
                 )}
-                {portfolio.pl > 0 && (
+                {equityStats.isATH && (
                   <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-sky-400/20 text-sky-400 border border-sky-400/30">
                     📈 ATH
                   </span>
@@ -815,7 +818,7 @@ export default function Home() {
 
             {/* ⭐ Equity Curve จริง — มีปุ่มช่วงเวลา */}
             <div className="relative">
-              <EquityCurve fallbackValue={portfolio.value}/>
+              <EquityCurve fallbackValue={portfolio.value} onStatsChange={setEquityStats}/>
             </div>
 
             {/* Daily bar */}
