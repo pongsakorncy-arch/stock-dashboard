@@ -697,10 +697,10 @@ export default function Home() {
 <main className="min-h-screen bg-[var(--bg)] text-[var(--tx)]" style={{ fontFamily: "'Inter','Noto Sans Thai',sans-serif" }}>
 
       {/* ── Header ── */}
-      <header className="border-b border-[var(--border)] px-3 py-2 flex items-center justify-between bg-[var(--bg)]/90 backdrop-blur sticky top-0 z-30">
+      <header className="border-b border-[var(--border)] px-3 lg:px-6 py-2 lg:py-3 flex items-center justify-between bg-[var(--bg)]/90 backdrop-blur sticky top-0 z-30">
         <div className="flex items-center gap-2 flex-shrink-0">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-black font-black text-xs flex-shrink-0">T</div>
-          <span className="font-bold text-sm tracking-tight hidden sm:block">TRUSH YOUR OWN</span>
+          <div className="w-7 h-7 lg:w-8 lg:h-8 rounded-lg bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center text-black font-black text-xs flex-shrink-0">T</div>
+          <span className="font-bold text-sm lg:text-base tracking-tight hidden sm:block">TRUSH YOUR OWN</span>
         </div>
 
         <div className="flex-1 flex justify-center sm:justify-end sm:mr-4">
@@ -718,42 +718,42 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="px-6 py-5 max-w-screen-2xl mx-auto space-y-4">
+      <div className="px-6 py-5 lg:px-10 lg:py-8 max-w-screen-2xl mx-auto space-y-4 lg:space-y-6">
 
         {/* ── Quick Nav ── */}
-        <div className="grid grid-cols-3 gap-2.5 fade-up">
+        <div className="grid grid-cols-3 gap-2.5 lg:gap-4 fade-up">
           {[
             { href:"/portfolio", label:"พอร์ต",  sub:"หุ้นของฉัน",  icon:"📊", accent:"#f59e0b" },
             { href:"/chart",     label:"กราฟ",   sub:"TradingView", icon:"📈", accent:"#a78bfa" },
             { href:"/journal",   label:"Journal", sub:"XAUUSD",      icon:"📓", accent:"#38bdf8" },
           ].map(l=>(
             <Link key={l.label} href={l.href}
-              className="quick-card group relative flex flex-col items-center justify-center rounded-2xl p-3.5 min-h-[104px] overflow-hidden border transition-all"
+              className="quick-card group relative flex flex-col items-center justify-center rounded-2xl p-3.5 lg:p-5 min-h-[104px] lg:min-h-[132px] overflow-hidden border transition-all"
               style={{
                 ["--qc" as any]: `${l.accent}66`,
                 borderColor: `${l.accent}33`,
                 background: `linear-gradient(160deg, ${l.accent}22, ${l.accent}0a 45%, transparent)`,
               }}>
-              <div className="absolute -right-6 -top-6 w-20 h-20 rounded-full blur-2xl opacity-40 group-hover:opacity-75 transition-opacity duration-300 pointer-events-none"
+              <div className="absolute -right-6 -top-6 w-20 h-20 lg:w-28 lg:h-28 rounded-full blur-2xl opacity-40 group-hover:opacity-75 transition-opacity duration-300 pointer-events-none"
                 style={{ background: l.accent }}/>
-              <div className="absolute -right-1 -bottom-2 text-4xl opacity-[0.08] group-hover:opacity-[0.14] transition-opacity duration-300 select-none -rotate-12 pointer-events-none">{l.icon}</div>
-              <div className="relative mb-2 w-11 h-11 rounded-xl flex items-center justify-center text-xl transition-transform duration-300 group-hover:scale-110 group-hover:-translate-y-0.5"
+              <div className="absolute -right-1 -bottom-2 text-4xl lg:text-6xl opacity-[0.08] group-hover:opacity-[0.14] transition-opacity duration-300 select-none -rotate-12 pointer-events-none">{l.icon}</div>
+              <div className="relative mb-2 lg:mb-3 w-11 h-11 lg:w-14 lg:h-14 rounded-xl flex items-center justify-center text-xl lg:text-2xl transition-transform duration-300 group-hover:scale-110 group-hover:-translate-y-0.5"
                 style={{ background: `${l.accent}26`, boxShadow: `inset 0 0 0 1px ${l.accent}44` }}>
                 {l.icon}
               </div>
-              <p className="font-black text-xs text-[var(--tx)] text-center leading-tight relative">{l.label}</p>
-              <p className="text-[10px] text-[var(--tx-4)] mt-0.5 text-center relative">{l.sub}</p>
-              <span className="absolute top-2.5 right-3 text-xs font-black opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300"
+              <p className="font-black text-xs lg:text-sm text-[var(--tx)] text-center leading-tight relative">{l.label}</p>
+              <p className="text-[10px] lg:text-xs text-[var(--tx-4)] mt-0.5 text-center relative">{l.sub}</p>
+              <span className="absolute top-2.5 right-3 lg:top-4 lg:right-4 text-xs lg:text-sm font-black opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300"
                 style={{ color: l.accent }}>→</span>
             </Link>
           ))}
         </div>
 
         {/* ── Portfolio + Indices compact ── */}
-        <div className="grid lg:grid-cols-[320px_1fr] gap-4">
+        <div className="grid lg:grid-cols-[360px_1fr] gap-4 lg:gap-5">
 
           {/* Portfolio Card — Hero */}
-          <div className="relative bg-gradient-to-br from-[#141416] to-[#0d0d0f] border border-[var(--border-2)] rounded-2xl p-5 overflow-hidden text-[#fff]"
+          <div className="relative bg-gradient-to-br from-[#141416] to-[#0d0d0f] border border-[var(--border-2)] rounded-2xl p-5 lg:p-7 overflow-hidden text-[#fff]"
             style={{ boxShadow: portfolio.pl>=0 ? "0 0 40px #10b98118, 0 0 80px #10b98108" : "0 0 40px #ef444418, 0 0 80px #ef444408" }}>
 
             <div className="absolute -top-10 -right-10 w-48 h-48 rounded-full pointer-events-none"
@@ -784,14 +784,14 @@ export default function Home() {
             </div>
 
             {/* Main value */}
-            <p className="text-3xl font-black tracking-tight leading-none tabular-nums relative">
+            <p className="text-3xl lg:text-4xl font-black tracking-tight leading-none tabular-nums relative">
               {fmtMoney(animatedValue)}
             </p>
 
             {/* Progress ring + กำไรสะสม */}
-            <div className="flex items-center gap-3 mt-3 relative">
+            <div className="flex items-center gap-3 lg:gap-4 mt-3 lg:mt-4 relative">
               <div className="relative flex-shrink-0">
-                <svg width="52" height="52" viewBox="0 0 52 52">
+                <svg width="52" height="52" viewBox="0 0 52 52" className="lg:w-16 lg:h-16">
                   <circle cx="26" cy="26" r="22" fill="none" stroke="var(--border)" strokeWidth="4"/>
                   <circle cx="26" cy="26" r="22" fill="none"
                     stroke={portfolio.pl>=0?"#10b981":"#ef4444"}
@@ -856,23 +856,26 @@ export default function Home() {
             <p className="text-[10px] text-[var(--tx-6)] mt-2 relative">{portfolio.count} หลักทรัพย์ · {lastRefresh}</p>
           </div>
 
-          {/* Indices compact 6 chips */}
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-2 content-start">
+          {/* Right column: indices + sentiment/movers stacked so they fill the height beside the portfolio card on desktop */}
+          <div className="flex flex-col gap-4 lg:gap-5">
+
+          {/* Indices compact 6 chips (2 rows x 3 cols on desktop for a fuller, more balanced look) */}
+          <div className="grid grid-cols-3 md:grid-cols-6 lg:grid-cols-3 gap-2 lg:gap-3 content-start">
             {(loading ? Array(6).fill(null) : indices).map((idx,i)=>{
               if(!idx) return <div key={i} className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-3 animate-pulse h-20"/>;
               const pos=idx.changePct>=0;
               return (
-                <div key={idx.symbol} className="glow-card relative overflow-hidden bg-gradient-to-b from-[var(--surface)] to-[var(--surface-2)] border border-[var(--border)] rounded-xl p-3 hover:border-[var(--border-2)] transition-all cursor-default">
+                <div key={idx.symbol} className="glow-card relative overflow-hidden bg-gradient-to-b from-[var(--surface)] to-[var(--surface-2)] border border-[var(--border)] rounded-xl p-3 lg:p-4 hover:border-[var(--border-2)] transition-all cursor-default">
                   <div className="flex items-center justify-between gap-1">
-                    <p className="text-[10px] text-[var(--tx-4)] uppercase tracking-wider truncate">{idx.label}</p>
+                    <p className="text-[10px] lg:text-xs text-[var(--tx-4)] uppercase tracking-wider truncate">{idx.label}</p>
                     {idx.etf && <span className="text-[8px] font-bold text-[var(--tx-5)] bg-[var(--fill)] px-1 py-0.5 rounded flex-shrink-0">{idx.etf}</span>}
                   </div>
-                  <p className="text-xs font-mono font-black mt-0.5 tabular-nums">{money(idx.value)}</p>
-                  <p className={`text-[10px] font-bold mt-0.5 ${pos?"text-emerald-400":"text-red-400"}`}>
+                  <p className="text-xs lg:text-base font-mono font-black mt-0.5 tabular-nums">{money(idx.value)}</p>
+                  <p className={`text-[10px] lg:text-xs font-bold mt-0.5 ${pos?"text-emerald-400":"text-red-400"}`}>
                     {pos?"▲":"▼"} {Math.abs(idx.changePct).toFixed(2)}%
                   </p>
                   {idx.sparkline.length > 1 && (
-                    <div className="mt-1.5">
+                    <div className="mt-1.5 lg:mt-2">
                       <Sparkline data={idx.sparkline} color={pos?idx.color:"#ef4444"}/>
                     </div>
                   )}
@@ -880,13 +883,12 @@ export default function Home() {
               );
             })}
           </div>
-        </div>
 
-        {/* ── Row 2: Sentiment + Top Movers ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* ── Sentiment + Top Movers ── */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5 flex-1">
 
           {/* Fear & Greed */}
-          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-3">
+          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-3 lg:p-4">
             <p className="text-[10px] text-[var(--tx-4)] uppercase tracking-wider mb-2">Fear & Greed Index</p>
             <div className="flex items-center justify-center mb-2">
               <svg viewBox="0 0 100 60" className="w-20 sm:w-28">
@@ -906,7 +908,7 @@ export default function Home() {
           </div>
 
           {/* Market Breadth */}
-          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-3">
+          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-3 lg:p-4">
             <p className="text-[10px] text-[var(--tx-4)] uppercase tracking-wider mb-2">Market Breadth</p>
             <BreadthBar up={312} down={188} />
             <div className="mt-3 grid grid-cols-2 gap-2 text-center">
@@ -980,15 +982,21 @@ export default function Home() {
               )}
             </div>
           </div>
+          </div>
+          {/* end sentiment + movers */}
+
+          </div>
+          {/* end right column */}
+
         </div>
 
         {/* ── Row 3: AI + News + Calendar ── */}
-        <div className="grid lg:grid-cols-[1fr_320px] gap-5">
+        <div className="grid lg:grid-cols-[1fr_360px] gap-5 lg:gap-6">
 
           <div className="flex flex-col gap-4">
           {/* AI Analysis Box */}
           <div className="bg-[var(--surface)] border border-purple-900/40 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-purple-900/30 flex items-center justify-between">
+            <div className="px-4 lg:px-5 py-3 lg:py-4 border-b border-purple-900/30 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="text-base">🤖</span>
                 <p className="text-sm font-bold text-purple-300">AI วิเคราะห์พอร์ต</p>
@@ -999,7 +1007,7 @@ export default function Home() {
                 {aiLoading ? <><span className="animate-spin">⟳</span> กำลังวิเคราะห์...</> : "✨ วิเคราะห์"}
               </button>
             </div>
-            <div className="px-4 py-3">
+            <div className="px-4 lg:px-5 py-3">
               {aiAnalysis ? (
                 <>
                   <p className={`text-sm text-[var(--tx-2)] leading-relaxed whitespace-pre-line ${!aiExpanded ? "line-clamp-3" : ""}`}>
@@ -1020,7 +1028,7 @@ export default function Home() {
 
           {/* News */}
           <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
+            <div className="px-5 lg:px-6 py-4 border-b border-[var(--border)] flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <p className="text-sm font-bold">ข่าวหุ้นในพอร์ต</p>
                 <span className="text-[10px] bg-blue-400/10 text-blue-400 px-2 py-0.5 rounded-full font-bold">Portfolio News</span>
@@ -1030,7 +1038,7 @@ export default function Home() {
             <div className="divide-y divide-[var(--border)]">
               {(news.length === 0 ? DEMO_NEWS : news).slice(0, 4).map((n, i) => (
                 <a key={i} href={n.url} target="_blank" rel="noopener noreferrer"
-                  className="block px-5 py-3.5 hover:bg-[var(--hover)] transition-colors group">
+                  className="block px-5 lg:px-6 py-3.5 hover:bg-[var(--hover)] transition-colors group">
                   <div className="flex items-center gap-2 mb-1">
                     {n.ticker && (
                       <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-[var(--fill-strong)] text-[var(--tx-2)] flex-shrink-0">
@@ -1052,7 +1060,7 @@ export default function Home() {
           <div className="flex flex-col gap-4">
 
             {/* Sector Performance */}
-            <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5">
+            <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-5 lg:p-6">
               <p className="text-xs text-[var(--tx-4)] uppercase tracking-wider mb-3">Sector Performance</p>
               <div className="space-y-1.5">
                 {(sectorData.length ? sectorData : [
@@ -1080,12 +1088,12 @@ export default function Home() {
 
             {/* Economic Calendar */}
             <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-[var(--border)]">
+              <div className="px-5 lg:px-6 py-3 border-b border-[var(--border)]">
                 <p className="text-xs font-bold text-[var(--tx-2)]">📅 Economic Calendar</p>
               </div>
               <div className="divide-y divide-[var(--border)]">
                 {getEconomicEvents().map((e, i) => (
-                  <div key={i} className="flex items-center gap-3 px-5 py-2.5">
+                  <div key={i} className="flex items-center gap-3 px-5 lg:px-6 py-2.5">
                     <span className="text-xs text-[var(--tx-5)] w-14">{fmtEventDate(e.date)}</span>
                     <span className="text-xs text-[var(--tx-2)] flex-1">{e.event}</span>
                     <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
