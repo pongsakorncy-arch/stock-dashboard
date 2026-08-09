@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { useCurrency } from "@/hooks/useCurrency";
+import CurrencyToggle from "@/components/CurrencyToggle";
+import ThemeToggle from "@/components/ThemeToggle";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Asset = {
@@ -10,9 +13,11 @@ type Asset = {
   label: string;
   icon: string;
   color: string;
-  value: number;
+  value: number;      // เก็บเป็น THB เสมอ
+  valueUSD?: number;  // มีเฉพาะ us_stocks
   note?: string;
   sort_order: number;
+  autoSync?: boolean;
 };
 
 type MonthLog = {
@@ -20,30 +25,37 @@ type MonthLog = {
   income: number;
 };
 
+type NetWorthSnap = {
+  month: string;
+  total: number;
+};
+
 // ─── Constants ────────────────────────────────────────────────────────────────
-const USD_TO_THB = 33;
-
-const DEFAULT_ASSETS: Omit<Asset, "sort_order">[] = [
-  { id: "us_stocks", label: "หุ้น US",    icon: "🇺🇸", color: "#4f7df3", value: 27700 * USD_TO_THB, note: "Hold — ไม่เติมใหม่" },
-  { id: "gold",      label: "ทองคำ",      icon: "🥇", color: "#f0aa4f", value: 70000 },
-  { id: "bitcoin",   label: "Bitcoin",    icon: "₿",  color: "#f7931a", value: 76000 },
-  { id: "th_stocks", label: "หุ้นไทย",   icon: "🇹🇭", color: "#10b981", value: 50000 },
-  { id: "cash",      label: "เงินสำรอง", icon: "🏦", color: "#38bdf8", value: 0,     note: "6–12 เดือน (ไม่นับในพอร์ต)" },
-];
-
 const BUCKET_CONFIG = [
   { label: "ใช้ชีวิต", icon: "🛍️", color: "#f97316", pct: 25, note: "ค่าใช้จ่ายส่วนตัว" },
-  { label: "ปลอดภัย", icon: "🛡️", color: "#38bdf8", pct: 25, note: "ทอง 60% + กองตลาดเงิน 40%" },
-  { label: "เติบโต",  icon: "🚀", color: "#a78bfa", pct: 50, note: "หุ้นไทย + BTC + โอกาส" },
+  { label: "ปลอดภัย",  icon: "🛡️", color: "#38bdf8", pct: 25, note: "ทอง 60% + กองตลาดเงิน 40%" },
+  { label: "เติบโต",   icon: "🚀", color: "#a78bfa", pct: 50, note: "หุ้นไทย + BTC + โอกาส" },
 ];
 
 const MONTHS_TH = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+
+const DEFAULT_ASSETS = (rate: number): Omit<Asset, "sort_order">[] => {
+  const r = rate || 33;
+  return [
+    { id: "us_stocks", label: "หุ้น US",    icon: "🇺🇸", color: "#4f7df3", value: 0,     note: "ซิงก์จากพอร์ต", autoSync: true },
+    { id: "gold",      label: "ทองคำ",      icon: "🥇", color: "#f0aa4f", value: 70000 },
+    { id: "bitcoin",   label: "Bitcoin",    icon: "₿",  color: "#f7931a", value: 76000 },
+    { id: "th_stocks", label: "หุ้นไทย",   icon: "🇹🇭", color: "#10b981", value: 50000 },
+    { id: "cash",      label: "เงินสำรอง", icon: "🏦", color: "#38bdf8", value: 0,     note: "6–12 เดือน (ไม่นับในพอร์ต)" },
+  ];
+};
 
 function getCurrentMonth() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 function fmtMonth(key: string) {
+  if (!key) return "";
   const [y, m] = key.split("-");
   return `${MONTHS_TH[parseInt(m) - 1]} ${parseInt(y)}`;
 }
@@ -66,7 +78,7 @@ function useCountUp(target: number, duration = 900) {
   return val;
 }
 
-// ─── Donut ────────────────────────────────────────────────────────────────────
+// ─── Donut Chart ──────────────────────────────────────────────────────────────
 function DonutChart({ segments }: { segments: { value: number; color: string }[] }) {
   const total = segments.reduce((s, x) => s + x.value, 0);
   if (!total) return (
@@ -96,11 +108,52 @@ function DonutChart({ segments }: { segments: { value: number; color: string }[]
   );
 }
 
+// ─── Sparkline Net Worth ───────────────────────────────────────────────────────
+function NWSparkline({ snaps }: { snaps: NetWorthSnap[] }) {
+  if (snaps.length < 2) return null;
+  const vals = snaps.map(s => s.total);
+  const mn = Math.min(...vals), mx = Math.max(...vals);
+  const W = 280, H = 56;
+  const pts: [number,number][] = vals.map((v, i) => [
+    (i / (vals.length - 1)) * W,
+    H - ((mx === mn ? 0.5 : (v - mn) / (mx - mn)) * (H - 8) + 4),
+  ]);
+  const line = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+  const area = `${line} L ${W},${H} L 0,${H} Z`;
+  const growing = vals[vals.length - 1] >= vals[0];
+  const col = growing ? "#10b981" : "#ef4444";
+  return (
+    <div className="mt-4">
+      <p className="text-[10px] text-[var(--tx-5)] mb-1.5 uppercase tracking-wider">Net Worth ย้อนหลัง</p>
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="overflow-visible">
+        <defs>
+          <linearGradient id="nwgrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={col} stopOpacity="0.25" />
+            <stop offset="100%" stopColor={col} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={area} fill="url(#nwgrad)" />
+        <path d={line} fill="none" stroke={col} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        {pts.map((p, i) => (
+          <circle key={i} cx={p[0]} cy={p[1]} r="3" fill={col} opacity="0.8">
+            <title>{fmtMonth(snaps[i].month)}: ฿{snaps[i].total.toLocaleString("th-TH")}</title>
+          </circle>
+        ))}
+      </svg>
+      <div className="flex justify-between text-[9px] text-[var(--tx-5)] mt-0.5">
+        <span>{fmtMonth(snaps[0].month)}</span>
+        <span>{fmtMonth(snaps[snaps.length - 1].month)}</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Asset Row ────────────────────────────────────────────────────────────────
-function AssetRow({ asset, total, onEdit }: {
+function AssetRow({ asset, total, onEdit, fmtVal }: {
   asset: Asset;
   total: number;
   onEdit: (id: string, value: number) => void;
+  fmtVal: (thb: number) => string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState("");
@@ -121,9 +174,16 @@ function AssetRow({ asset, total, onEdit }: {
     <div className="group flex items-center gap-3 py-2.5 px-4 rounded-xl hover:bg-[var(--hover)] transition-colors">
       <span className="text-xl w-7 text-center flex-shrink-0">{asset.icon}</span>
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <p className="text-sm font-bold truncate">{asset.label}</p>
-          {asset.note && <p className="text-[10px] text-[var(--tx-5)] truncate hidden sm:block">{asset.note}</p>}
+          {asset.autoSync && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-blue-500/15 text-blue-400 flex-shrink-0">
+              ⚡ Auto
+            </span>
+          )}
+          {asset.note && !asset.autoSync && (
+            <p className="text-[10px] text-[var(--tx-5)] truncate hidden sm:block">{asset.note}</p>
+          )}
         </div>
         <div className="flex items-center gap-2 mt-1">
           <div className="flex-1 h-1.5 bg-[var(--fill)] rounded-full overflow-hidden">
@@ -133,7 +193,15 @@ function AssetRow({ asset, total, onEdit }: {
           <span className="text-[10px] text-[var(--tx-4)] w-8 text-right">{pct.toFixed(1)}%</span>
         </div>
       </div>
-      {editing ? (
+
+      {asset.autoSync ? (
+        <div className="text-right flex-shrink-0">
+          <p className="text-sm font-black tabular-nums text-[var(--tx)]">{fmtVal(asset.value)}</p>
+          {asset.valueUSD && (
+            <p className="text-[10px] text-[var(--tx-5)]">${asset.valueUSD.toLocaleString("en-US", { maximumFractionDigits: 0 })}</p>
+          )}
+        </div>
+      ) : editing ? (
         <div className="flex items-center gap-1">
           <input ref={ref} type="number" value={draft}
             onChange={e => setDraft(e.target.value)}
@@ -146,8 +214,8 @@ function AssetRow({ asset, total, onEdit }: {
       ) : (
         <button onClick={() => setEditing(true)}
           className="text-right text-sm font-mono font-black hover:text-emerald-400 transition-colors tabular-nums flex-shrink-0">
-          ฿{asset.value.toLocaleString("th-TH")}
-          <span className="ml-1 text-[10px] opacity-0 group-hover:opacity-60 transition-opacity">✏️</span>
+          {fmtVal(asset.value)}
+          <span className="ml-1 text-[10px] opacity-0 group-hover:opacity-50 transition-opacity">✏️</span>
         </button>
       )}
     </div>
@@ -156,17 +224,76 @@ function AssetRow({ asset, total, onEdit }: {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function LifePage() {
-  const [assets, setAssets]   = useState<Asset[]>([]);
-  const [logs, setLogs]       = useState<MonthLog[]>([]);
-  const [income, setIncome]   = useState("");
-  const [month, setMonth]     = useState(getCurrentMonth());
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving]   = useState(false);
-  const [saved, setSaved]     = useState(false);
-  const [userId, setUserId]   = useState<string | null>(null);
+  const [assets, setAssets]     = useState<Asset[]>([]);
+  const [logs, setLogs]         = useState<MonthLog[]>([]);
+  const [nwSnaps, setNwSnaps]   = useState<NetWorthSnap[]>([]);
+  const [income, setIncome]     = useState("");
+  const [month, setMonth]       = useState(getCurrentMonth());
+  const [loading, setLoading]   = useState(true);
+  const [syncing, setSyncing]   = useState(false);
+  const [saving, setSaving]     = useState(false);
+  const [saved, setSaved]       = useState(false);
+  const [userId, setUserId]     = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Load from Supabase ──────────────────────────────────────────────────────
+  const { currency, rate, lastUpdate: rateUpdate, toggleCurrency, format: fmtCurrency } = useCurrency();
+
+  // format THB value → current currency display
+  const fmtVal = useCallback((thb: number) => {
+    if (currency === "THB") return "฿" + Math.round(thb).toLocaleString("th-TH");
+    const usd = rate > 0 ? thb / rate : thb / 33;
+    return "$" + usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }, [currency, rate]);
+
+  // ── ดึงมูลค่าพอร์ต US จาก Supabase ─────────────────────────────────────────
+  const syncUSPortfolio = useCallback(async (uid: string, currentRate: number) => {
+    setSyncing(true);
+    try {
+      const { data: mainGroup } = await supabase
+        .from("portfolio_groups")
+        .select("id")
+        .eq("user_id", uid)
+        .eq("is_default", true)
+        .maybeSingle();
+
+      if (!mainGroup?.id) { setSyncing(false); return; }
+
+      const { data: rows } = await supabase
+        .from("portfolios")
+        .select("shares, avg_cost, current_price")
+        .eq("user_id", uid)
+        .eq("portfolio_id", mainGroup.id);
+
+      if (!rows || rows.length === 0) { setSyncing(false); return; }
+
+      const marketValueUSD = rows.reduce((sum: number, p: any) => {
+        const price = Number(p.current_price) || Number(p.avg_cost) || 0;
+        return sum + (Number(p.shares) || 0) * price;
+      }, 0);
+
+      const r = currentRate > 0 ? currentRate : 33;
+      const marketValueTHB = Math.round(marketValueUSD * r);
+
+      // upsert ลง life_assets
+      await supabase.from("life_assets").upsert({
+        id: "us_stocks", user_id: uid, label: "หุ้น US",
+        icon: "🇺🇸", color: "#4f7df3",
+        value: marketValueTHB, note: "ซิงก์จากพอร์ต",
+        sort_order: 0,
+      });
+
+      setAssets(prev => prev.map(a =>
+        a.id === "us_stocks"
+          ? { ...a, value: marketValueTHB, valueUSD: marketValueUSD }
+          : a
+      ));
+    } catch (e) {
+      console.error("syncUSPortfolio error:", e);
+    }
+    setSyncing(false);
+  }, []);
+
+  // ── Load all data ────────────────────────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
       setLoading(true);
@@ -174,52 +301,75 @@ export default function LifePage() {
       if (!user) { setLoading(false); return; }
       setUserId(user.id);
 
-      // Load assets
+      // Assets
       const { data: rows } = await supabase
         .from("life_assets")
         .select("*")
         .eq("user_id", user.id)
         .order("sort_order", { ascending: true });
 
+      let loadedAssets: Asset[];
       if (rows && rows.length > 0) {
-        setAssets(rows.map((r: any) => ({
-          id: r.id, label: r.label, icon: r.icon,
-          color: r.color, value: Number(r.value),
-          note: r.note, sort_order: r.sort_order,
-        })));
+        loadedAssets = rows.map((r: any) => ({
+          id: r.id, label: r.label, icon: r.icon, color: r.color,
+          value: Number(r.value), note: r.note,
+          sort_order: r.sort_order,
+          autoSync: r.id === "us_stocks",
+        }));
+        setAssets(loadedAssets);
       } else {
-        // ครั้งแรก — seed default assets
-        const defaults = DEFAULT_ASSETS.map((a, i) => ({ ...a, sort_order: i, user_id: user.id }));
-        await supabase.from("life_assets").upsert(defaults);
-        setAssets(DEFAULT_ASSETS.map((a, i) => ({ ...a, sort_order: i })));
+        const defaults = DEFAULT_ASSETS(33).map((a, i) => ({ ...a, sort_order: i }));
+        await supabase.from("life_assets").upsert(
+          defaults.map(a => ({ ...a, user_id: user.id }))
+        );
+        loadedAssets = defaults;
+        setAssets(defaults);
       }
 
-      // Load logs
+      // Month logs
       const { data: logRows } = await supabase
         .from("life_monthly_logs")
         .select("month, income")
         .eq("user_id", user.id)
-        .order("month", { ascending: false })
+        .order("month", { ascending: true })
         .limit(12);
 
-      if (logRows) setLogs(logRows.map((r: any) => ({ month: r.month, income: Number(r.income) })));
+      const logsData: MonthLog[] = (logRows || []).map((r: any) => ({
+        month: r.month, income: Number(r.income),
+      }));
+      setLogs([...logsData].reverse());
+
+      // Net Worth snapshots จาก logs
+      const netWorthFromLoad = loadedAssets
+        .filter(a => a.id !== "cash")
+        .reduce((s, a) => s + a.value, 0);
+
+      const snaps: NetWorthSnap[] = logsData.map(l => ({
+        month: l.month,
+        total: netWorthFromLoad,
+      }));
+      setNwSnaps(snaps);
+
       setLoading(false);
+
+      // Auto-sync US portfolio หลัง load เสร็จ
+      const r = rate > 0 ? rate : 33;
+      syncUSPortfolio(user.id, r);
     };
     init();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Net Worth ───────────────────────────────────────────────────────────────
+  // ── Net Worth ────────────────────────────────────────────────────────────────
   const netWorth   = assets.filter(a => a.id !== "cash").reduce((s, a) => s + a.value, 0);
   const animatedNW = useCountUp(netWorth);
   const incomeNum  = parseFloat(income.replace(/,/g, "")) || 0;
   const savingsNum = incomeNum * 0.75;
 
-  // ── Edit asset → debounce upsert ────────────────────────────────────────────
+  // ── Edit asset ───────────────────────────────────────────────────────────────
   const handleEdit = useCallback((id: string, value: number) => {
     setAssets(prev => {
       const next = prev.map(a => a.id === id ? { ...a, value } : a);
-
-      // Debounce save 800ms
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(async () => {
         if (!userId) return;
@@ -231,28 +381,33 @@ export default function LifePage() {
           sort_order: target.sort_order,
         });
       }, 800);
-
       return next;
     });
   }, [userId]);
 
-  // ── Save month log ───────────────────────────────────────────────────────────
+  // ── Save month ───────────────────────────────────────────────────────────────
   const handleSaveMonth = async () => {
     if (!incomeNum || !userId) return;
     setSaving(true);
     await supabase.from("life_monthly_logs").upsert({
       user_id: userId, month, income: incomeNum,
     });
+    const newLog = { month, income: incomeNum };
     setLogs(prev => {
       const filtered = prev.filter(l => l.month !== month);
-      return [{ month, income: incomeNum }, ...filtered].sort((a, b) => b.month.localeCompare(a.month));
+      return [newLog, ...filtered].sort((a, b) => b.month.localeCompare(a.month));
+    });
+    // อัปเดต NW snapshot
+    setNwSnaps(prev => {
+      const filtered = prev.filter(s => s.month !== month);
+      return [...filtered, { month, total: netWorth }].sort((a, b) => a.month.localeCompare(b.month));
     });
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
 
-  // ── UI ───────────────────────────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <>
       <style>{`
@@ -261,38 +416,50 @@ export default function LifePage() {
         .fu1 { animation: fadeInUp 0.4s 0.07s ease both; }
         .fu2 { animation: fadeInUp 0.4s 0.14s ease both; }
         .fu3 { animation: fadeInUp 0.4s 0.21s ease both; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .spin { animation: spin 0.8s linear infinite; display: inline-block; }
+        .fu4 { animation: fadeInUp 0.4s 0.28s ease both; }
+        @keyframes spin { to{transform:rotate(360deg)} }
+        .spin { animation: spin 0.8s linear infinite; display:inline-block; }
       `}</style>
 
       <main className="min-h-screen bg-[var(--bg)] text-[var(--tx)]"
         style={{ fontFamily: "'Inter','Noto Sans Thai',sans-serif" }}>
 
-        {/* Header */}
-        <header className="border-b border-[var(--border)] px-4 lg:px-6 py-3 flex items-center gap-3 bg-[var(--bg)]/90 backdrop-blur sticky top-0 z-30">
-          <Link href="/"
-            className="w-8 h-8 flex items-center justify-center rounded-lg bg-[var(--fill)] hover:bg-[var(--fill-strong)] text-sm transition-colors">
-            ←
-          </Link>
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-black font-black text-xs flex-shrink-0">
-            🌱
+        {/* ── Header เหมือนหน้าหลัก ── */}
+        <header className="border-b border-[var(--border)] px-3 lg:px-6 py-2 lg:py-3 flex items-center justify-between bg-[var(--bg)]/90 backdrop-blur sticky top-0 z-30">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Link href="/"
+              className="w-7 h-7 lg:w-8 lg:h-8 flex items-center justify-center rounded-lg bg-[var(--fill)] hover:bg-[var(--fill-strong)] text-sm transition-colors">
+              ←
+            </Link>
+            <div className="w-7 h-7 lg:w-8 lg:h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-black font-black text-xs flex-shrink-0">
+              🌱
+            </div>
+            <span className="font-bold text-sm lg:text-base tracking-tight hidden sm:block">LIFE PORTFOLIO</span>
           </div>
-          <div className="flex-1">
-            <p className="font-black text-sm tracking-tight leading-none">Life Portfolio</p>
-            <p className="text-[10px] text-[var(--tx-4)]">Net Worth รวม + Bucket รายเดือน</p>
+
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {/* Sync button */}
+            <button
+              onClick={() => userId && syncUSPortfolio(userId, rate)}
+              disabled={syncing}
+              title="Sync พอร์ต US"
+              className="w-8 h-8 flex items-center justify-center bg-[var(--fill)] hover:bg-[var(--fill-strong)] rounded-lg text-sm transition-colors disabled:opacity-40">
+              <span className={syncing ? "spin" : ""}>⟳</span>
+            </button>
+            <CurrencyToggle currency={currency} rate={rate} lastUpdate={rateUpdate} onToggle={toggleCurrency} />
+            <ThemeToggle />
           </div>
-          {loading && <span className="spin text-[var(--tx-4)] text-base">⟳</span>}
         </header>
 
-        {/* Loading skeleton */}
+        {/* Loading */}
         {loading ? (
           <div className="px-4 lg:px-8 py-5 max-w-2xl mx-auto space-y-4">
-            {[120, 280, 200].map((h, i) => (
+            {[140, 300, 220].map((h, i) => (
               <div key={i} className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] animate-pulse" style={{ height: h }} />
             ))}
           </div>
         ) : (
-          <div className="px-4 lg:px-8 py-5 max-w-2xl mx-auto space-y-4">
+          <div className="px-4 lg:px-8 py-5 max-w-2xl mx-auto space-y-4 pb-20">
 
             {/* ── NET WORTH CARD ── */}
             <div className="fu relative bg-gradient-to-br from-[#0d1117] to-[#0a0e14] border border-emerald-900/40 rounded-2xl p-5 lg:p-6 overflow-hidden"
@@ -301,13 +468,20 @@ export default function LifePage() {
                 style={{ background: "radial-gradient(circle,#10b98118,transparent 70%)" }} />
 
               <p className="text-[10px] text-[var(--tx-4)] uppercase tracking-widest mb-1">NET WORTH รวม (ไม่รวมเงินสำรอง)</p>
+
+              {/* มูลค่าหลัก — แสดงตามสกุลเงินที่เลือก */}
               <p className="text-3xl lg:text-4xl font-black tabular-nums leading-none text-white">
-                ฿{Math.round(animatedNW).toLocaleString("th-TH")}
+                {fmtVal(Math.round(animatedNW))}
               </p>
               <p className="text-xs text-emerald-400/60 mt-1">
-                ≈ ${(animatedNW / USD_TO_THB).toLocaleString("en-US", { maximumFractionDigits: 0 })} USD · เรท {USD_TO_THB} ฿/$
+                {currency === "THB"
+                  ? `≈ $${(animatedNW / (rate || 33)).toLocaleString("en-US", { maximumFractionDigits: 0 })} USD`
+                  : `≈ ฿${Math.round(animatedNW).toLocaleString("th-TH")}`
+                }
+                {rate > 0 && ` · เรท ${rate} ฿/$`}
               </p>
 
+              {/* Donut + legend */}
               <div className="mt-5 flex gap-5 items-center">
                 <div className="flex-shrink-0">
                   <DonutChart segments={assets.filter(a => a.id !== "cash").map(a => ({ value: a.value, color: a.color }))} />
@@ -324,21 +498,26 @@ export default function LifePage() {
                   ))}
                 </div>
               </div>
+
+              {/* Net Worth Sparkline */}
+              {nwSnaps.length >= 2 && <NWSparkline snaps={nwSnaps} />}
             </div>
 
             {/* ── ASSET LIST ── */}
             <div className="fu1 bg-[var(--surface)] border border-[var(--border)] rounded-2xl overflow-hidden">
               <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
                 <p className="text-xs font-bold text-[var(--tx-2)] uppercase tracking-wider">มูลค่าสินทรัพย์</p>
-                <p className="text-[10px] text-[var(--tx-5)]">แตะตัวเลขเพื่อแก้ไข · บันทึก Supabase อัตโนมัติ</p>
+                <p className="text-[10px] text-[var(--tx-5)]">แตะตัวเลขเพื่อแก้ไข</p>
               </div>
               <div className="py-1">
                 {assets.map(a => (
-                  <AssetRow key={a.id} asset={a} total={netWorth} onEdit={handleEdit} />
+                  <AssetRow key={a.id} asset={a} total={netWorth} onEdit={handleEdit} fmtVal={fmtVal} />
                 ))}
               </div>
-              <div className="px-4 py-2 border-t border-[var(--border)]">
-                <p className="text-[10px] text-[var(--tx-5)]">☁️ ซิงก์ข้ามอุปกรณ์ผ่าน Supabase</p>
+              <div className="px-4 py-2 border-t border-[var(--border)] flex items-center gap-2">
+                <span className="text-[10px] text-[var(--tx-5)]">☁️ ซิงก์ผ่าน Supabase</span>
+                {syncing && <span className="text-[10px] text-blue-400 spin">⟳</span>}
+                {syncing && <span className="text-[10px] text-blue-400">กำลังอัปเดตพอร์ต US...</span>}
               </div>
             </div>
 
@@ -422,8 +601,8 @@ export default function LifePage() {
                     border: saved ? "1px solid rgba(16,185,129,0.3)" : "none",
                   }}>
                   {saving ? <><span className="spin">⟳</span> กำลังบันทึก...</>
-                   : saved ? `✓ บันทึก ${fmtMonth(month)} แล้ว`
-                   : `☁️ บันทึก ${fmtMonth(month)}`}
+                    : saved  ? `✓ บันทึก ${fmtMonth(month)} แล้ว`
+                    : `☁️ บันทึก ${fmtMonth(month)}`}
                 </button>
               </div>
             </div>
@@ -465,11 +644,34 @@ export default function LifePage() {
               </div>
             )}
 
-            <footer className="text-center text-xs text-[var(--tx-6)] pb-6">
+            <footer className="text-center text-xs text-[var(--tx-6)] pb-2">
               Life Portfolio · ☁️ Supabase · ไม่ใช่คำแนะนำการลงทุน
             </footer>
           </div>
         )}
+
+        {/* ── Bottom Nav (mobile) ── */}
+        <nav className="fixed bottom-0 left-0 right-0 bg-[var(--bg)]/95 backdrop-blur border-t border-[var(--border)] z-30 lg:hidden">
+          <div className="flex justify-around items-center py-2 px-2">
+            {[
+              { href: "/",          icon: "🏠", label: "หน้าหลัก" },
+              { href: "/portfolio", icon: "📊", label: "พอร์ต" },
+              { href: "/chart",     icon: "📈", label: "กราฟ" },
+              { href: "/journal",   icon: "📓", label: "Journal" },
+              { href: "/life",      icon: "🌱", label: "ชีวิต",  active: true },
+            ].map(n => (
+              <Link key={n.href} href={n.href}
+                className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-xl transition-colors ${
+                  n.active
+                    ? "text-emerald-400 bg-emerald-400/10"
+                    : "text-[var(--tx-4)] hover:text-[var(--tx-2)]"
+                }`}>
+                <span className="text-lg">{n.icon}</span>
+                <span className="text-[9px] font-bold">{n.label}</span>
+              </Link>
+            ))}
+          </div>
+        </nav>
       </main>
     </>
   );
