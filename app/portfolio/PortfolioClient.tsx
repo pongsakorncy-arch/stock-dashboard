@@ -476,7 +476,20 @@ export default function PortfolioClient() {
   }
 
   // ── Fetch prices ──────────────────────────────────────────────────────────────
+  // หุ้นไทย (.BK) → Yahoo Finance ผ่าน /api/yahoo-quote
+  // หุ้น US → Finnhub เหมือนเดิม
   async function getQuote(sym: string) {
+    const isThai = sym.toUpperCase().endsWith(".BK");
+
+    if (isThai) {
+      try {
+        const r = await fetch(`/api/yahoo-quote?symbol=${encodeURIComponent(sym)}`);
+        if (!r.ok) throw new Error("yahoo error");
+        const d = await r.json();
+        return { c: Number(d.c||0), pc: Number(d.pc||0), o: Number(d.o||0) };
+      } catch { return { c:0, pc:0, o:0 }; }
+    }
+
     const key = process.env.NEXT_PUBLIC_FINNHUB_API_KEY;
     if (!key) return { c:0, pc:0, o:0 };
     try {
