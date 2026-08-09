@@ -724,11 +724,12 @@ export default function Home() {
       <div className="px-6 py-5 lg:px-10 lg:py-8 max-w-screen-2xl mx-auto space-y-4 lg:space-y-6">
 
         {/* ── Quick Nav ── */}
-        <div className="grid grid-cols-3 gap-2.5 lg:gap-4 fade-up">
+        <div className="grid grid-cols-4 gap-2.5 lg:gap-4 fade-up">
           {[
             { href:"/portfolio", label:"พอร์ต",  sub:"หุ้นของฉัน",  icon:"📊", accent:"#f59e0b" },
             { href:"/chart",     label:"กราฟ",   sub:"TradingView", icon:"📈", accent:"#a78bfa" },
             { href:"/journal",   label:"Journal", sub:"XAUUSD",      icon:"📓", accent:"#38bdf8" },
+            { href:"/life",      label:"ชีวิต",  sub:"Net Worth",   icon:"🌱", accent:"#10b981" },
           ].map(l=>(
             <Link key={l.label} href={l.href}
               className="quick-card group relative flex flex-col items-center justify-center rounded-2xl p-3.5 lg:p-5 min-h-[104px] lg:min-h-[132px] overflow-hidden border transition-all"
