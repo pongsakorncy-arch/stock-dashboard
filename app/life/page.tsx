@@ -31,11 +31,24 @@ type NetWorthSnap = {
 };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const BUCKET_CONFIG = [
-  { label: "ใช้ชีวิต", icon: "🛍️", color: "#f97316", pct: 25, note: "ค่าใช้จ่ายส่วนตัว" },
-  { label: "ปลอดภัย",  icon: "🛡️", color: "#38bdf8", pct: 25, note: "ทอง 60% + กองตลาดเงิน 40%" },
-  { label: "เติบโต",   icon: "🚀", color: "#a78bfa", pct: 50, note: "หุ้นไทย + BTC + โอกาส" },
+// Bucket type
+type Bucket = { id: string; label: string; icon: string; color: string; pct: number; note: string };
+
+const DEFAULT_BUCKETS: Bucket[] = [
+  { id: "spend",  label: "ใช้จ่าย",    icon: "🛍️", color: "#f97316", pct: 25,    note: "ค่าใช้จ่ายประจำวัน" },
+  { id: "safe",   label: "ปลอดภัย",   icon: "🛡️", color: "#38bdf8", pct: 18.75, note: "ทอง 60% + กองตลาดเงิน 40%" },
+  { id: "grow",   label: "เติบโต",    icon: "🚀", color: "#a78bfa", pct: 37.5,  note: "หุ้นไทย + BTC + โอกาส" },
+  { id: "buffer", label: "สำรองเพิ่ม", icon: "🏦", color: "#10b981", pct: 18.75, note: "เพิ่มเงินสำรอง / Buffer" },
 ];
+
+const LS_BUCKETS = "yok_life_buckets_v1";
+function loadBuckets(): Bucket[] {
+  try { const r = localStorage.getItem(LS_BUCKETS); return r ? JSON.parse(r) : DEFAULT_BUCKETS; }
+  catch { return DEFAULT_BUCKETS; }
+}
+function saveBuckets(b: Bucket[]) {
+  try { localStorage.setItem(LS_BUCKETS, JSON.stringify(b)); } catch {}
+}
 
 const MONTHS_TH = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
 
@@ -234,6 +247,8 @@ export default function LifePage() {
   const [saving, setSaving]     = useState(false);
   const [saved, setSaved]       = useState(false);
   const [userId, setUserId]     = useState<string | null>(null);
+  const [buckets, setBuckets]   = useState<Bucket[]>(DEFAULT_BUCKETS);
+  const [editBuckets, setEditBuckets] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { currency, rate, lastUpdate: rateUpdate, toggleCurrency, format: fmtCurrency } = useCurrency();
@@ -350,6 +365,7 @@ export default function LifePage() {
       }));
       setNwSnaps(snaps);
 
+      setBuckets(loadBuckets());
       setLoading(false);
 
       // Auto-sync US portfolio หลัง load เสร็จ
@@ -364,7 +380,16 @@ export default function LifePage() {
   const netWorth   = assets.filter(a => a.id !== "cash").reduce((s, a) => s + a.value, 0);
   const animatedNW = useCountUp(netWorth);
   const incomeNum  = parseFloat(income.replace(/,/g, "")) || 0;
-  const savingsNum = incomeNum * 0.75;
+  const totalPct   = buckets.reduce((s, b) => s + b.pct, 0);
+  const pctOk      = Math.abs(totalPct - 100) < 0.1;
+
+  const handleBucketPct = (id: string, val: number) => {
+    setBuckets(prev => {
+      const next = prev.map(b => b.id === id ? { ...b, pct: val } : b);
+      saveBuckets(next);
+      return next;
+    });
+  };
 
   // ── Edit asset ───────────────────────────────────────────────────────────────
   const handleEdit = useCallback((id: string, value: number) => {
@@ -523,12 +548,24 @@ export default function LifePage() {
 
             {/* ── BUCKET PLANNER ── */}
             <div className="fu2 bg-[var(--surface)] border border-[var(--border)] rounded-2xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-[var(--border)]">
-                <p className="text-xs font-bold text-[var(--tx-2)] uppercase tracking-wider">Bucket Planner</p>
-                <p className="text-[10px] text-[var(--tx-5)] mt-0.5">กรอกรายรับ → แบ่งให้อัตโนมัติ (เก็บ 75%)</p>
+              <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold text-[var(--tx-2)] uppercase tracking-wider">Bucket Planner</p>
+                  <p className="text-[10px] text-[var(--tx-5)] mt-0.5">กรอกรายรับจริง → ระบบแบ่งตาม % ที่ตั้งไว้</p>
+                </div>
+                <button onClick={() => setEditBuckets(e => !e)}
+                  className="text-[10px] px-2.5 py-1 rounded-lg font-bold transition-colors"
+                  style={{
+                    background: editBuckets ? "rgba(167,139,250,0.15)" : "var(--fill)",
+                    color: editBuckets ? "#a78bfa" : "var(--tx-4)",
+                  }}>
+                  {editBuckets ? "✓ เสร็จแล้ว" : "⚙️ ปรับ %"}
+                </button>
               </div>
 
               <div className="p-4 space-y-3">
+
+                {/* ── เดือน + รายรับ ── */}
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <p className="text-[10px] text-[var(--tx-4)] mb-1">เดือน</p>
@@ -536,53 +573,76 @@ export default function LifePage() {
                       className="w-full bg-[var(--fill)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-sm text-[var(--tx)] outline-none focus:border-emerald-500" />
                   </div>
                   <div>
-                    <p className="text-[10px] text-[var(--tx-4)] mb-1">รายรับ (บาท)</p>
+                    <p className="text-[10px] text-[var(--tx-4)] mb-1">รายรับจริง (บาท)</p>
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[var(--tx-4)]">฿</span>
-                      <input type="number" placeholder="150000" value={income}
+                      <input type="number" placeholder="200000" value={income}
                         onChange={e => setIncome(e.target.value)}
                         className="w-full pl-6 pr-3 py-1.5 bg-[var(--fill)] border border-[var(--border)] rounded-lg text-sm font-mono text-[var(--tx)] outline-none focus:border-emerald-500" />
                     </div>
                   </div>
                 </div>
 
-                {incomeNum > 0 && (
-                  <div className="flex items-center gap-3 py-2 px-3 rounded-xl border"
-                    style={{ background: "rgba(16,185,129,0.06)", borderColor: "rgba(16,185,129,0.2)" }}>
-                    <span className="text-base">💰</span>
-                    <p className="text-xs text-[var(--tx-4)] flex-1">เก็บ 75% จาก ฿{incomeNum.toLocaleString("th-TH")}</p>
-                    <p className="text-sm font-black text-emerald-400 tabular-nums">฿{savingsNum.toLocaleString("th-TH")}</p>
+                {/* ── % ไม่ครบ 100 เตือน ── */}
+                {editBuckets && !pctOk && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/10 border border-red-500/30">
+                    <span>⚠️</span>
+                    <p className="text-xs text-red-400">รวมทุก Bucket = <strong>{totalPct.toFixed(2)}%</strong> ต้องให้ครบ 100% ก่อนบันทึกครับ</p>
                   </div>
                 )}
 
+                {/* ── Bucket rows ── */}
                 <div className="space-y-2">
-                  {BUCKET_CONFIG.map((b, i) => {
-                    const amt = savingsNum * (b.pct / 100);
+                  {buckets.map((b) => {
+                    const amt = incomeNum * (b.pct / 100);
                     return (
-                      <div key={i} className="rounded-xl border border-[var(--border)] overflow-hidden">
+                      <div key={b.id} className="rounded-xl border border-[var(--border)] overflow-hidden">
                         <div className="flex items-center gap-3 px-4 py-3" style={{ background: `${b.color}0d` }}>
                           <span className="text-lg flex-shrink-0">{b.icon}</span>
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <p className="text-sm font-black">{b.label}</p>
-                              <span className="text-[10px] px-1.5 py-0.5 rounded font-bold flex-shrink-0"
-                                style={{ background: `${b.color}22`, color: b.color }}>
-                                {b.pct}%
-                              </span>
+                              {editBuckets ? (
+                                /* slider + input % */
+                                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                                  <input
+                                    type="range" min={0} max={100} step={0.25}
+                                    value={b.pct}
+                                    onChange={e => handleBucketPct(b.id, parseFloat(e.target.value))}
+                                    className="flex-1 h-1.5 accent-[var(--accent)] cursor-pointer"
+                                    style={{ accentColor: b.color }}
+                                  />
+                                  <input
+                                    type="number" min={0} max={100} step={0.25}
+                                    value={b.pct}
+                                    onChange={e => handleBucketPct(b.id, parseFloat(e.target.value) || 0)}
+                                    className="w-14 text-center text-xs font-black bg-[var(--fill)] border border-[var(--border-2)] rounded-lg px-1 py-0.5 outline-none"
+                                    style={{ color: b.color }}
+                                  />
+                                  <span className="text-xs font-bold flex-shrink-0" style={{ color: b.color }}>%</span>
+                                </div>
+                              ) : (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded font-bold flex-shrink-0"
+                                  style={{ background: `${b.color}22`, color: b.color }}>
+                                  {b.pct}%
+                                </span>
+                              )}
                             </div>
-                            <p className="text-[10px] text-[var(--tx-5)] truncate">{b.note}</p>
+                            {!editBuckets && <p className="text-[10px] text-[var(--tx-5)] truncate mt-0.5">{b.note}</p>}
                           </div>
-                          <div className="text-right flex-shrink-0">
-                            {incomeNum > 0 ? (
-                              <p className="text-base font-black tabular-nums" style={{ color: b.color }}>
-                                ฿{Math.round(amt).toLocaleString("th-TH")}
-                              </p>
-                            ) : (
-                              <p className="text-xs text-[var(--tx-5)]">—</p>
-                            )}
-                          </div>
+                          {!editBuckets && (
+                            <div className="text-right flex-shrink-0">
+                              {incomeNum > 0 ? (
+                                <p className="text-base font-black tabular-nums" style={{ color: b.color }}>
+                                  ฿{Math.round(amt).toLocaleString("th-TH")}
+                                </p>
+                              ) : (
+                                <p className="text-xs text-[var(--tx-5)]">—</p>
+                              )}
+                            </div>
+                          )}
                         </div>
-                        {incomeNum > 0 && (
+                        {!editBuckets && incomeNum > 0 && (
                           <div className="h-1 bg-[var(--fill)]">
                             <div className="h-full transition-all duration-700"
                               style={{ width: `${b.pct}%`, background: b.color }} />
@@ -593,7 +653,50 @@ export default function LifePage() {
                   })}
                 </div>
 
-                <button onClick={handleSaveMonth} disabled={!incomeNum || saving}
+                {/* ── Total bar ── */}
+                {editBuckets && (
+                  <div>
+                    <div className="flex justify-between text-[10px] mb-1">
+                      <span className="text-[var(--tx-4)]">รวมทั้งหมด</span>
+                      <span className={pctOk ? "text-emerald-400 font-black" : "text-red-400 font-black"}>
+                        {totalPct.toFixed(2)}% {pctOk ? "✓" : `(ขาด ${(100 - totalPct).toFixed(2)}%)`}
+                      </span>
+                    </div>
+                    <div className="h-2 bg-[var(--fill)] rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-300"
+                        style={{
+                          width: `${Math.min(totalPct, 100)}%`,
+                          background: pctOk
+                            ? "linear-gradient(90deg,#10b981,#059669)"
+                            : "linear-gradient(90deg,#f97316,#ef4444)",
+                        }} />
+                    </div>
+                    <button
+                      onClick={() => { setBuckets(DEFAULT_BUCKETS); saveBuckets(DEFAULT_BUCKETS); }}
+                      className="mt-2 text-[10px] text-[var(--tx-5)] hover:text-[var(--tx-3)] transition-colors">
+                      ↺ รีเซ็ตกลับค่าเริ่มต้น
+                    </button>
+                  </div>
+                )}
+
+                {/* ── Summary เมื่อกรอกรายรับ ── */}
+                {incomeNum > 0 && !editBuckets && (
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <div className="rounded-xl px-3 py-2.5 border border-[var(--border)] bg-[var(--fill)]">
+                      <p className="text-[10px] text-[var(--tx-5)]">รายรับทั้งหมด</p>
+                      <p className="text-sm font-black tabular-nums">฿{incomeNum.toLocaleString("th-TH")}</p>
+                    </div>
+                    <div className="rounded-xl px-3 py-2.5 border border-emerald-500/25"
+                      style={{ background: "rgba(16,185,129,0.06)" }}>
+                      <p className="text-[10px] text-[var(--tx-5)]">เก็บรวม ({buckets.filter(b => b.id !== "spend").reduce((s,b) => s+b.pct, 0).toFixed(2)}%)</p>
+                      <p className="text-sm font-black tabular-nums text-emerald-400">
+                        ฿{Math.round(incomeNum * buckets.filter(b => b.id !== "spend").reduce((s,b) => s+b.pct, 0) / 100).toLocaleString("th-TH")}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <button onClick={handleSaveMonth} disabled={!incomeNum || saving || !pctOk}
                   className="w-full py-2.5 rounded-xl text-sm font-black transition-all disabled:opacity-30 flex items-center justify-center gap-2"
                   style={{
                     background: saved ? "rgba(16,185,129,0.12)" : "linear-gradient(135deg,#10b981,#059669)",
@@ -602,6 +705,7 @@ export default function LifePage() {
                   }}>
                   {saving ? <><span className="spin">⟳</span> กำลังบันทึก...</>
                     : saved  ? `✓ บันทึก ${fmtMonth(month)} แล้ว`
+                    : !pctOk ? "⚠️ % ยังไม่ครบ 100"
                     : `☁️ บันทึก ${fmtMonth(month)}`}
                 </button>
               </div>
@@ -616,7 +720,6 @@ export default function LifePage() {
                 </div>
                 <div className="divide-y divide-[var(--border)]">
                   {logs.map(log => {
-                    const s75 = log.income * 0.75;
                     return (
                       <div key={log.month} className="px-4 py-3">
                         <div className="flex items-center justify-between mb-2.5">
@@ -626,13 +729,13 @@ export default function LifePage() {
                             <p className="text-sm font-black tabular-nums">฿{log.income.toLocaleString("th-TH")}</p>
                           </div>
                         </div>
-                        <div className="grid grid-cols-3 gap-1.5">
-                          {BUCKET_CONFIG.map((b, i) => (
-                            <div key={i} className="rounded-lg py-2 px-2 text-center"
+                        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                          {buckets.map((b) => (
+                            <div key={b.id} className="rounded-lg py-2 px-2 text-center"
                               style={{ background: `${b.color}12` }}>
                               <p className="text-[10px] text-[var(--tx-4)]">{b.icon} {b.label}</p>
                               <p className="text-xs font-black tabular-nums mt-0.5" style={{ color: b.color }}>
-                                ฿{Math.round(s75 * b.pct / 100).toLocaleString("th-TH")}
+                                ฿{Math.round(log.income * b.pct / 100).toLocaleString("th-TH")}
                               </p>
                             </div>
                           ))}
