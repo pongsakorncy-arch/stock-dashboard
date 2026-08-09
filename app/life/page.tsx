@@ -55,7 +55,7 @@ const DEFAULT_ASSETS: Omit<Asset, "sort_order">[] = [
   { id: "us_stocks", label: "หุ้น US",    icon: "🇺🇸", color: "#4f7df3", value: 0,     note: "ซิงก์จากพอร์ต", autoSync: true },
   { id: "gold",      label: "ทองคำ",      icon: "🥇", color: "#f0aa4f", value: 70000 },
   { id: "bitcoin",   label: "Bitcoin",    icon: "₿",  color: "#f7931a", value: 76000 },
-  { id: "th_stocks", label: "หุ้นไทย",   icon: "🇹🇭", color: "#10b981", value: 50000 },
+  { id: "th_stocks", label: "หุ้นไทย",   icon: "🇹🇭", color: "#10b981", value: 0,     note: "ซิงก์จากพอร์ต THAI", autoSync: true },
   { id: "cash",      label: "เงินสำรอง", icon: "🏦", color: "#38bdf8", value: 0,     note: "6–12 เดือน (ไม่นับในพอร์ต)" },
 ];
 
@@ -362,16 +362,36 @@ export default function LifePage() {
   const syncUS = useCallback(async (uid: string, r: number) => {
     setSyncing(true);
     try {
+      // ── Sync หุ้น US (พอร์ตหลัก) ──────────────────────────────────────
       const { data: grp } = await supabase.from("portfolio_groups").select("id")
         .eq("user_id",uid).eq("is_default",true).maybeSingle();
-      if (!grp?.id) { setSyncing(false); return; }
-      const { data: rows } = await supabase.from("portfolios")
-        .select("shares,avg_cost,current_price").eq("user_id",uid).eq("portfolio_id",grp.id);
-      if (!rows?.length) { setSyncing(false); return; }
-      const usd = rows.reduce((s:number, p:any) => s + (Number(p.shares)||0)*(Number(p.current_price)||Number(p.avg_cost)||0), 0);
-      const thb = Math.round(usd * (r||33));
-      await supabase.from("life_assets").upsert({ id:"us_stocks", user_id:uid, label:"หุ้น US", icon:"🇺🇸", color:"#4f7df3", value:thb, note:"ซิงก์จากพอร์ต", sort_order:0 });
-      setAssets(prev => prev.map(a => a.id==="us_stocks" ? {...a, value:thb, valueUSD:usd} : a));
+      if (grp?.id) {
+        const { data: usRows } = await supabase.from("portfolios")
+          .select("shares,avg_cost,current_price").eq("user_id",uid).eq("portfolio_id",grp.id);
+        if (usRows?.length) {
+          const usd = usRows.reduce((s:number, p:any) => s + (Number(p.shares)||0)*(Number(p.current_price)||Number(p.avg_cost)||0), 0);
+          const thb = Math.round(usd * (r||33));
+          await supabase.from("life_assets").upsert({ id:"us_stocks", user_id:uid, label:"หุ้น US", icon:"🇺🇸", color:"#4f7df3", value:thb, note:"ซิงก์จากพอร์ต", sort_order:0 });
+          setAssets(prev => prev.map(a => a.id==="us_stocks" ? {...a, value:thb, valueUSD:usd} : a));
+        }
+      }
+
+      // ── Sync หุ้นไทย (custom_portfolios ที่มี name ลงท้าย THAI) ────────
+      const { data: customGroups } = await supabase.from("custom_portfolios")
+        .select("id,name").eq("user_id",uid);
+      const thaiGroup = customGroups?.find((g:any) =>
+        g.name?.toUpperCase().includes("THAI") || g.name?.includes("ไทย")
+      );
+      if (thaiGroup?.id) {
+        const { data: thRows } = await supabase.from("custom_portfolio_positions")
+          .select("shares,avg_cost,current_price").eq("user_id",uid).eq("custom_portfolio_id",thaiGroup.id);
+        if (thRows?.length) {
+          const thbVal = Math.round(thRows.reduce((s:number, p:any) =>
+            s + (Number(p.shares)||0)*(Number(p.current_price)||Number(p.avg_cost)||0), 0));
+          await supabase.from("life_assets").upsert({ id:"th_stocks", user_id:uid, label:"หุ้นไทย", icon:"🇹🇭", color:"#10b981", value:thbVal, note:"ซิงก์จากพอร์ต THAI", sort_order:3 });
+          setAssets(prev => prev.map(a => a.id==="th_stocks" ? {...a, value:thbVal} : a));
+        }
+      }
     } catch(e) { console.error(e); }
     setSyncing(false);
   }, []);
@@ -390,7 +410,7 @@ export default function LifePage() {
       let loaded: Asset[];
       if (rows?.length) {
         loaded = rows.map((r:any) => ({ id:r.id, label:r.label, icon:r.icon, color:r.color,
-          value:Number(r.value), note:r.note, sort_order:r.sort_order, autoSync:r.id==="us_stocks" }));
+          value:Number(r.value), note:r.note, sort_order:r.sort_order, autoSync:r.id==="us_stocks"||r.id==="th_stocks" }));
       } else {
         const defs = DEFAULT_ASSETS.map((a,i)=>({...a,sort_order:i,user_id:user.id}));
         await supabase.from("life_assets").upsert(defs);
