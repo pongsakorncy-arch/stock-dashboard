@@ -8,7 +8,7 @@ type Direction   = "LONG"|"SHORT";
 type Result      = "WIN"|"LOSS"|"BE";
 type Session     = "Tokyo"|"London"|"New York"|"Overlap";
 type AccountType = "cent"|"standard";
-type TradeMode   = "SMC"|"SW_RANGE"|"SW_BREAKOUT"|"PULLBACK"|"M5_REVERSAL";
+type TradeMode    = "SMC"|"SW_RANGE"|"SW_BREAKOUT"|"PULLBACK"|"M5_REVERSAL";
 type Emotion     = "😌 Calm"|"😎 Confident"|"😤 FOMO"|"😰 Fearful"|"😡 Revenge";
 type ExitReason  = "TP Hit"|"SL Hit"|"Manual"|"Rejection"|"MSS Failed"|"Other";
 type TradeStatus = "OPEN"|"CLOSED";
@@ -1109,6 +1109,50 @@ function ReflectionModal({onSubmit,onClose,initialText}:{onSubmit:(text:string)=
     </div>
   );
 }
+// ─── ResetConfirmModal (ใหม่) — ยืนยันก่อนล้างข้อมูลทั้งหมด ───────────────────
+function ResetConfirmModal({onConfirm,onClose}:{onConfirm:()=>void;onClose:()=>void}) {
+  const [text,setText] = useState("");
+  const [busy,setBusy] = useState(false);
+  const ok = text.trim().toUpperCase() === "RESET";
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20,background:"rgba(42,31,20,.9)",backdropFilter:"blur(3px)"}}>
+      <div className="j-win" style={{maxWidth:380,width:"100%"}}>
+        <div className="j-bar" style={{background:"var(--j-coral)"}}>
+          <span className="j-t">⚠️ รีเซ็ตข้อมูลทั้งหมด</span>
+        </div>
+        <div className="j-body">
+          <div style={{fontSize:44,textAlign:"center",marginBottom:10}}>🗑️</div>
+          <div style={{fontFamily:"'Fredoka',sans-serif",fontSize:15,fontWeight:700,textAlign:"center",marginBottom:6}}>
+            ลบทุกไม้เทรด + สถิติทั้งหมด
+          </div>
+          <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--j-soft)",textAlign:"center",marginBottom:16,lineHeight:1.7}}>
+            การกระทำนี้ย้อนกลับไม่ได้ — ลบทั้งในเครื่องนี้ และในระบบ (ถ้า login อยู่)<br/>
+            พิมพ์ <b>RESET</b> เพื่อยืนยัน
+          </div>
+          <input
+            value={text}
+            onChange={e=>setText(e.target.value)}
+            placeholder="พิมพ์ RESET"
+            className="j-in"
+            style={{textAlign:"center",fontWeight:700,marginBottom:14}}
+            autoFocus
+          />
+          <button
+            onClick={async ()=>{ if(!ok||busy) return; setBusy(true); await onConfirm(); }}
+            disabled={!ok||busy}
+            className="j-btn w-full"
+            style={{padding:14,background:ok?"var(--j-coral)":"#e3d9c4",fontSize:14}}
+          >
+            {busy ? "⌛ กำลังรีเซ็ต..." : ok ? "🗑️ ยืนยันรีเซ็ตทั้งหมด" : "พิมพ์ RESET ให้ตรงก่อน"}
+          </button>
+          <button onClick={onClose} disabled={busy} className="j-chip off" style={{width:"100%",marginTop:8,fontSize:11,textAlign:"center"}}>
+            ยกเลิก
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function JournalPage() {
   const [trades,setTrades]     = useState<Trade[]>([]);
@@ -1131,6 +1175,7 @@ export default function JournalPage() {
   const [hardlock,setHardlock]             = useState<HardlockState|null>(null);
   const [forcedLockDates,setForcedLockDates] = useState<string[]>([]);
   const [showReflection,setShowReflection] = useState(false);
+  const [showResetConfirm,setShowResetConfirm] = useState(false);
   // ── Calendar states ────────────────────────────────────────────────────────
   const [calRef,setCalRef]           = useState(()=>{ const d=new Date(); return new Date(d.getFullYear(),d.getMonth(),1); });
   const [calSelected,setCalSelected] = useState<string|null>(null);
@@ -1385,6 +1430,36 @@ export default function JournalPage() {
     const hl: HardlockState = { date: todayStr, submitted:true, reflectionText:text, submittedAt:new Date().toISOString() };
     saveHardlock(hl); setHardlock(hl);
     setShowReflection(false);
+  };
+  // ── Reset All (ใหม่) — ล้าง journal ทั้งหมด เริ่มใหม่ ────────────────────────
+  const resetAllTrades = async () => {
+    // ล้าง localStorage ทั้งหมดที่เกี่ยวกับ journal
+    try {
+      localStorage.removeItem(KEY);
+      localStorage.removeItem(KEY_OLD);
+      localStorage.removeItem(KOPEN);
+      localStorage.removeItem(COOLDOWN_KEY);
+      localStorage.removeItem(HARDLOCK_KEY);
+      localStorage.removeItem(FORCED_LOCK_KEY);
+      localStorage.removeItem(ALERT_ACK_KEY);
+    } catch {}
+    // ลบข้อมูลใน Supabase ด้วย ถ้า login อยู่
+    try {
+      const { data:{user} } = await supabase.auth.getUser();
+      if (user) {
+        await supabase.from("journal_trades").delete().eq("user_id", user.id);
+      }
+    } catch(e) { console.error("Supabase reset error:", e); }
+    // เคลียร์ state ในแอปทั้งหมด
+    setTrades([]);
+    setOpenTrade(null);
+    setCooldownUntil(0);
+    setHardlock(null);
+    setForcedLockDates([]);
+    setShowAlert(false);
+    setCalSelected(null);
+    setShowResetConfirm(false);
+    setView("dashboard");
   };
   const uploadScreenshot=async(file:File)=>{
     const {data:{user}}=await supabase.auth.getUser();
@@ -1667,6 +1742,7 @@ export default function JournalPage() {
             </div>
             <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
               <button onClick={()=>setAccountType(accountType==="cent"?"standard":"cent")} className="j-chip" style={{fontSize:11,background:accountType==="cent"?"var(--j-butter)":"var(--j-lav)"}}>{accountType==="cent"?"Cent":"Std"}</button>
+              <button onClick={()=>setShowResetConfirm(true)} className="j-chip" style={{fontSize:11,background:"var(--j-pink)"}} title="ลบข้อมูลทั้งหมด เริ่มใหม่">🗑️ Reset</button>
               {/* ── Discipline Lock priority: Forced > HardLock > Cooldown > Open Trade > New Trade ── */}
               {isForcedLockToday ? (
                 <ForcedLockBanner/>
@@ -2283,6 +2359,13 @@ export default function JournalPage() {
           initialText={hardlock?.reflectionText || ""}
           onSubmit={submitReflection}
           onClose={()=>setShowReflection(false)}
+        />
+      )}
+      {/* Reset Confirm Modal — ยืนยันก่อนล้างข้อมูลทั้งหมด (ใหม่) */}
+      {showResetConfirm && (
+        <ResetConfirmModal
+          onConfirm={resetAllTrades}
+          onClose={()=>setShowResetConfirm(false)}
         />
       )}
       {/* Lightbox */}
