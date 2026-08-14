@@ -417,6 +417,7 @@ function usePortfolioSnapshot() {
 
         if (marketValue > 0) {
           saveTodaySnapshot({
+            portfolioId: mainGroup.id,
             marketValue,
             totalCost,
             cash: 0,
