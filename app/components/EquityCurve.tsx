@@ -38,7 +38,7 @@ export async function saveTodaySnapshot(data: {
     if (!user || data.marketValue <= 0) return;
 
     const today = new Date().toISOString().split("T")[0];
-    await supabase.from("portfolio_snapshots").upsert({
+    const { error } = await supabase.from("portfolio_snapshots").upsert({
       user_id: user.id,
       snapshot_date: today,
       market_value: data.marketValue,
@@ -48,8 +48,18 @@ export async function saveTodaySnapshot(data: {
       pl_pct: data.plPct,
       position_count: data.count,
     }, { onConflict: "user_id,snapshot_date" });
+    // ⚠️ Supabase ไม่ throw error เวลา query ล้มเหลว (RLS บล็อก / ไม่มี unique constraint ตรงกับ onConflict ฯลฯ)
+    // ต้องเช็ค error ที่ return กลับมาโดยตรง ไม่งั้นจะบันทึกไม่ติดแบบเงียบๆ โดยไม่มีใครรู้
+    if (error) {
+      console.error("snapshot save error:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
+    }
   } catch (e) {
-    console.error("snapshot save error:", e);
+    console.error("snapshot save exception:", e);
   }
 }
 
