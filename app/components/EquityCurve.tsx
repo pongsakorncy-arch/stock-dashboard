@@ -11,6 +11,11 @@ export type Snapshot = {
   pl_pct: number;
 };
 
+export type EquityStats = {
+  isATH: boolean;
+  allTimeHigh: number;
+};
+
 type RangeKey = "1M" | "3M" | "6M" | "YTD" | "1Y" | "3Y" | "ALL";
 
 const RANGES: { key: RangeKey; label: string; days: number | null }[] = [
@@ -69,7 +74,13 @@ function polyline(pts: [number, number][], tension = 0.06): string {
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function EquityCurve({ fallbackValue = 0 }: { fallbackValue?: number }) {
+export default function EquityCurve({
+  fallbackValue = 0,
+  onStatsChange,
+}: {
+  fallbackValue?: number;
+  onStatsChange?: (stats: EquityStats) => void;
+}) {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [loading, setLoading]     = useState(true);
   const [range, setRange]         = useState<RangeKey>("1M");
@@ -96,6 +107,20 @@ export default function EquityCurve({ fallbackValue = 0 }: { fallbackValue?: num
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // ── All-Time-High (ใช้ snapshots ทั้งหมด ไม่ใช่แค่ช่วงที่กำลังดูอยู่) ──────────
+  // เทียบกับมูลค่าปัจจุบัน (fallbackValue = live portfolio.value จาก Home)
+  // เพื่อบอกฝั่ง Home ว่าตอนนี้พอร์ตทำ New ATH อยู่ไหม สำหรับ badge "📈 ATH"
+  useEffect(() => {
+    if (!onStatsChange) return;
+    const historicalHigh = snapshots.length
+      ? Math.max(...snapshots.map(s => s.market_value))
+      : 0;
+    const currentValue = fallbackValue || historicalHigh;
+    const allTimeHigh = Math.max(historicalHigh, currentValue);
+    const isATH = currentValue > 0 && currentValue >= allTimeHigh - 0.01;
+    onStatsChange({ isATH, allTimeHigh });
+  }, [snapshots, fallbackValue, onStatsChange]);
 
   // กรองตามช่วงเวลา
   const filtered = useMemo(() => {
