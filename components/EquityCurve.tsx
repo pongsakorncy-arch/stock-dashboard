@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -9,6 +9,11 @@ export type Snapshot = {
   market_value: number;
   total_pl: number;
   pl_pct: number;
+};
+
+export type EquityStats = {
+  isATH: boolean;
+  allTimeHigh: number;
 };
 
 type RangeKey = "1M" | "3M" | "6M" | "YTD" | "1Y" | "3Y" | "ALL";
@@ -23,26 +28,20 @@ const RANGES: { key: RangeKey; label: string; days: number | null }[] = [
   { key: "ALL", label: "All", days: null },
 ];
 
-// ─── วันที่ตาม local timezone ของเครื่อง (ไม่ใช่ UTC) ─────────────────────────
-// toISOString() จะแปลงเป็น UTC ก่อนเสมอ ใกล้เที่ยงคืนไทย (UTC+7) จะได้วันที่ผิด
-// ฟังก์ชันนี้หัก timezone offset ออกก่อน แล้วค่อยตัดเอาแค่ YYYY-MM-DD
-function localDateStr(d: Date = new Date()): string {
-  const tzOffsetMs = d.getTimezoneOffset() * 60000;
-  return new Date(d.getTime() - tzOffsetMs).toISOString().split("T")[0];
-}
-
 // ─── บันทึก snapshot ของวันนี้ (เรียกจาก Home) ────────────────────────────────
 export async function saveTodaySnapshot(data: {
+  portfolioId: string;
   marketValue: number; totalCost: number; cash: number;
   totalPL: number; plPct: number; count: number;
 }) {
   try {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user || data.marketValue <= 0) return;
+    if (!user || data.marketValue <= 0 || !data.portfolioId) return;
 
-    const today = localDateStr();
-    await supabase.from("portfolio_snapshots").upsert({
+    const today = new Date().toISOString().split("T")[0];
+    const { error } = await supabase.from("portfolio_snapshots").upsert({
       user_id: user.id,
+      portfolio_id: data.portfolioId,
       snapshot_date: today,
       market_value: data.marketValue,
       total_cost: data.totalCost,
@@ -51,8 +50,18 @@ export async function saveTodaySnapshot(data: {
       pl_pct: data.plPct,
       position_count: data.count,
     }, { onConflict: "user_id,snapshot_date" });
+    // ⚠️ Supabase ไม่ throw error เวลา query ล้มเหลว (RLS บล็อก / ไม่มี unique constraint ตรงกับ onConflict ฯลฯ)
+    // ต้องเช็ค error ที่ return กลับมาโดยตรง ไม่งั้นจะบันทึกไม่ติดแบบเงียบๆ โดยไม่มีใครรู้
+    if (error) {
+      console.error("snapshot save error:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
+    }
   } catch (e) {
-    console.error("snapshot save error:", e);
+    console.error("snapshot save exception:", e);
   }
 }
 
@@ -76,26 +85,24 @@ function polyline(pts: [number, number][], tension = 0.06): string {
   return d.join(" ");
 }
 
-// ─── Props ────────────────────────────────────────────────────────────────────
-type EquityCurveProps = {
-  fallbackValue?: number;
-  /** เรียกทุกครั้งที่คำนวณ all-time-high ใหม่ ให้ page.tsx เอาไปตัดสิน badge ATH ให้ตรงกับกราฟจริง */
-  onStatsChange?: (s: { isATH: boolean; allTimeHigh: number }) => void;
-};
-
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function EquityCurve({ fallbackValue = 0, onStatsChange }: EquityCurveProps) {
+export default function EquityCurve({
+  fallbackValue = 0,
+  onStatsChange,
+}: {
+  fallbackValue?: number;
+  onStatsChange?: (stats: EquityStats) => void;
+}) {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [loading, setLoading]     = useState(true);
   const [range, setRange]         = useState<RangeKey>("1M");
   const [hover, setHover]         = useState<{ i: number; x: number; y: number } | null>(null);
 
-  // โหลด snapshots — ครั้งแรก + refetch ทุก 60 วิ เพื่อให้กราฟไม่ค้าง
+  // โหลด snapshots
   useEffect(() => {
     let cancelled = false;
-
-    const load = async (silent = false) => {
-      if (!silent) setLoading(true);
+    (async () => {
+      setLoading(true);
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) { if (!cancelled) { setSnapshots([]); setLoading(false); } return; }
@@ -109,47 +116,27 @@ export default function EquityCurve({ fallbackValue = 0, onStatsChange }: Equity
         if (!cancelled) setSnapshots([]);
       }
       if (!cancelled) setLoading(false);
-    };
-
-    load();
-    const id = setInterval(() => load(true), 60000);
-    return () => { cancelled = true; clearInterval(id); };
+    })();
+    return () => { cancelled = true; };
   }, []);
 
-  // ── ผสานค่าพอร์ต real-time (fallbackValue) เข้าเป็น "จุดของวันนี้" เสมอ ──
-  // แก้ปัญหาที่กราฟไม่มีจุดวันนี้เพราะ saveTodaySnapshot ยังบันทึกไม่เสร็จ /
-  // หรือ query มาก่อนที่ค่าล่าสุดจะถูกเขียนลง DB — ทำให้กราฟไม่ตรงกับ badge ATH
-  const merged = useMemo((): Snapshot[] => {
-    if (!snapshots.length && fallbackValue <= 0) return [];
-    const today = localDateStr();
-    const last = snapshots[snapshots.length - 1];
-
-    if (fallbackValue <= 0) return snapshots;
-
-    // ประมาณ cost basis จาก snapshot ล่าสุด เพื่อคำนวณ pl/pl_pct ของจุด "วันนี้" แบบคร่าวๆ
-    const estCost = last && last.pl_pct > -100
-      ? last.market_value / (1 + last.pl_pct / 100)
-      : fallbackValue;
-    const estPL = fallbackValue - estCost;
-    const estPLPct = estCost > 0 ? (estPL / estCost) * 100 : 0;
-
-    const todayPoint: Snapshot = {
-      snapshot_date: today,
-      market_value: fallbackValue,
-      total_pl: estPL,
-      pl_pct: estPLPct,
-    };
-
-    if (!last || last.snapshot_date !== today) {
-      return [...snapshots, todayPoint];
-    }
-    // มี snapshot ของวันนี้อยู่แล้ว แต่ยังไม่สดเท่าค่า real-time → แทนที่ด้วยค่าล่าสุด
-    return [...snapshots.slice(0, -1), todayPoint];
-  }, [snapshots, fallbackValue]);
+  // ── All-Time-High (ใช้ snapshots ทั้งหมด ไม่ใช่แค่ช่วงที่กำลังดูอยู่) ──────────
+  // เทียบกับมูลค่าปัจจุบัน (fallbackValue = live portfolio.value จาก Home)
+  // เพื่อบอกฝั่ง Home ว่าตอนนี้พอร์ตทำ New ATH อยู่ไหม สำหรับ badge "📈 ATH"
+  useEffect(() => {
+    if (!onStatsChange) return;
+    const historicalHigh = snapshots.length
+      ? Math.max(...snapshots.map(s => s.market_value))
+      : 0;
+    const currentValue = fallbackValue || historicalHigh;
+    const allTimeHigh = Math.max(historicalHigh, currentValue);
+    const isATH = currentValue > 0 && currentValue >= allTimeHigh - 0.01;
+    onStatsChange({ isATH, allTimeHigh });
+  }, [snapshots, fallbackValue, onStatsChange]);
 
   // กรองตามช่วงเวลา
   const filtered = useMemo(() => {
-    if (!merged.length) return [];
+    if (!snapshots.length) return [];
     const now = new Date();
     const cfg = RANGES.find(r => r.key === range)!;
 
@@ -159,13 +146,13 @@ export default function EquityCurve({ fallbackValue = 0, onStatsChange }: Equity
     } else if (cfg.days !== null) {
       cutoff = new Date(now.getTime() - cfg.days * 86400000);
     }
-    if (!cutoff) return merged; // ALL
+    if (!cutoff) return snapshots; // ALL
 
-    const cutStr = localDateStr(cutoff);
-    return merged.filter(s => s.snapshot_date >= cutStr);
-  }, [merged, range]);
+    const cutStr = cutoff.toISOString().split("T")[0];
+    return snapshots.filter(s => s.snapshot_date >= cutStr);
+  }, [snapshots, range]);
 
-  // สถิติของช่วงที่เลือก
+  // สถิติ
   const stats = useMemo(() => {
     if (filtered.length < 1) return null;
     const first = filtered[0].market_value;
@@ -180,23 +167,6 @@ export default function EquityCurve({ fallbackValue = 0, onStatsChange }: Equity
       days: filtered.length,
     };
   }, [filtered]);
-
-  // ── all-time-high จริง (จากข้อมูลทั้งหมด ไม่ใช่แค่ช่วงที่เลือกดู) ──
-  const allTimeHigh = useMemo(() => {
-    if (!merged.length) return 0;
-    return Math.max(...merged.map(s => s.market_value));
-  }, [merged]);
-
-  const isATH = fallbackValue > 0 && allTimeHigh > 0 && fallbackValue >= allTimeHigh - 0.005;
-
-  // รายงานค่ากลับไปให้ page.tsx ใช้ตัดสิน badge (ไม่ใส่ onStatsChange ใน deps
-  // เพื่อกันลูปกรณี parent ส่ง function ใหม่ทุก render)
-  const onStatsChangeRef = useRef(onStatsChange);
-  onStatsChangeRef.current = onStatsChange;
-  useEffect(() => {
-    onStatsChangeRef.current?.({ isATH, allTimeHigh });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isATH, allTimeHigh]);
 
   const W = 320, H = 90, PAD_Y = 6;
 
@@ -254,6 +224,7 @@ export default function EquityCurve({ fallbackValue = 0, onStatsChange }: Equity
       <div className="flex gap-1 mb-2 overflow-x-auto scrollbar-none">
         {RANGES.map(r => {
           const active = range === r.key;
+          // เช็คว่ามีข้อมูลพอสำหรับช่วงนี้ไหม
           return (
             <button key={r.key} onClick={() => setRange(r.key)}
               className={`flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${
