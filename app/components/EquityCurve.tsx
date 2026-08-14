@@ -30,16 +30,18 @@ const RANGES: { key: RangeKey; label: string; days: number | null }[] = [
 
 // ─── บันทึก snapshot ของวันนี้ (เรียกจาก Home) ────────────────────────────────
 export async function saveTodaySnapshot(data: {
+  portfolioId: string;
   marketValue: number; totalCost: number; cash: number;
   totalPL: number; plPct: number; count: number;
 }) {
   try {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user || data.marketValue <= 0) return;
+    if (!user || data.marketValue <= 0 || !data.portfolioId) return;
 
     const today = new Date().toISOString().split("T")[0];
     const { error } = await supabase.from("portfolio_snapshots").upsert({
       user_id: user.id,
+      portfolio_id: data.portfolioId,
       snapshot_date: today,
       market_value: data.marketValue,
       total_cost: data.totalCost,
