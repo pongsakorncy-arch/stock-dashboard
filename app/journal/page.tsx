@@ -7,6 +7,7 @@ type Direction   = "LONG"|"SHORT";
 type Result      = "WIN"|"LOSS"|"BE";
 type Session     = "Tokyo"|"London"|"New York"|"Overlap";
 type AccountType = "cent"|"standard";
+type JournalTheme = "ninja"|"minimal"|"classic"|"cyber"|"sakura";
 type TradeMode    = "WYCKOFF"|"SMC"|"SW_RANGE"|"SW_BREAKOUT"|"PULLBACK"|"M5_REVERSAL";
 type Emotion     = "😌 Calm"|"😎 Confident"|"😤 FOMO"|"😰 Fearful"|"😡 Revenge";
 type ExitReason  = "TP Hit"|"SL Hit"|"Manual"|"Rejection"|"MSS Failed"|"Other";
@@ -267,159 +268,57 @@ function countHardStopDaysThisWeek(trades: Trade[], todayStr: string): number {
 function PLChart({trades}:{trades:Trade[]}) {
   const [tab,setTab]=useState<"equity"|"dd">("equity");
   const closed=[...trades].filter(t=>t.status==="CLOSED").sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
-  if(closed.length<2) return (
-    <div style={{
-      color:"var(--j-soft)",fontFamily:"'DM Mono',monospace",fontSize:11,
-      textAlign:"center",padding:"34px 0",letterSpacing:".08em",
-      background:"linear-gradient(180deg,#080909,#050606)",
-      border:"1px solid rgba(255,255,255,.10)",borderRadius:6
-    }}>
-      NEED AT LEAST 2 CLOSED SESSIONS
-    </div>
-  );
-
+  if(closed.length<2) return <p style={{color:"var(--j-soft)",fontFamily:"'DM Mono',monospace",fontSize:12,textAlign:"center",padding:"24px 0"}}>need at least 2 closed sessions</p>;
   let cum=0;
   const pts=closed.map(t=>{cum+=t.totalPL;return cum;});
-
-  // Ninja chart palette — charcoal / iron / crimson.
-  const W=300,H=112,pL=8,pR=8,pT=10,pB=12,iW=W-pL-pR,iH=H-pT-pB;
-  const mn=Math.min(0,...pts),mx=Math.max(0,...pts),rng=mx-mn||1;
+  const W=300,H=88,pL=6,pR=6,pT=8,pB=8,iW=W-pL-pR,iH=H-pT-pB;
+  const mn=Math.min(0,...pts),mx=Math.max(...pts),rng=mx-mn||1;
   const X=(i:number)=>pL+(pts.length===1?iW/2:(i/(pts.length-1))*iW);
   const Y=(v:number)=>pT+iH-((v-mn)/rng)*iH;
-
-  const up=pts[pts.length-1]>=0;
-  const col=up?"#d92332":"#e15b63";
-  const fill=up?"rgba(217,35,50,.18)":"rgba(225,91,99,.16)";
-
+  const up=pts[pts.length-1]>=0,col=up?"#3f9b73":"#d4685f",fc=up?"#bfe3d0":"#f3c4cb";
   let d=`M ${X(0)} ${Y(pts[0])}`;
-  for(let i=1;i<pts.length;i++){
-    d+=` L ${X(i)} ${Y(pts[i-1])} L ${X(i)} ${Y(pts[i])}`;
-  }
+  for(let i=1;i<pts.length;i++) d+=` L ${X(i)} ${Y(pts[i-1])} L ${X(i)} ${Y(pts[i])}`;
   const area=`${d} L ${X(pts.length-1)} ${pT+iH} L ${X(0)} ${pT+iH} Z`;
-
   const {dd,maxDD:mxDD,ddPct,maxDDPct}=calcDD(trades);
   let pk3=0;
   const dds=pts.map(v=>{if(v>pk3)pk3=v;return pk3-v;});
   const ddm=Math.max(...dds)||1;
   const Yd=(v:number)=>pT+iH*(v/ddm);
-
   let dp=`M ${X(0)} ${Yd(dds[0])}`;
-  for(let i=1;i<dds.length;i++){
-    dp+=` L ${X(i)} ${Yd(dds[i-1])} L ${X(i)} ${Yd(dds[i])}`;
-  }
+  for(let i=1;i<dds.length;i++) dp+=` L ${X(i)} ${Yd(dds[i-1])} L ${X(i)} ${Yd(dds[i])}`;
   const da=`${dp} L ${X(dds.length-1)} ${pT+iH} L ${X(0)} ${pT+iH} Z`;
-
-  const TB=(t:"equity"|"dd",label:string)=>(
-    <button
-      onClick={()=>setTab(t)}
-      style={{
-        fontFamily:"'DM Mono',monospace",fontSize:9,letterSpacing:".08em",
-        padding:"7px 12px",cursor:"pointer",
-        border:"1px solid rgba(255,255,255,.14)",
-        borderBottom:tab===t?"1px solid #090a0a":"1px solid rgba(255,255,255,.14)",
-        borderRadius:"5px 5px 0 0",
-        background:tab===t?"#0d0e0e":"#060707",
-        color:tab===t?"#f1f1ef":"#777b7b",
-        fontWeight:700,marginBottom:tab===t?-1:0,
-        textTransform:"uppercase"
-      }}
-    >
-      {label}
-    </button>
+  const TB=(t:"equity"|"dd",label:string,bg:string)=>(
+    <button onClick={()=>setTab(t)} style={{fontFamily:"'DM Mono',monospace",fontSize:10,padding:"3px 10px",cursor:"pointer",border:"1.5px solid var(--j-ink)",borderRadius:"5px 5px 0 0",background:tab===t?bg:"var(--j-win)",color:"var(--j-ink)",fontWeight:tab===t?600:400,borderBottom:tab===t?`1.5px solid ${bg}`:"1.5px solid var(--j-ink)",marginBottom:tab===t?-1.5:0}}>{label}</button>
   );
-
-  const gridColor="rgba(255,255,255,.055)";
-  const axisColor="rgba(255,255,255,.16)";
-
   return (
-    <div style={{
-      background:"linear-gradient(145deg,#0a0b0b 0%,#050606 100%)",
-      border:"1px solid rgba(255,255,255,.10)",
-      borderRadius:7,
-      padding:"10px 10px 11px",
-      boxShadow:"inset 0 1px 0 rgba(255,255,255,.025)"
-    }}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-        <div style={{display:"flex",gap:3}}>{TB("equity","EQUITY")}{TB("dd","DRAWDOWN")}</div>
-        <span style={{
-          fontFamily:"'DM Mono',monospace",fontSize:9,letterSpacing:".08em",
-          color:up?"#d92332":"#e15b63"
-        }}>
-          {up?"▲ PROFIT":"▼ LOSS"}
-        </span>
-      </div>
-
-      <div style={{
-        border:"1px solid rgba(255,255,255,.10)",
-        borderRadius:4,
-        background:"#070808",
-        padding:"7px 6px 4px",
-        overflow:"hidden"
-      }}>
+    <div>
+      <div style={{display:"flex",gap:4,position:"relative",zIndex:1}}>{TB("equity","📈 Equity","var(--j-sky)")}{TB("dd","📉 Drawdown","var(--j-coral)")}</div>
+      <div style={{border:"2px solid var(--j-ink)",borderRadius:"0 7px 7px 7px",background:"#fbf6ea",padding:4}}>
         {tab==="equity"?(
-          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none">
-            {/* vertical session grid */}
-            {pts.map((_,i)=>(
-              <line key={i} x1={X(i)} y1={pT} x2={X(i)} y2={pT+iH}
-                stroke={gridColor} strokeWidth="1"/>
-            ))}
-            {/* horizontal grid */}
-            {[0,.25,.5,.75,1].map((r,i)=>(
-              <line key={`h${i}`} x1={pL} y1={pT+iH*r} x2={W-pR} y2={pT+iH*r}
-                stroke={gridColor} strokeWidth="1"/>
-            ))}
-            <line x1={pL} y1={Y(0)} x2={W-pR} y2={Y(0)}
-              stroke={axisColor} strokeWidth="1" strokeDasharray="4 4"/>
-            <path d={area} fill={fill}/>
-            <path d={d} fill="none" stroke={col} strokeWidth="2.4"
-              strokeLinecap="square" strokeLinejoin="miter"/>
-            {pts.map((v,i)=>(
-              <rect key={i}
-                x={X(i)-2.2} y={Y(v)-2.2} width="4.4" height="4.4"
-                fill={i===pts.length-1?col:"#0b0c0c"}
-                stroke={col} strokeWidth="1"
-              />
-            ))}
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" shapeRendering="crispEdges">
+            {pts.map((_,i)=><line key={i} x1={X(i)} y1={pT} x2={X(i)} y2={pT+iH} stroke="#e3d9c4" strokeWidth="1"/>)}
+            <line x1={pL} y1={Y(0)} x2={W-pR} y2={Y(0)} stroke="#b0a290" strokeWidth="1.5" strokeDasharray="3 2"/>
+            <path d={area} fill={fc} fillOpacity="0.55"/><path d={d} fill="none" stroke={col} strokeWidth="3"/>
+            {pts.map((v,i)=><rect key={i} x={X(i)-2.5} y={Y(v)-2.5} width="5" height="5" fill={fc} stroke="var(--j-ink)" strokeWidth="1.5"/>)}
           </svg>
         ):(
-          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none">
-            {dds.map((_,i)=>(
-              <line key={i} x1={X(i)} y1={pT} x2={X(i)} y2={pT+iH}
-                stroke={gridColor} strokeWidth="1"/>
-            ))}
-            {[0,.25,.5,.75,1].map((r,i)=>(
-              <line key={`h${i}`} x1={pL} y1={pT+iH*r} x2={W-pR} y2={pT+iH*r}
-                stroke={gridColor} strokeWidth="1"/>
-            ))}
-            <path d={da} fill="rgba(217,35,50,.16)"/>
-            <path d={dp} fill="none" stroke="#d92332" strokeWidth="2.4"
-              strokeLinecap="square" strokeLinejoin="miter"/>
-            {dds.map((v,i)=>(
-              <rect key={i}
-                x={X(i)-2.2} y={Yd(v)-2.2} width="4.4" height="4.4"
-                fill={i===dds.length-1?"#d92332":"#0b0c0c"}
-                stroke="#d92332" strokeWidth="1"
-              />
-            ))}
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" shapeRendering="crispEdges">
+            <line x1={pL} y1={Yd(ddm*0.2)} x2={W-pR} y2={Yd(ddm*0.2)} stroke="#d4685f" strokeWidth="1" strokeDasharray="3 2"/>
+            <path d={da} fill="#f3c4cb" fillOpacity="0.55"/><path d={dp} fill="none" stroke="#d4685f" strokeWidth="3"/>
+            {dds.map((v,i)=><rect key={i} x={X(i)-2.5} y={Yd(v)-2.5} width="5" height="5" fill="#f3c4cb" stroke="var(--j-ink)" strokeWidth="1.5"/>)}
           </svg>
         )}
       </div>
-
       {tab==="dd"&&(
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:5,marginTop:7}}>
-          {[
-            {l:"CURRENT DD",v:dd>0?`-$${dd.toFixed(2)}`:"+$0.00",c:dd>0?"#d92332":"#6caa89",sub:ddPct>0?`-${ddPct.toFixed(1)}%`:"0%"},
-            {l:"MAX DD",v:mxDD>0?`-$${mxDD.toFixed(2)}`:"+$0.00",c:"#d92332",sub:maxDDPct>0?`-${maxDDPct.toFixed(1)}%`:"0%"},
-            {l:"STATUS",v:maxDDPct<=10?"SAFE":maxDDPct<=20?"WATCH":"DANGER",c:maxDDPct>20?"#d92332":maxDDPct>10?"#c6a45b":"#6caa89",sub:"LIMIT 20%"}
+        <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}}>
+          {[{l:"Current DD",v:dd>0?`-$${dd.toFixed(2)}`:"+$0.00",c:dd>0?"#d4685f":"#5fae89",sub:ddPct>0?`-${ddPct.toFixed(1)}% from peak`:""},
+            {l:"Max DD",v:mxDD>0?`-$${mxDD.toFixed(2)}`:"+$0.00",c:"#d4685f",sub:maxDDPct>0?`-${maxDDPct.toFixed(1)}% worst`:""},
+            {l:"Status",v:maxDDPct<=10?"✓ SAFE":maxDDPct<=20?"⚠ WATCH":"✕ DANGER",c:maxDDPct>20?"#d4685f":maxDDPct>10?"#d4a65f":"#5fae89",sub:"limit 20%"}
           ].map(s=>(
-            <div key={s.l} style={{
-              background:"#0a0b0b",
-              border:"1px solid rgba(255,255,255,.09)",
-              borderRadius:4,padding:"7px 8px",minWidth:0
-            }}>
-              <div style={{fontFamily:"'DM Mono',monospace",fontSize:7.5,color:"#666b6b",letterSpacing:".08em",marginBottom:3}}>{s.l}</div>
-              <div style={{fontFamily:"'VT323',monospace",fontSize:19,color:s.c,lineHeight:1}}>{s.v}</div>
-              <div style={{fontFamily:"'DM Mono',monospace",fontSize:7.5,color:"#777b7b",marginTop:2}}>{s.sub}</div>
+            <div key={s.l} style={{flex:1,background:"#f3c4cb55",border:"1.5px solid var(--j-ink)",borderRadius:7,padding:"6px 10px",minWidth:90}}>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",textTransform:"uppercase",marginBottom:2}}>{s.l}</div>
+              <div style={{fontFamily:"'VT323',monospace",fontSize:20,color:s.c,lineHeight:1}}>{s.v}</div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"#d4685f"}}>{s.sub}</div>
             </div>
           ))}
         </div>
@@ -428,7 +327,6 @@ function PLChart({trades}:{trades:Trade[]}) {
   );
 }
 // ─── DailyStatusBar ───────────────────────────────────────────────────────────
- ───────────────────────────────────────────────────────────
 function DailyStatusBar({status,cooldownRemainingMs,isHardLockToday,isForcedLockToday}:{status:ReturnType<typeof calcDailyStatus>;cooldownRemainingMs:number;isHardLockToday:boolean;isForcedLockToday:boolean}) {
   const {totalToday,lossStreak,isHardStop,isWarnBreak,isDayDone,todayWins,todayLosses,todayBE,todayPL} = status;
   const barBg=isForcedLockToday?"#c98a8a":isHardLockToday?"var(--j-coral)":cooldownRemainingMs>0?"var(--j-butter)":isWarnBreak?"var(--j-butter)":"var(--j-mint)";
@@ -484,7 +382,7 @@ function DailyStatusBar({status,cooldownRemainingMs,isHardLockToday,isForcedLock
 function Win({title,color,children,controls=true}:{title:string;color:string;children:any;controls?:boolean}) {
   return (
     <div className="j-win">
-      <div className="j-bar" style={{background:"linear-gradient(90deg,#b51221 0%,#7e0d17 45%,#0b0c0c 100%)",borderBottom:"1px solid rgba(217,35,50,.35)"}}>
+      <div className="j-bar" style={{background:color}}>
         <span className="j-t">{title}</span>
         {controls&&<span className="j-ctrl"><span>_</span><span>▢</span><span>✕</span></span>}
       </div>
@@ -787,6 +685,7 @@ export default function JournalPage() {
   const [showAlert,setShowAlert] = useState(false);
   const [uploading,setUploading] = useState(false);
   const [mounted,setMounted] = useState(false);
+  const [theme,setTheme] = useState<JournalTheme>("ninja");
   // ── Discipline lock states (ใหม่) ──────────────────────────────────────────
   const [cooldownUntil,setCooldownUntil]   = useState(0);
   const [nowTick,setNowTick]               = useState(Date.now());
@@ -856,8 +755,18 @@ export default function JournalPage() {
     setSession(autoSessionFromTime(t));
     setSessionManual(false);
   };
-
-  useEffect(()=>{ document.title="YOKIMURA SHINOBI — TRADING JOURNAL"; setMounted(true); },[]);
+  useEffect(()=>{
+    document.title = "YOKIMURA SHINOBI — TRADING JOURNAL";
+    setMounted(true);
+    try {
+      const saved = localStorage.getItem("yok_journal_theme") as JournalTheme | null;
+      if (saved && ["ninja","minimal","classic","cyber","sakura"].includes(saved)) setTheme(saved);
+    } catch {}
+  },[]);
+  useEffect(()=>{
+    if (!mounted) return;
+    try { localStorage.setItem("yok_journal_theme", theme); } catch {}
+  },[theme,mounted]);
   // ── Boot ──────────────────────────────────────────────────────────────────
   useEffect(()=>{
     const lines=["JOURNAL.EXE","LOADING... 🥇"];
@@ -1286,50 +1195,8 @@ export default function JournalPage() {
     return <main style={{minHeight:"100vh",background:"#f1e9da"}} />;
   }
   return (
-    <main className="j-root theme-ninja">
-      
-<style id="yokimura-dashboard-theme">
-  .j-dashboard .j-stat{
-    background:linear-gradient(145deg,#101212 0%,#070808 100%)!important;
-    border:1px solid rgba(255,255,255,.11)!important;
-    border-radius:6px!important;
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.025),0 8px 24px rgba(0,0,0,.18)!important;
-    color:#eee!important;
-    position:relative;
-    overflow:hidden;
-  }
-  .j-dashboard .j-stat::before{
-    content:"";
-    position:absolute;
-    left:0;top:0;bottom:0;width:3px;
-    background:#d92332;
-    opacity:.9;
-  }
-  .j-dashboard .j-num{color:#f1f1ef!important}
-  .j-dashboard .j-statlab{color:#747978!important}
-  .j-dashboard .j-win,
-  .j-dashboard .j-win .j-body{
-    background:linear-gradient(145deg,#0a0b0b 0%,#050606 100%)!important;
-    border-color:rgba(255,255,255,.10)!important;
-  }
-  .j-dashboard .j-bar{
-    color:#f1f1ef!important;
-  }
-  .j-dashboard .j-bar .j-t{
-    letter-spacing:.12em!important;
-    text-shadow:0 1px 10px rgba(217,35,50,.18);
-  }
-  .j-dashboard .j-body{
-    padding:10px!important;
-  }
-  @media(max-width:680px){
-    .j-dashboard{gap:10px!important}
-    .j-dashboard .j-stat{min-height:78px!important}
-    .j-dashboard .j-num{font-size:27px!important}
-  }
-</style>
-
-<style>{`
+    <main className={`j-root theme-${theme}`}>
+      <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@500;600;700;800&family=Noto+Sans+Thai:wght@400;500;600;700;800&family=Noto+Serif+JP:wght@400;500;600;700;800&family=Shippori+Mincho:wght@400;500;600;700;800&display=swap');
 
         /* ================================================================
@@ -1500,6 +1367,17 @@ export default function JournalPage() {
         }
         .j-mantra{max-width:365px;text-align:right;font-family:'DM Mono';font-size:8px;line-height:1.85;letter-spacing:1.5px;color:#7f8481;text-transform:uppercase}
         .j-mantra strong{display:block;color:#eee;font-size:9px;letter-spacing:1.8px}
+        .j-theme-box{display:flex;justify-content:flex-end;align-items:center;gap:7px;margin-top:10px}
+        .j-theme-label{font-family:'DM Mono';font-size:7px;letter-spacing:1.5px;color:#6d726f;text-transform:uppercase}
+        .j-theme-select{
+          min-width:168px;appearance:none;background:#0a0c0c;color:#eee;
+          border:1px solid rgba(255,255,255,.25);border-radius:2px;padding:8px 30px 8px 10px;
+          font-family:'DM Mono';font-size:9px;cursor:pointer;
+          background-image:linear-gradient(45deg,transparent 50%,#aaa 50%),linear-gradient(135deg,#aaa 50%,transparent 50%);
+          background-position:calc(100% - 13px) 12px,calc(100% - 9px) 12px;
+          background-size:4px 4px,4px 4px;background-repeat:no-repeat
+        }
+        .j-theme-select option{background:#111;color:#fff}
         .j-quote-strip{
           max-width:1180px;margin:12px auto 0;padding:0 4px;
           display:flex;align-items:center;gap:12px;color:#777c79
@@ -1686,6 +1564,8 @@ export default function JournalPage() {
           .j-execution-heading{font-size:52px}
           .j-execution-sub{font-size:13px}
           .j-sidebar-hero{height:460px}
+          .j-theme-select{min-width:190px;padding:10px 32px 10px 12px;font-size:10px}
+        }
 
         @media(max-width:980px){
           .j-app-frame{grid-template-columns:78px minmax(0,1fr)}
@@ -1751,6 +1631,40 @@ export default function JournalPage() {
             letter-spacing:1px;padding-left:48px
           }
           .j-mantra strong{font-size:8px}
+          .j-theme-box{justify-content:flex-start;margin-top:10px;padding-left:48px}
+          .j-theme-select{min-width:155px;max-width:100%;font-size:8px;padding:7px 26px 7px 8px}
+          .j-quote-strip{margin-top:9px;padding:0 2px;gap:7px}
+          .j-quote-strip i{width:18px}
+          .j-quote-strip span{display:none}
+          .j-quote-strip b{font-size:6px;letter-spacing:.8px}
+          .j-tabs-wrap{display:none!important}
+          .j-win{border-radius:2px}
+          .j-body{padding:13px!important}
+          .j-bar{padding:7px 9px}
+          .j-t{font-size:7px;letter-spacing:.8px}
+          .j-execution-title{font-size:7px;letter-spacing:1.8px}
+          .j-execution-heading{font-size:30px;line-height:1.3;margin-top:3px}
+          .j-execution-sub{font-size:10px;line-height:1.85}
+          .j-kanji-quote{display:none}
+          .j-ninja-divider{margin:12px 0 14px!important}
+          .j-lab{font-size:7px;letter-spacing:1.1px;margin-bottom:5px}
+          .j-in{min-height:41px;font-size:12px!important;padding:9px 10px!important}
+          .j-result-row{gap:5px}
+          .j-result-btn{min-height:41px;font-size:9px}
+          .j-rr-fixed{min-height:41px}
+          .j-rr-fixed b{font-size:24px}
+          textarea.j-in{min-height:92px!important}
+          .j-upload-box{min-height:126px;padding:11px}
+          .j-upload-icon{font-size:25px}
+          .j-upload-title{font-size:11px}
+          .j-upload-sub{font-size:6.5px}
+          .j-save-primary{min-height:47px!important;font-size:12px!important}
+          .j-mobile-nav{
+            position:fixed;left:0;right:0;bottom:0;height:62px;z-index:110;
+            display:flex;align-items:stretch;justify-content:space-around;
+            background:rgba(5,6,6,.96);border-top:1px solid rgba(255,255,255,.16);
+            backdrop-filter:blur(14px);padding-bottom:env(safe-area-inset-bottom)
+          }
           .j-mobile-nav button{
             flex:1;border:0;background:transparent;color:#6d726f;display:flex;flex-direction:column;
             align-items:center;justify-content:center;gap:3px;font-family:'Noto Sans Thai';font-size:7px;cursor:pointer
@@ -1838,6 +1752,12 @@ export default function JournalPage() {
           }
           .j-app-main .j-shinobi-header > div:nth-child(2) > div:first-child,
           .j-mantra,.j-theme-label{display:none!important}
+          .j-theme-box{display:block!important;margin:0!important;padding:0!important}
+          .j-theme-select{
+            min-width:132px!important;width:132px!important;height:34px!important;
+            padding:5px 25px 5px 9px!important;font-size:8px!important;
+            background-color:rgba(5,6,6,.82)!important;backdrop-filter:blur(10px);
+          }
 
           .j-quote-strip,.j-tabs-wrap{display:none!important}
 
@@ -1917,6 +1837,10 @@ export default function JournalPage() {
           .j-brand-logo-img{height:51px!important;max-width:calc(100vw - 108px)!important}
           .j-brand-mark{width:48px!important;height:48px!important}
           .j-brand-sub{font-size:6.3px!important;letter-spacing:1.15px!important}
+          .j-theme-select{min-width:122px!important;width:122px!important;font-size:7px!important}
+          .j-execution-heading{font-size:30px!important}
+          .j-page-shell .j-body{padding:14px!important}
+        }
 
         /* Small utility animation */
         @keyframes blink{50%{opacity:.65}}
@@ -1960,6 +1884,16 @@ export default function JournalPage() {
             <button onClick={()=>setView("dashboard")} className="j-side-btn">
               <span className="j-side-icon">♜</span><span>เป้าหมาย</span>
             </button>
+            <button
+              onClick={()=>{
+                const el=document.querySelector(".j-theme-select") as HTMLSelectElement|null;
+                el?.focus();
+                el?.scrollIntoView({behavior:"smooth",block:"center"});
+              }}
+              className="j-side-btn"
+            >
+              <span className="j-side-icon">⚙</span><span>การตั้งค่า</span>
+            </button>
           </nav>
 
           <div className="j-sidebar-hero" aria-hidden="true">
@@ -2000,6 +1934,9 @@ export default function JournalPage() {
 
             <div>
               <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:10,marginBottom:12}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,border:"1px solid rgba(255,255,255,.22)",borderRadius:20,padding:"5px 12px",fontFamily:"'DM Mono',monospace",fontSize:9,color:"#ddd"}}>
+                  <span>🥷</span><span>{theme==="ninja"?"Ninja / Dark":theme}</span>
+                </div>
                 <div style={{position:"relative",width:30,height:30,borderRadius:"50%",border:"1px solid rgba(255,255,255,.22)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>
                   🔔
                   <span style={{position:"absolute",top:2,right:2,width:6,height:6,borderRadius:"50%",background:"var(--j-red)"}}/>
@@ -2010,6 +1947,21 @@ export default function JournalPage() {
                 <strong>"SMALL DISCIPLINES MAKE A BIG DIFFERENCE."</strong>
                 PRACTICE. PATIENCE. DISCIPLINE.<br/>
                 <span>FOR THE FAMILY.</span>
+              </div>
+              <div className="j-theme-box">
+                <span className="j-theme-label">Theme</span>
+                <select
+                  value={theme}
+                  onChange={e=>setTheme(e.target.value as JournalTheme)}
+                  className="j-theme-select"
+                  aria-label="Journal theme"
+                >
+                  <option value="ninja">🥷 Ninja / Black</option>
+                  <option value="minimal">◻ Minimal / White</option>
+                  <option value="classic">◼ Classic / Dark</option>
+                  <option value="cyber">⚡ Cyber / Blue</option>
+                  <option value="sakura">🌸 Sakura / Night</option>
+                </select>
               </div>
             </div>
           </div>
@@ -2041,7 +1993,7 @@ export default function JournalPage() {
       <div className="j-page-shell" style={{maxWidth:780,margin:"0 auto",padding:"16px 12px 0"}}>
         {/* ── DASHBOARD ── */}
         {view==="dashboard"&&(
-          <div className="space-y-4 j-tabcontent j-dashboard">
+          <div className="space-y-4 j-tabcontent">
             <DailyStatusBar status={dailyStatus} cooldownRemainingMs={cooldownRemainingMs} isHardLockToday={isHardLockToday} isForcedLockToday={isForcedLockToday}/>
             {needsReflection && !showReflection && (
               <button onClick={()=>setShowReflection(true)} className="j-btn w-full" style={{padding:12,background:"var(--j-coral)",fontSize:13}}>
@@ -2049,19 +2001,19 @@ export default function JournalPage() {
               </button>
             )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="j-stat"><div className="j-num">{stats.winRate.toFixed(0)}%</div><div className="j-statlab">Win Rate</div></div>
-              <div className="j-stat"><div className="j-num">{money(stats.totalPL)}</div><div className="j-statlab">Total P/L</div></div>
-              <div className="j-stat"><div className="j-num">{stats.total}</div><div className="j-statlab">Sessions</div></div>
-              <div className="j-stat"><div className="j-num">{stats.avgRR.toFixed(1)}R</div><div className="j-statlab">Avg R:R</div></div>
+              <div className="j-stat" style={{background:"var(--j-mint)"}}><div className="j-num">{stats.winRate.toFixed(0)}%</div><div className="j-statlab">Win Rate</div></div>
+              <div className="j-stat" style={{background:stats.totalPL>=0?"var(--j-sky)":"var(--j-coral)"}}><div className="j-num">{money(stats.totalPL)}</div><div className="j-statlab">Total P/L</div></div>
+              <div className="j-stat" style={{background:"var(--j-butter)"}}><div className="j-num">{stats.total}</div><div className="j-statlab">Sessions</div></div>
+              <div className="j-stat" style={{background:"var(--j-lav)"}}><div className="j-num">{stats.avgRR.toFixed(1)}R</div><div className="j-statlab">Avg R:R</div></div>
             </div>
-            <Win title="📈 EQUITY + DRAWDOWN" color="var(--j-red)"><PLChart trades={trades}/></Win>
+            <Win title="📈 EQUITY + DRAWDOWN" color="var(--j-sky)"><PLChart trades={trades}/></Win>
             {/* Roadmap mini */}
             {(()=>{
               const eq=Math.max(0,STARTING_CAPITAL+stats.totalPL);
               const ph=PHASES.find(p=>eq<p.to)||PHASES[PHASES.length-1];
               const pct=Math.min(100,Math.max(0,((eq-ph.from)/(ph.to-ph.from))*100));
               return (
-                <Win title="🎯 ROADMAP" color="var(--j-red)" controls={false}>
+                <Win title="🎯 ROADMAP" color="var(--j-lav)" controls={false}>
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
                     <span style={{fontFamily:"'VT323',monospace",fontSize:28}}>${eq.toFixed(2)}</span>
                     <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",alignSelf:"flex-end"}}>{ph.label} · {pct.toFixed(0)}%</span>
@@ -2492,6 +2444,13 @@ export default function JournalPage() {
         </button>
         <button onClick={()=>setView("list")} className={view==="list"?"active":""}>
           <b>◔</b><span>สถิติ</span>
+        </button>
+        <button onClick={()=>{
+          const el=document.querySelector(".j-theme-select") as HTMLSelectElement|null;
+          el?.focus();
+          el?.scrollIntoView({behavior:"smooth",block:"center"});
+        }}>
+          <b>⚙</b><span>ตั้งค่า</span>
         </button>
       </nav>
       {/* Alert Popup */}
