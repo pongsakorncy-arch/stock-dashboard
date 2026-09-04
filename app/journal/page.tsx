@@ -1393,6 +1393,25 @@ export default function JournalPage() {
         .j-mobile-nav{display:none}
         .j-mobile-brand{display:none}
 
+        /* ---------- Wide desktop scale-up (large monitors) ---------- */
+        @media(min-width:1400px){
+          .j-app-main .j-shinobi-header{min-height:150px;padding:32px 40px!important}
+          .j-brand-mark{width:64px;height:64px}
+          .j-brand-logo-img{height:62px}
+          .j-brand-sub{font-size:9px;letter-spacing:2.4px}
+          .j-brand-kicker{font-size:9px;margin-bottom:10px}
+          .j-mantra{max-width:420px;font-size:9px}
+          .j-mantra strong{font-size:10.5px}
+          .j-kanji-quote{max-width:240px}
+          .j-kanji-quote-mark{font-size:32px}
+          .j-kanji-quote-jp{font-size:19px}
+          .j-kanji-quote-en{font-size:8px}
+          .j-execution-heading{font-size:52px}
+          .j-execution-sub{font-size:13px}
+          .j-sidebar-hero{height:460px}
+          .j-theme-select{min-width:190px;padding:10px 32px 10px 12px;font-size:10px}
+        }
+
         @media(max-width:980px){
           .j-app-frame{grid-template-columns:78px minmax(0,1fr)}
           .j-sidebar{padding:20px 10px 15px}
