@@ -1026,7 +1026,7 @@ export default function JournalPage() {
   return (
     <main className={`j-root theme-${theme}`}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@500;600;700;800&family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@500;600;700;800&family=Noto+Sans+Thai:wght@400;500;600;700;800&family=Noto+Serif+JP:wght@400;500;600;700;800&family=Shippori+Mincho:wght@400;500;600;700;800&display=swap');
 
         /* ================================================================
            YOKIMURA SHINOBI — DESKTOP + MOBILE SYSTEM
@@ -1048,7 +1048,7 @@ export default function JournalPage() {
             radial-gradient(ellipse at 82% 15%,rgba(255,255,255,.055),transparent 24%),
             radial-gradient(ellipse at 72% 100%,rgba(210,31,43,.035),transparent 28%),
             linear-gradient(120deg,#030404 0%,#090b0b 52%,#050606 100%);
-          font-family:'Inter','Noto Sans Thai',sans-serif;
+          font-family:'Noto Sans Thai','Inter',sans-serif;
           position:relative;
           overflow-x:hidden;
           -webkit-font-smoothing:antialiased;
@@ -1072,6 +1072,32 @@ export default function JournalPage() {
           color:rgba(255,255,255,.018);transform:rotate(-7deg);
         }
 
+
+        .j-ink-decoration{
+          position:absolute;pointer-events:none;z-index:0;opacity:.25;
+          color:#fff;font-family:'Shippori Mincho','Noto Serif JP',serif;
+        }
+        .j-ink-decoration.left{
+          left:17%;top:15%;font-size:180px;transform:rotate(-9deg);color:rgba(255,255,255,.025)
+        }
+        .j-ink-decoration.right{
+          right:2%;top:17%;font-size:120px;transform:rotate(13deg);color:rgba(255,255,255,.03)
+        }
+        .j-bamboo{
+          position:absolute;right:0;top:90px;width:190px;height:570px;pointer-events:none;z-index:0;opacity:.17;
+          background:
+            linear-gradient(82deg,transparent 0 19%,rgba(255,255,255,.10) 19.5% 20.5%,transparent 21%),
+            linear-gradient(78deg,transparent 0 52%,rgba(255,255,255,.075) 52.5% 53.5%,transparent 54%),
+            linear-gradient(75deg,transparent 0 79%,rgba(255,255,255,.06) 79.5% 80.5%,transparent 81%);
+          transform:skewX(-8deg);
+          mask-image:linear-gradient(180deg,transparent,#000 12%,#000 88%,transparent);
+        }
+        .j-bamboo:before,.j-bamboo:after{
+          content:'';position:absolute;width:95px;height:330px;border-left:2px solid rgba(255,255,255,.12);
+          border-radius:50%;transform:rotate(29deg)
+        }
+        .j-bamboo:before{right:20px;top:65px}.j-bamboo:after{right:75px;top:195px;transform:rotate(-20deg)}
+
         /* ---------- App shell ---------- */
         .j-app-frame{
           min-height:100vh;display:grid;grid-template-columns:248px minmax(0,1fr);
@@ -1087,7 +1113,7 @@ export default function JournalPage() {
         }
         .j-sidebar-brand{padding:3px 8px 22px;border-bottom:1px solid rgba(255,255,255,.10);position:relative;z-index:2}
         .j-sidebar-brand-top{
-          font-family:'Montserrat',sans-serif;font-size:18px;font-weight:600;letter-spacing:5px;
+          font-family:'Montserrat','Noto Sans Thai',sans-serif;font-size:18px;font-weight:600;letter-spacing:5px;
           line-height:1.45;color:#fff
         }
         .j-sidebar-brand-mark{
@@ -1152,7 +1178,7 @@ export default function JournalPage() {
           color:#fff;font-family:serif;font-size:31px;flex:0 0 auto
         }
         .j-brand-name{
-          font-family:'Montserrat',sans-serif;font-size:clamp(28px,3.3vw,44px);font-weight:800;
+          font-family:'Montserrat','Noto Sans Thai',sans-serif;font-size:clamp(28px,3.3vw,44px);font-weight:800;
           letter-spacing:5px;line-height:1;color:#fff
         }
         .j-brand-sub{
@@ -1209,7 +1235,7 @@ export default function JournalPage() {
         .j-ninja-divider{height:1px;background:linear-gradient(90deg,rgba(255,255,255,.3),transparent);opacity:.6}
         .j-lab{
           display:block;margin-bottom:6px;font-family:'DM Mono','Noto Sans Thai',sans-serif;
-          font-size:8px;font-weight:500;letter-spacing:1.4px;color:#8d928f;text-transform:uppercase
+          font-size:9px;font-weight:600;letter-spacing:1px;color:#aeb2af;text-transform:uppercase
         }
         .j-in{
           width:100%;min-height:39px;background:#080a0a!important;color:#eee!important;
@@ -1355,7 +1381,7 @@ export default function JournalPage() {
           .j-t{font-size:7px;letter-spacing:.8px}
           .j-execution-title{font-size:7px;letter-spacing:1.8px}
           .j-execution-heading{font-size:30px;line-height:1.3;margin-top:3px}
-          .j-execution-sub{font-size:10px;line-height:1.7}
+          .j-execution-sub{font-size:10px;line-height:1.85}
           .j-ninja-divider{margin:12px 0 14px!important}
           .j-lab{font-size:7px;letter-spacing:1.1px;margin-bottom:5px}
           .j-in{min-height:41px;font-size:12px!important;padding:9px 10px!important}
@@ -1417,6 +1443,9 @@ export default function JournalPage() {
       `}</style>
       {/* Boot */}
       {booting&&(<div className={`j-boot ${bootDone?"done":""}`}><div className="j-boot-logo">YOKIMURA</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:13,color:"#c0e6d4",minHeight:40,whiteSpace:"pre"}}>{bootText}<span className="j-boot-cursor"/></div><div className="j-boot-bar"><div className="j-boot-fill"/></div><div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"#8b8f8e",opacity:.8,letterSpacing:2}}>YOKIMURA SHINOBI · WYCKOFF · TRUST YOUR PROCESS</div></div>)}
+      <div className="j-ink-decoration left">忍</div>
+      <div className="j-ink-decoration right">継</div>
+      <div className="j-bamboo" aria-hidden="true"></div>
       <div className="j-app-frame">
         <aside className="j-sidebar" aria-label="Yokimura Shinobi navigation">
           <div className="j-sidebar-brand">
@@ -1461,15 +1490,55 @@ export default function JournalPage() {
           </nav>
 
           <div className="j-sidebar-hero" aria-hidden="true">
-            <svg viewBox="0 0 300 230" preserveAspectRatio="xMidYMid slice">
-              <circle className="moon" cx="150" cy="78" r="62"/>
-              <path className="mist" d="M0 160 Q55 135 115 158 T300 150 V230 H0Z"/>
-              <path className="ink" d="M0 200 L55 155 L95 176 L126 142 L168 173 L208 128 L248 168 L300 132 V230 H0Z"/>
-              <path className="ink" d="M118 168 Q128 134 149 128 Q172 133 182 169 L173 190 L128 190Z"/>
-              <path className="ink" d="M137 134 L151 112 L166 136 L161 160 L141 158Z"/>
-              <path className="blade" d="M160 137 L205 116 L207 120 L163 143Z"/>
-              <path className="red" d="M147 129 L153 119 L159 129 L153 137Z"/>
-              <path className="mist" d="M20 178 Q82 164 122 180 T220 174 T300 180 V188 Q235 179 180 188 T70 186 T0 190Z"/>
+            <svg viewBox="0 0 300 250" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+              <defs>
+                <radialGradient id="moonGlow" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stopColor="#f4f4ef" stopOpacity=".98"/>
+                  <stop offset="72%" stopColor="#d8d8d2" stopOpacity=".9"/>
+                  <stop offset="100%" stopColor="#aaa" stopOpacity=".18"/>
+                </radialGradient>
+                <linearGradient id="inkFade" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#020303"/>
+                  <stop offset="100%" stopColor="#191b1a"/>
+                </linearGradient>
+                <filter id="softInk">
+                  <feGaussianBlur stdDeviation="1.8"/>
+                </filter>
+              </defs>
+              <circle cx="153" cy="83" r="67" fill="url(#moonGlow)"/>
+              <circle cx="131" cy="66" r="5" fill="#777" opacity=".12"/>
+              <circle cx="177" cy="99" r="8" fill="#777" opacity=".09"/>
+              <circle cx="161" cy="50" r="3" fill="#777" opacity=".12"/>
+
+              <!-- distant mountains / ink wash -->
+              <path d="M0 191 C35 161 56 166 84 181 C111 196 132 171 155 176 C190 183 205 153 233 164 C262 176 278 154 300 148 L300 250 L0 250Z"
+                    fill="url(#inkFade)" opacity=".92"/>
+              <path d="M0 209 C43 187 68 198 101 207 C130 216 157 191 183 200 C216 211 242 184 300 176 L300 250 L0 250Z"
+                    fill="#020303" opacity=".94"/>
+              <path d="M0 201 Q45 181 92 203 T183 201 T300 190" fill="none" stroke="#fff" strokeOpacity=".045" strokeWidth="5" filter="url(#softInk)"/>
+
+              <!-- ninja body -->
+              <path d="M128 177 C129 151 137 136 151 132 C168 136 176 151 178 177
+                       L190 214 L111 214 Z" fill="#030404"/>
+              <path d="M142 133 L151 112 L164 134 L160 155 L143 153Z" fill="#020303"/>
+              <path d="M144 130 L150 119 L157 130 L152 137Z" fill="#d21f2b"/>
+              <!-- face slit -->
+              <path d="M144 136 Q152 132 160 136 L158 143 Q152 140 146 143Z" fill="#c9c9c3" opacity=".48"/>
+              <!-- scarf -->
+              <path d="M139 148 C128 154 117 162 107 179 C120 169 132 165 145 162Z" fill="#060707"/>
+              <path d="M161 149 C176 154 188 165 199 180 C184 169 173 165 158 162Z" fill="#060707"/>
+              <!-- sword -->
+              <path d="M162 143 L224 111 L227 114 L166 149Z" fill="#efefea" opacity=".74"/>
+              <path d="M157 146 L165 151" stroke="#d21f2b" strokeWidth="3"/>
+              <!-- cloak folds -->
+              <path d="M122 174 L105 219 L128 198 L143 221 L151 181Z" fill="#080909"/>
+              <path d="M174 173 L195 219 L173 199 L161 222 L151 181Z" fill="#080909"/>
+
+              <!-- foreground ink splashes -->
+              <path d="M0 231 C30 215 58 220 77 231 C98 243 118 238 136 231 C112 247 91 250 63 247 C37 244 19 247 0 250Z" fill="#010202"/>
+              <path d="M300 216 C272 208 252 219 235 231 C256 222 278 224 300 235Z" fill="#010202"/>
+              <path d="M30 181 L86 158 L91 163 L35 190Z" fill="#fff" opacity=".045"/>
+              <path d="M215 190 L282 163 L286 168 L220 199Z" fill="#fff" opacity=".035"/>
             </svg>
           </div>
 
