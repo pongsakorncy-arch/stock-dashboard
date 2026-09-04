@@ -2,13 +2,13 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import AICoachPanel from "@/app/components/ai-coach/AICoachPanel";
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Direction   = "LONG"|"SHORT";
 type Result      = "WIN"|"LOSS"|"BE";
 type Session     = "Tokyo"|"London"|"New York"|"Overlap";
 type AccountType = "cent"|"standard";
-type JournalTheme = "ninja"|"minimal"|"classic"|"cyber"|"sakura";
-type TradeMode    = "WYCKOFF"|"SMC"|"SW_RANGE"|"SW_BREAKOUT"|"PULLBACK"|"M5_REVERSAL";
+type TradeMode    = "SMC"|"SW_RANGE"|"SW_BREAKOUT"|"PULLBACK"|"M5_REVERSAL";
 type Emotion     = "😌 Calm"|"😎 Confident"|"😤 FOMO"|"😰 Fearful"|"😡 Revenge";
 type ExitReason  = "TP Hit"|"SL Hit"|"Manual"|"Rejection"|"MSS Failed"|"Other";
 type TradeStatus = "OPEN"|"CLOSED";
@@ -53,20 +53,15 @@ type Trade = {
   date: string; time: string;
   session: Session;
   direction: Direction;
-  // New Wyckoff journal fields
-  asset?: string;
-  timeframe?: string;
-  grade?: string;
-  screenshotBeforeUrl?: string;
-  screenshotAfterUrl?: string;
-  // Legacy fields kept so Dashboard / Calendar / old records continue to work
   entryPrice: number;
   slPrice: number;
   lotPerOrder: number;
   lotInput: string;
   riskAmount: number;
   emotion: Emotion;
+  // checklist (stored as JSON string)
   checklistJson: string;
+  // post-exit
   exitPrices: number[];
   avgExit: number;
   orderCount: number;
@@ -130,15 +125,6 @@ function fmtMMSS(ms: number) {
   const s = total % 60;
   return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
 }
-const WYCKOFF_META_PREFIX = "__WYCKOFF_V1__";
-function packWyckoffNotes(text:string, meta:{asset:string;timeframe:string;grade:string;before:string;after:string}) {
-  return WYCKOFF_META_PREFIX + JSON.stringify({text, ...meta});
-}
-function unpackWyckoffNotes(raw:string) {
-  if(!raw?.startsWith(WYCKOFF_META_PREFIX)) return null;
-  try { return JSON.parse(raw.slice(WYCKOFF_META_PREFIX.length)); } catch { return null; }
-}
-
 // migrate ข้อมูลจาก v3 → v4 (เพิ่ม status/mode/checklistJson/exitReason ให้ของเก่า)
 function migrateOldTrades(rawTrades: any[]): Trade[] {
   return (rawTrades || []).map((t: any) => ({
@@ -149,11 +135,6 @@ function migrateOldTrades(rawTrades: any[]): Trade[] {
     time: t.time || "00:00",
     session: (t.session || "Tokyo") as Session,
     direction: (t.direction || "SHORT") as Direction,
-    asset: t.asset || t.symbol || unpackWyckoffNotes(String(t.notes || ""))?.asset || "XAUUSD",
-    timeframe: t.timeframe || t.tf || unpackWyckoffNotes(String(t.notes || ""))?.timeframe || "15s",
-    grade: t.grade || unpackWyckoffNotes(String(t.notes || ""))?.grade || "A+",
-    screenshotBeforeUrl: t.screenshotBeforeUrl || t.screenshot_before_url || unpackWyckoffNotes(String(t.notes || ""))?.before || "",
-    screenshotAfterUrl: t.screenshotAfterUrl || t.screenshot_after_url || unpackWyckoffNotes(String(t.notes || ""))?.after || t.screenshotUrl || t.screenshot_url || "",
     entryPrice: Number(t.entryPrice ?? t.entry_price ?? 0),
     slPrice: Number(t.slPrice ?? t.sl_price ?? 0),
     lotPerOrder: Number(t.lotPerOrder ?? t.lot_per_order ?? 0.1),
@@ -169,8 +150,8 @@ function migrateOldTrades(rawTrades: any[]): Trade[] {
     rr: Number(t.rr ?? 0),
     result: (t.result || "BE") as Result,
     exitReason: (t.exitReason || "") as ExitReason | "",
-    notes: (unpackWyckoffNotes(String(t.notes || ""))?.text ?? t.notes) || "",
-    screenshotUrl: t.screenshotUrl || t.screenshot_url || unpackWyckoffNotes(String(t.notes || ""))?.after || unpackWyckoffNotes(String(t.notes || ""))?.before || "",
+    notes: t.notes || "",
+    screenshotUrl: t.screenshotUrl || t.screenshot_url || "",
     createdAt: t.createdAt || t.created_at || new Date().toISOString(),
   }));
 }
@@ -403,7 +384,6 @@ function CL({checked,label,onChange,warn}:{checked:boolean;label:string;onChange
 }
 // ─── Mode labels ──────────────────────────────────────────────────────────────
 const MODE_INFO: Record<TradeMode,{label:string;color:string;emoji:string;desc:string}> = {
-  WYCKOFF:      {label:"Wyckoff",          color:"var(--j-lav)",    emoji:"🟣",desc:"Wyckoff setup"},
   SMC:          {label:"SMC Pro Max",     color:"var(--j-lav)",    emoji:"🔵",desc:"Trend เท่านั้น · BOS→OB→MSS"},
   SW_RANGE:     {label:"SW Range",        color:"var(--j-sky)",    emoji:"🟦",desc:"กรอบบน=Sell / ล่าง=Buy · RR≥3"},
   SW_BREAKOUT:  {label:"SW Breakout",     color:"var(--j-butter)", emoji:"🟡",desc:"ปิดออกกรอบ → รอ Retest"},
@@ -577,6 +557,558 @@ function RoadmapWidget({ trades }: { trades: Trade[] }) {
     </div>
   );
 }
+// ─── Battle Coach: Retro RPG Bars + Forex Sessions ───────────────────────────
+type ForexSessionInfo = {
+  name: Session | "Sydney";
+  emoji: string;
+  openUtc: number;
+  closeUtc: number;
+  color: string;
+  note: string;
+};
+type RetroBarTone = "mint" | "sky" | "lav" | "butter" | "coral" | "peach";
+type BattleCoachMetrics = {
+  score: number;
+  status: "READY" | "CAUTION" | "STAND DOWN";
+  tone: RetroBarTone;
+  setupName: string;
+  setupPower: number;
+  sessionName: string;
+  sessionEdge: number;
+  discipline: number;
+  rrPower: number;
+  riskToday: number;
+  winRateToday: number;
+  avgRR: number;
+  notes: string[];
+};
+const FOREX_SESSIONS: ForexSessionInfo[] = [
+  { name:"Sydney",   emoji:"🌏", openUtc:21, closeUtc:6,  color:"var(--j-peach)",  note:"Early liquidity" },
+  { name:"Tokyo",    emoji:"🌙", openUtc:0,  closeUtc:9,  color:"var(--j-lav)",    note:"Asian range" },
+  { name:"London",   emoji:"☀️", openUtc:7,  closeUtc:16, color:"var(--j-sky)",    note:"Main volatility" },
+  { name:"New York", emoji:"🗽", openUtc:12, closeUtc:21, color:"var(--j-mint)",   note:"XAUUSD active" },
+];
+function clampNum(v: number, min = 0, max = 100) {
+  return Math.min(max, Math.max(min, Number.isFinite(v) ? v : 0));
+}
+function utcHourFloat(d: Date) {
+  return d.getUTCHours() + d.getUTCMinutes()/60 + d.getUTCSeconds()/3600;
+}
+function isForexSessionOpen(session: ForexSessionInfo, nowUtcHour: number) {
+  if (session.openUtc < session.closeUtc) return nowUtcHour >= session.openUtc && nowUtcHour < session.closeUtc;
+  return nowUtcHour >= session.openUtc || nowUtcHour < session.closeUtc;
+}
+function sessionProgress(session: ForexSessionInfo, nowUtcHour: number) {
+  const start = session.openUtc;
+  const end = session.closeUtc <= start ? session.closeUtc + 24 : session.closeUtc;
+  const now = nowUtcHour < start && session.closeUtc <= start ? nowUtcHour + 24 : nowUtcHour;
+  if (!isForexSessionOpen(session, nowUtcHour)) return 0;
+  return Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100));
+}
+function hoursUntil(openUtc: number, nowUtcHour: number) {
+  let diff = openUtc - nowUtcHour;
+  if (diff < 0) diff += 24;
+  return diff;
+}
+function fmtHours(v: number) {
+  const h = Math.floor(v);
+  const m = Math.round((v - h) * 60);
+  return `${h}h ${String(m).padStart(2,"0")}m`;
+}
+function localWindowText(openUtc: number, closeUtc: number) {
+  const toLocal = (h: number) => `${pad2((h + 7) % 24)}:00`;
+  return `${toLocal(openUtc)}–${toLocal(closeUtc)} TH`;
+}
+function modeLabel(mode: TradeMode | string) {
+  return getModeInfo(mode).label.replace(" Pro Max", "");
+}
+function calcModeWinRate(trades: Trade[], mode: TradeMode) {
+  const list = trades.filter(t=>t.status==="CLOSED" && t.mode===mode);
+  if (!list.length) return 0;
+  return list.filter(t=>t.result==="WIN").length / list.length * 100;
+}
+function calcSessionWinRate(trades: Trade[], session: Session) {
+  const list = trades.filter(t=>t.status==="CLOSED" && t.session===session);
+  if (!list.length) return 0;
+  return list.filter(t=>t.result==="WIN").length / list.length * 100;
+}
+function bestBy<T extends string>(items: readonly T[], scoreFn: (item:T)=>number, fallback:T) {
+  let best = fallback;
+  let bestScore = -1;
+  for (const item of items) {
+    const score = scoreFn(item);
+    if (score > bestScore) {
+      best = item;
+      bestScore = score;
+    }
+  }
+  return { item: best, score: Math.max(0, bestScore) };
+}
+function calcDiscipline(trades: Trade[], dailyStatus: ReturnType<typeof calcDailyStatus>) {
+  const recent = trades.filter(t=>t.status==="CLOSED").slice(0, 12);
+  if (!recent.length) return 72;
+  const fomo = recent.filter(t=>t.emotion?.includes("FOMO") || t.emotion?.includes("Revenge")).length;
+  const beOrWin = recent.filter(t=>t.result!=="LOSS").length;
+  const base = 65 + (beOrWin / recent.length) * 25 - fomo * 6 - dailyStatus.lossStreak * 8;
+  return clampNum(base);
+}
+function calcBattleCoach(trades: Trade[], dailyStatus: ReturnType<typeof calcDailyStatus>, stats: ReturnType<typeof calcStats>): BattleCoachMetrics {
+  const closed = trades.filter(t=>t.status==="CLOSED");
+  const modes: TradeMode[] = ["SMC","SW_RANGE","SW_BREAKOUT","PULLBACK","M5_REVERSAL"];
+  const bestMode = bestBy(modes, m=>calcModeWinRate(closed, m), "SMC");
+  const bestSession = bestBy(SESSIONS, s=>calcSessionWinRate(closed, s), "London");
+  const avgRR = Number(stats.avgRR || 0);
+  const rrPower = clampNum(avgRR <= 0 ? 25 : Math.min(100, avgRR * 28));
+  const setupPower = closed.length ? clampNum(bestMode.score || stats.winRate) : 65;
+  const sessionEdge = closed.length ? clampNum(bestSession.score || 55) : 60;
+  const discipline = calcDiscipline(closed, dailyStatus);
+  const todayLossPenalty = dailyStatus.todayLosses * 12 + dailyStatus.lossStreak * 8;
+  const overTradePenalty = dailyStatus.totalToday >= MAX_TRADES_PER_DAY ? 20 : 0;
+  const hardStopPenalty = dailyStatus.isHardStop ? 45 : 0;
+  const dayDonePenalty = dailyStatus.isDayDone ? 18 : 0;
+  const riskToday = clampNum((dailyStatus.todayLosses / MAX_TRADES_PER_DAY) * 100);
+  const winRateToday = dailyStatus.totalToday ? (dailyStatus.todayWins / dailyStatus.totalToday) * 100 : 0;
+  let score = 48;
+  score += setupPower * 0.18;
+  score += sessionEdge * 0.14;
+  score += discipline * 0.22;
+  score += rrPower * 0.16;
+  score += dailyStatus.todayWins * 5;
+  score -= todayLossPenalty + overTradePenalty + hardStopPenalty + dayDonePenalty;
+  score = clampNum(score);
+  const status = score >= 80 ? "READY" : score >= 50 ? "CAUTION" : "STAND DOWN";
+  const tone: RetroBarTone = score >= 80 ? "mint" : score >= 50 ? "butter" : "coral";
+  const notes: string[] = [];
+  if (dailyStatus.isHardStop) notes.push("LOSS streak ถึงจุด Hard Stop แล้ว — วันนี้ควรปิดโหมดเทรด");
+  else if (dailyStatus.isDayDone) notes.push("ครบจำนวนไม้ของวันแล้ว — เหลือหน้าที่แค่ review");
+  else if (dailyStatus.lossStreak === 2) notes.push("LOSS 2 ติด — พักก่อนหนึ่งรอบ อย่ารีบเอาคืน");
+  else if (score >= 80) notes.push("สภาพรวมพร้อม แต่ยังต้องให้ Checklist ผ่านก่อนเข้าไม้");
+  else notes.push("ยังมีจุดที่ต้องเช็กเพิ่มก่อนเข้าเทรด");
+  if (closed.length >= 3) {
+    notes.push(`${modeLabel(bestMode.item)} เป็น setup ที่สถิติดีสุดใน Journal (${bestMode.score.toFixed(0)}% WR)`);
+    notes.push(`${bestSession.item} เป็น session ที่มี edge สูงสุด (${bestSession.score.toFixed(0)}% WR)`);
+  } else {
+    notes.push("ข้อมูล Journal ยังน้อย — คะแนนบางส่วนเป็นค่าเริ่มต้นชั่วคราว");
+  }
+  if (avgRR < 1 && closed.length >= 3) notes.push("Avg RR ยังต่ำกว่า 1R — เน้นเข้าเฉพาะไม้ที่คุ้มความเสี่ยง");
+  if (dailyStatus.todayPL < 0) notes.push(`วันนี้ติดลบ ${money(dailyStatus.todayPL)} — ลด lot และเลิกไล่ราคา`);
+  return {
+    score: Math.round(score),
+    status,
+    tone,
+    setupName: modeLabel(bestMode.item),
+    setupPower: Math.round(setupPower),
+    sessionName: bestSession.item,
+    sessionEdge: Math.round(sessionEdge),
+    discipline: Math.round(discipline),
+    rrPower: Math.round(rrPower),
+    riskToday: Math.round(riskToday),
+    winRateToday: Math.round(winRateToday),
+    avgRR,
+    notes,
+  };
+}
+function RetroStatBar({label,value,max=100,tone="mint",right}:{label:string;value:number;max?:number;tone?:RetroBarTone;right?:string}) {
+  const safeMax = max <= 0 ? 100 : max;
+  const pct = Math.min(100, Math.max(0, (value / safeMax) * 100));
+  const blocks = 12;
+  const filled = Math.round((pct / 100) * blocks);
+  return (
+    <div className={`j-rpg-line ${tone}`}>
+      <div className="j-rpg-meta">
+        <span>{label}</span>
+        <b>{right || `${Math.round(value)}/${safeMax}`}</b>
+      </div>
+      <div className="j-rpg-bar" aria-label={`${label} ${pct.toFixed(0)}%`}>
+        <i style={{width:`${pct}%`}} />
+        <div className="j-rpg-segments">
+          {Array.from({length:blocks}).map((_,i)=><span key={i} className={i < filled ? "fill" : ""}/>) }
+        </div>
+      </div>
+    </div>
+  );
+}
+function BattleStatusBadge({metrics}:{metrics:BattleCoachMetrics}) {
+  const emoji = metrics.status === "READY" ? "🟢" : metrics.status === "CAUTION" ? "🟡" : "🔴";
+  return <div className={`j-signal-badge ${metrics.tone}`}><span>{emoji}</span><b>{metrics.status}</b></div>;
+}
+function BattleReadinessPanel({metrics,dailyStatus}:{metrics:BattleCoachMetrics;dailyStatus:ReturnType<typeof calcDailyStatus>}) {
+  return (
+    <div className="j-rpg-panel">
+      <div className="j-rpg-top battle-hero">
+        <div>
+          <div className="j-tool-label">PRE-TRADE CHECK</div>
+          <div className="j-rpg-name">BATTLE COACH</div>
+          <div className="j-tool-sub">อ่านจาก Journal จริง · ไม่ใช่สัญญาณเข้าไม้ · ใช้เป็นตัวช่วยคุมวินัยก่อนเทรด</div>
+        </div>
+        <BattleStatusBadge metrics={metrics}/>
+      </div>
+      <div className="j-rpg-avatar-row battle-main">
+        <div className="j-rpg-avatar battle-avatar">
+          <div className="battle-score">
+            <span>{metrics.score}</span>
+            <small>/100</small>
+          </div>
+        </div>
+        <div className="j-rpg-bars">
+          <RetroStatBar label="HP / READINESS" value={metrics.score} tone={metrics.tone} right={`${metrics.score}/100`} />
+          <RetroStatBar label="MP / DISCIPLINE" value={metrics.discipline} tone={metrics.discipline >= 70 ? "mint" : metrics.discipline >= 45 ? "butter" : "coral"} right={`${metrics.discipline}%`} />
+          <RetroStatBar label="XP / AVG RR" value={metrics.rrPower} tone={metrics.rrPower >= 60 ? "sky" : "butter"} right={`${metrics.avgRR.toFixed(2)}R`} />
+        </div>
+      </div>
+      <div className="j-rpg-grid battle-stat-grid">
+        <div className="battle-mini-card">
+          <div className="j-tool-label">SETUP POWER</div>
+          <b>{metrics.setupName}</b>
+          <RetroStatBar label="WR" value={metrics.setupPower} tone="lav" right={`${metrics.setupPower}%`} />
+        </div>
+        <div className="battle-mini-card">
+          <div className="j-tool-label">SESSION EDGE</div>
+          <b>{metrics.sessionName}</b>
+          <RetroStatBar label="EDGE" value={metrics.sessionEdge} tone="sky" right={`${metrics.sessionEdge}%`} />
+        </div>
+        <div className="battle-mini-card">
+          <div className="j-tool-label">RISK TODAY</div>
+          <b>{dailyStatus.todayPL >= 0 ? money(dailyStatus.todayPL) : money(dailyStatus.todayPL)}</b>
+          <RetroStatBar label="DANGER" value={metrics.riskToday} tone={metrics.riskToday >= 67 ? "coral" : metrics.riskToday >= 34 ? "butter" : "mint"} right={`${metrics.riskToday}%`} />
+        </div>
+      </div>
+      <div className="j-rpg-command-box battle-command">
+        <div className="j-rpg-command-title">COACH LOG</div>
+        <div className="battle-log">
+          {metrics.notes.map((n,i)=><div key={i}><span>{i===0?"⚔️":"•"}</span>{n}</div>)}
+        </div>
+      </div>
+    </div>
+  );
+}
+function SessionMonitorPanel({trades}:{trades:Trade[]}) {
+  const [now,setNow]=useState(new Date());
+  useEffect(()=>{ const id=setInterval(()=>setNow(new Date()),1000); return ()=>clearInterval(id); },[]);
+  const nowUtc = utcHourFloat(now);
+  const openSessions = FOREX_SESSIONS.filter(s=>isForexSessionOpen(s,nowUtc));
+  const isOverlap = isForexSessionOpen(FOREX_SESSIONS[2],nowUtc) && isForexSessionOpen(FOREX_SESSIONS[3],nowUtc);
+  const nextSession = [...FOREX_SESSIONS].sort((a,b)=>hoursUntil(a.openUtc,nowUtc)-hoursUntil(b.openUtc,nowUtc))[0];
+  const activity = isOverlap ? 92 : openSessions.length >= 2 ? 76 : openSessions.length === 1 ? 54 : 20;
+  return (
+    <div className="j-tool-stack">
+      <div className="j-rpg-mini-header">
+        <div>
+          <div className="j-tool-label">SESSION MONITOR</div>
+          <div className="j-rpg-title-sm">{isOverlap ? "⚡ OVERLAP MODE" : openSessions.length ? `${openSessions.map(s=>s.name).join(" + ")}` : "MARKET QUIET"}</div>
+          <div className="j-tool-sub">TH {now.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})} · UTC {pad2(now.getUTCHours())}:{pad2(now.getUTCMinutes())}</div>
+        </div>
+        <div className="j-tool-next">
+          <span>Next</span>
+          <b>{nextSession.name}</b>
+          <small>{fmtHours(hoursUntil(nextSession.openUtc,nowUtc))}</small>
+        </div>
+      </div>
+      <RetroStatBar label="SP / SESSION POWER" value={activity} tone={activity >= 75 ? "mint" : activity >= 45 ? "butter" : "coral"} right={`${activity}%`} />
+      <div className="j-session-grid hp-style">
+        {FOREX_SESSIONS.map(s=>{
+          const open=isForexSessionOpen(s,nowUtc);
+          const pct=sessionProgress(s,nowUtc);
+          const wr = s.name==="Sydney" ? 0 : calcSessionWinRate(trades, s.name as Session);
+          const tone: RetroBarTone = s.name === "London" ? "sky" : s.name === "New York" ? "mint" : s.name === "Tokyo" ? "lav" : "peach";
+          return (
+            <div key={s.name} className={`j-session-card ${open?"on":"off"}`}>
+              <div className="j-session-head">
+                <span className="j-session-icon" style={{background:s.color}}>{s.emoji}</span>
+                <div>
+                  <b>{s.name}</b>
+                  <small>{localWindowText(s.openUtc,s.closeUtc)}</small>
+                </div>
+                <em>{open?"OPEN":"WAIT"}</em>
+              </div>
+              <RetroStatBar label={open ? "ACTIVE TIME" : "SLEEP"} value={open ? pct : 0} tone={tone} right={open ? `${pct.toFixed(0)}%` : s.note} />
+              {s.name !== "Sydney" && (
+                <div className="session-edge-mini">
+                  <span>Journal WR</span><b>{wr ? `${wr.toFixed(0)}%` : "No data"}</b>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="j-tool-tip">
+        <b>Coach rule:</b> ถ้า Session Power สูง แต่วันนี้ครบ 3 ไม้แล้ว ให้หยุดตามระบบ · ถ้า Overlap เปิด ให้ลดความรีบและรอ Checklist ครบก่อนเสมอ
+      </div>
+    </div>
+  );
+}
+function BattleCoachSummary({dailyStatus,stats}:{dailyStatus:ReturnType<typeof calcDailyStatus>;stats:ReturnType<typeof calcStats>}) {
+  return (
+    <div className="battle-summary-grid">
+      {[
+        {l:"Today",v:`${dailyStatus.totalToday}/${MAX_TRADES_PER_DAY}`,s:"trades"},
+        {l:"Win",v:String(dailyStatus.todayWins),s:dailyStatus.totalToday?`${((dailyStatus.todayWins/dailyStatus.totalToday)*100).toFixed(0)}% today`:"no trades"},
+        {l:"Loss",v:String(dailyStatus.todayLosses),s:`streak ${dailyStatus.lossStreak}`},
+        {l:"All WR",v:`${stats.winRate.toFixed(0)}%`,s:`${stats.total} closed`},
+      ].map(x=>(
+        <div key={x.l} className="battle-summary-card">
+          <span>{x.l}</span>
+          <b>{x.v}</b>
+          <small>{x.s}</small>
+        </div>
+      ))}
+    </div>
+  );
+}
+function BattleCoachPanel({trades,dailyStatus,stats}:{trades:Trade[];dailyStatus:ReturnType<typeof calcDailyStatus>;stats:ReturnType<typeof calcStats>}) {
+  const metrics = calcBattleCoach(trades,dailyStatus,stats);
+  return (
+    <div className="j-tools-screen battle-screen">
+      <div className="j-tools-layout battle-layout">
+        <Win title="⚔️ BATTLE COACH.EXE" color="var(--j-lav)">
+          <BattleReadinessPanel metrics={metrics} dailyStatus={dailyStatus} />
+        </Win>
+        <Win title="🌍 SESSION RADAR" color="var(--j-sky)">
+          <SessionMonitorPanel trades={trades} />
+        </Win>
+      </div>
+      <Win title="📟 TODAY'S BATTLE LOG" color="var(--j-butter)">
+        <BattleCoachSummary dailyStatus={dailyStatus} stats={stats} />
+      </Win>
+    </div>
+  );
+}
+// ─── Free AI Coach: Rule-Based Setup Scoring ─────────────────────────────────
+type CoachBias = "Bull" | "Bear" | "Neutral";
+type CoachCycle = "Trend" | "Pullback" | "Sideway";
+type CoachDirection = "BUY" | "SELL";
+type CoachState = {
+  direction: CoachDirection;
+  bias: CoachBias;
+  cycle: CoachCycle;
+  htfZone: boolean;
+  bosChoch: boolean;
+  obDzSz: boolean;
+  liquidity: boolean;
+  rejection: boolean;
+  mss: boolean;
+  retest: boolean;
+  volume: boolean;
+  breakoutClose: boolean;
+  noFomo: boolean;
+  rrGood: boolean;
+  nearRange: boolean;
+  pa2: boolean;
+  dirConfirm: boolean;
+};
+type CoachScore = {
+  mode: TradeMode;
+  label: string;
+  emoji: string;
+  score: number;
+  note: string;
+};
+const defaultCoachState = (): CoachState => ({
+  direction: "BUY",
+  bias: "Bull",
+  cycle: "Pullback",
+  htfZone: false,
+  bosChoch: false,
+  obDzSz: false,
+  liquidity: false,
+  rejection: false,
+  mss: false,
+  retest: false,
+  volume: false,
+  breakoutClose: false,
+  noFomo: true,
+  rrGood: false,
+  nearRange: false,
+  pa2: false,
+  dirConfirm: false,
+});
+function score10(v: number) {
+  return Math.round(clampNum(v, 0, 10) * 10) / 10;
+}
+function biasMatchScore(s: CoachState) {
+  if (s.bias === "Neutral") return 0.5;
+  if (s.direction === "BUY" && s.bias === "Bull") return 1;
+  if (s.direction === "SELL" && s.bias === "Bear") return 1;
+  return 0;
+}
+function calcFreeCoachScores(s: CoachState, dailyStatus: ReturnType<typeof calcDailyStatus>): CoachScore[] {
+  const biasOk = biasMatchScore(s);
+  const lossPenalty = dailyStatus.lossStreak >= 3 ? 1.4 : dailyStatus.lossStreak === 2 ? 0.7 : 0;
+  const smc = score10(
+    biasOk * 1.1 +
+    (s.cycle === "Trend" || s.cycle === "Pullback" ? 1.0 : 0) +
+    (s.bosChoch ? 1.0 : 0) +
+    (s.obDzSz ? 1.0 : 0) +
+    (s.htfZone ? 0.8 : 0) +
+    (s.liquidity ? 1.4 : 0) +
+    (s.rejection ? 1.1 : 0) +
+    (s.mss ? 1.3 : 0) +
+    (s.retest ? 1.1 : 0) +
+    (s.volume ? 0.7 : 0) +
+    (s.rrGood ? 0.5 : 0) -
+    lossPenalty
+  );
+  const pullback = score10(
+    biasOk * 1.2 +
+    (s.cycle === "Pullback" ? 2.0 : s.cycle === "Trend" ? 1.0 : 0) +
+    (s.htfZone ? 1.4 : 0) +
+    (s.obDzSz ? 1.0 : 0) +
+    (s.rejection ? 1.2 : 0) +
+    (s.mss ? 1.0 : 0) +
+    (s.retest ? 0.9 : 0) +
+    (s.volume ? 0.6 : 0) +
+    (s.rrGood ? 0.7 : 0) -
+    lossPenalty
+  );
+  const range = score10(
+    (s.cycle === "Sideway" ? 2.6 : 0) +
+    (s.nearRange ? 1.8 : 0) +
+    (s.pa2 ? 1.4 : 0) +
+    (s.dirConfirm ? 1.2 : 0) +
+    (s.rejection ? 1.0 : 0) +
+    (s.rrGood ? 1.0 : 0) +
+    (s.noFomo ? 0.8 : -1.2) -
+    lossPenalty
+  );
+  const breakout = score10(
+    (s.cycle === "Sideway" ? 1.4 : s.cycle === "Trend" ? 0.7 : 0) +
+    (s.breakoutClose ? 2.5 : 0) +
+    (s.retest ? 1.5 : 0) +
+    (s.volume ? 1.5 : 0) +
+    (s.dirConfirm ? 1.0 : 0) +
+    (s.noFomo ? 1.1 : -1.5) +
+    (s.rrGood ? 0.7 : 0) -
+    lossPenalty
+  );
+  const reversal = score10(
+    (s.pa2 ? 2.2 : 0) +
+    (s.dirConfirm ? 1.6 : 0) +
+    (s.rejection ? 1.4 : 0) +
+    (s.mss ? 1.2 : 0) +
+    (s.volume ? 0.8 : 0) +
+    (s.noFomo ? 0.8 : -1.2) +
+    (s.rrGood ? 0.6 : 0) -
+    lossPenalty
+  );
+  return [
+    { mode:"SMC", label:"SMC Pro Max", emoji:"🥇", score:smc, note: smc >= 8.5 ? "A setup" : smc >= 7 ? "รอ confirm" : "ยังไม่ครบ" },
+    { mode:"PULLBACK", label:"Pullback", emoji:"🥈", score:pullback, note: pullback >= 8.5 ? "เหมาะ" : pullback >= 7 ? "พอใช้" : "ยังไม่ใช่" },
+    { mode:"SW_RANGE", label:"Sideway Range", emoji:"🟦", score:range, note: range >= 8 ? "เล่นกรอบได้" : "ไม่เด่น" },
+    { mode:"SW_BREAKOUT", label:"Breakout / Run Trend", emoji:"🟡", score:breakout, note: breakout >= 8.5 ? "หลุดกรอบสวย" : breakout >= 7 ? "รอ retest" : "ยังไม่ใช่" },
+    { mode:"M5_REVERSAL", label:"M1/M5 Reversal", emoji:"⚡", score:reversal, note: reversal >= 8 ? "กลับตัวใช้ได้" : "ยังไม่ชัด" },
+  ].sort((a,b)=>b.score-a.score);
+}
+function coachVerdict(best: CoachScore, s: CoachState, dailyStatus: ReturnType<typeof calcDailyStatus>) {
+  if (dailyStatus.lossStreak >= 3) return { text:"หยุด", color:"var(--j-coral)", emoji:"🛑", msg:"LOSS streak ถึง Hard Stop วันนี้ห้ามแก้มือ" };
+  if (!s.noFomo) return { text:"ไม่เข้า", color:"var(--j-coral)", emoji:"🔴", msg:"มี FOMO / Revenge แทรก ระบบให้หยุดก่อน" };
+  if (best.score >= 8.8 && s.rrGood) return { text:"เข้าได้", color:"var(--j-mint)", emoji:"🟢", msg:"Setup ผ่าน แต่ต้องใช้ SL/TP ตามแผน" };
+  if (best.score >= 7.0) return { text:"รอ", color:"var(--j-butter)", emoji:"🟡", msg:"มีทรง แต่รอ confirm ให้ครบก่อนกด" };
+  return { text:"ไม่เข้า", color:"var(--j-coral)", emoji:"🔴", msg:"คะแนนต่ำกว่ามาตรฐาน A setup" };
+}
+function coachReasons(s: CoachState, best: CoachScore, dailyStatus: ReturnType<typeof calcDailyStatus>) {
+  const rs: string[] = [];
+  if (dailyStatus.lossStreak >= 2) rs.push(`วันนี้ LOSS ${dailyStatus.lossStreak} ติด — เพิ่มความเข้มงวด`);
+  if (!s.liquidity && best.mode === "SMC") rs.push("SMC ยังขาด Liquidity $$$");
+  if (!s.mss && ["SMC","PULLBACK","M5_REVERSAL"].includes(best.mode)) rs.push("ยังไม่มี MSS ชัด");
+  if (!s.retest && ["SMC","SW_BREAKOUT","PULLBACK"].includes(best.mode)) rs.push("ยังไม่มี Retest ตามกฎ");
+  if (!s.volume) rs.push("Volume ยังไม่ช่วยยืนยัน");
+  if (!s.rrGood) rs.push("RR ยังไม่ผ่านเกณฑ์");
+  if (!rs.length) rs.push("เงื่อนไขหลักครบ — เล่นตามแผนได้");
+  return rs.slice(0,3);
+}
+// resize รูปก่อนส่ง AI — ลด token 60-70% ไม่กระทบคุณภาพการวิเคราะห์
+function resizeImage(dataUrl: string, maxW = 800, maxH = 600): Promise<string> {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxW / img.width, maxH / img.height);
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", 0.82)); // jpeg 82% ดีพอสำหรับกราฟ
+    };
+    img.onerror = () => resolve(dataUrl); // fallback ถ้า resize ไม่ได้
+    img.src = dataUrl;
+  });
+}
+function fileToDataUrl(file: File, cb: (v:string)=>void) {
+  const reader = new FileReader();
+  reader.onload = () => cb(String(reader.result || ""));
+  reader.readAsDataURL(file);
+}
+function CooldownBanner({remainingMs}:{remainingMs:number}) {
+  return (
+    <div className="j-btn open-badge" style={{padding:"9px 14px",background:"var(--j-butter)",fontSize:12,cursor:"not-allowed",display:"flex",alignItems:"center",gap:8}}>
+      <span>⏸️ พัก 15 นาที</span>
+      <span style={{fontFamily:"'VT323',monospace",fontSize:18}}>{fmtMMSS(remainingMs)}</span>
+    </div>
+  );
+}
+function HardLockBanner({onWriteReflection,submitted}:{onWriteReflection:()=>void;submitted:boolean}) {
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+      <div style={{padding:"9px 14px",background:"var(--j-coral)",border:"2.5px solid var(--j-ink)",borderRadius:9,fontSize:12,fontFamily:"'Fredoka',sans-serif",fontWeight:700,boxShadow:"3px 3px 0 var(--j-ink)"}}>
+        🛑 หยุดเทรดวันนี้แล้ว
+      </div>
+      {!submitted && (
+        <button onClick={onWriteReflection} className="j-btn" style={{padding:"9px 14px",background:"var(--j-butter)",fontSize:12}}>
+          📝 เขียนสรุปก่อนปิดแอป
+        </button>
+      )}
+    </div>
+  );
+}
+function ForcedLockBanner() {
+  return (
+    <div style={{padding:"9px 14px",background:"#c98a8a",border:"2.5px solid var(--j-ink)",borderRadius:9,fontSize:12,fontFamily:"'Fredoka',sans-serif",fontWeight:700,color:"var(--j-win)",boxShadow:"3px 3px 0 var(--j-ink)"}}>
+      🔒 ล็อกทั้งวัน — Pattern ซ้ำในสัปดาห์นี้
+    </div>
+  );
+}
+function ReflectionModal({onSubmit,onClose,initialText}:{onSubmit:(text:string)=>void;onClose:()=>void;initialText:string}) {
+  const [text,setText] = useState(initialText);
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20,background:"rgba(42,31,20,.9)",backdropFilter:"blur(3px)"}}>
+      <div className="j-win" style={{maxWidth:420,width:"100%"}}>
+        <div className="j-bar" style={{background:"var(--j-coral)"}}>
+          <span className="j-t">📝 สรุปก่อนปิดแอป — บังคับกรอก</span>
+        </div>
+        <div className="j-body">
+          <div style={{fontSize:48,textAlign:"center",marginBottom:10}}>🛑</div>
+          <div style={{fontFamily:"'Fredoka',sans-serif",fontSize:16,fontWeight:700,textAlign:"center",marginBottom:6}}>
+            วันนี้แพ้ให้ใจตัวเอง
+          </div>
+          <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--j-soft)",textAlign:"center",marginBottom:16,lineHeight:1.7}}>
+            เขียนสรุปสั้นๆ ก่อนปิดแอป — เกิดอะไรขึ้น และพรุ่งนี้จะทำยังไงให้ดีขึ้น<br/>เพื่อไม่ให้ pattern นี้เกิดซ้ำ
+          </div>
+          <label className="j-lab">สิ่งที่เกิดขึ้นวันนี้ / สิ่งที่จะทำพรุ่งนี้</label>
+          <textarea
+            value={text}
+            onChange={e=>setText(e.target.value)}
+            rows={5}
+            placeholder="เช่น เข้าไม้ที่ 3 ทั้งที่ checklist ไม่ครบ เพราะอยากเอาคืน พรุ่งนี้จะรอ cooldown ให้ครบก่อนเปิดไม้ใหม่..."
+            className="j-in"
+            style={{resize:"none",fontSize:13,fontFamily:"'Fredoka'",marginBottom:14}}
+            autoFocus
+          />
+          <button
+            onClick={()=>{ if(text.trim().length>=10) onSubmit(text.trim()); }}
+            disabled={text.trim().length<10}
+            className="j-btn w-full"
+            style={{padding:14,background:text.trim().length>=10?"var(--j-mint)":"#e3d9c4",fontSize:14}}
+          >
+            {text.trim().length<10 ? `พิมพ์อีก ${10-text.trim().length} ตัวอักษร` : "✓ บันทึกสรุป"}
+          </button>
+          <button onClick={onClose} className="j-chip off" style={{width:"100%",marginTop:8,fontSize:11,textAlign:"center"}}>
+            ปิดไว้ก่อน (ยังต้องกรอกทีหลัง)
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 // ─── ResetConfirmModal (ใหม่) — ยืนยันก่อนล้างข้อมูลทั้งหมด ───────────────────
 function ResetConfirmModal({onConfirm,onClose}:{onConfirm:()=>void;onClose:()=>void}) {
   const [text,setText] = useState("");
@@ -625,7 +1157,7 @@ function ResetConfirmModal({onConfirm,onClose}:{onConfirm:()=>void;onClose:()=>v
 export default function JournalPage() {
   const [trades,setTrades]     = useState<Trade[]>([]);
   const [openTrade,setOpenTrade] = useState<Trade|null>(null);
-  const [view,setView]         = useState<"dashboard"|"list"|"checklist"|"exit"|"calendar">("dashboard");
+  const [view,setView]         = useState<"dashboard"|"list"|"checklist"|"exit"|"calendar"|"tools"|"aiCoach">("dashboard");
   const [filter,setFilter]     = useState<"ALL"|Result>("ALL");
   const [accountType,setAccountType] = useState<AccountType>("cent");
   const [lightbox,setLightbox] = useState<string|null>(null);
@@ -637,7 +1169,6 @@ export default function JournalPage() {
   const [showAlert,setShowAlert] = useState(false);
   const [uploading,setUploading] = useState(false);
   const [mounted,setMounted] = useState(false);
-  const [theme,setTheme] = useState<JournalTheme>("ninja");
   // ── Discipline lock states (ใหม่) ──────────────────────────────────────────
   const [cooldownUntil,setCooldownUntil]   = useState(0);
   const [nowTick,setNowTick]               = useState(Date.now());
@@ -667,17 +1198,7 @@ export default function JournalPage() {
   const [lotInput,setLotInput]     = useState("0.10");
   const [riskAmount]               = useState(5);
   const [emotion,setEmotion]       = useState<Emotion>("😌 Calm");
-  // ── Wyckoff journal form ──────────────────────────────────────────────────
-  const [asset,setAsset]           = useState("XAUUSD");
-  const [timeframe,setTimeframe]   = useState("15s");
-  const [grade,setGrade]           = useState("A+");
-  const [wyResult,setWyResult]     = useState<Result>("WIN");
-  const [wyRR,setWyRR]             = useState("1");
-  const [wyNotes,setWyNotes]       = useState("");
-  const [beforeScreenshotUrl,setBeforeScreenshotUrl] = useState("");
-  const [afterScreenshotUrl,setAfterScreenshotUrl]   = useState("");
-  const [editingWyckoffId,setEditingWyckoffId] = useState<string|null>(null);
-  // ── Exit form (legacy trades only) ────────────────────────────────────────
+  // ── Exit form ─────────────────────────────────────────────────────────────
   const [exitInput,setExitInput]   = useState("");
   const [exitPrices,setExitPrices] = useState<number[]>([]);
   const [pasteInput,setPasteInput] = useState("");
@@ -707,17 +1228,7 @@ export default function JournalPage() {
     setSession(autoSessionFromTime(t));
     setSessionManual(false);
   };
-  useEffect(()=>{
-    setMounted(true);
-    try {
-      const saved = localStorage.getItem("yok_journal_theme") as JournalTheme | null;
-      if (saved && ["ninja","minimal","classic","cyber","sakura"].includes(saved)) setTheme(saved);
-    } catch {}
-  },[]);
-  useEffect(()=>{
-    if (!mounted) return;
-    try { localStorage.setItem("yok_journal_theme", theme); } catch {}
-  },[theme,mounted]);
+  useEffect(()=>{ setMounted(true); },[]);
   // ── Boot ──────────────────────────────────────────────────────────────────
   useEffect(()=>{
     const lines=["JOURNAL.EXE","LOADING... 🥇"];
@@ -831,85 +1342,89 @@ export default function JournalPage() {
     if(selMode==="M5_REVERSAL") return clM5;
     return {};
   };
-  // ── Save Wyckoff Journal Trade — single-page record ───────────────────────
-  const saveWyckoffTrade = async () => {
-    if (isLockedFromTrading || saving) return;
-    const rr = wyResult === "WIN" ? 1 : wyResult === "LOSS" ? -1 : 0;
-    const risk = 5;
+  // ── Save Open Trade (Pre-entry) ────────────────────────────────────────────
+  const saveOpenTrade = async () => {
+    if (isLockedFromTrading) return; // กันเหนียว: ล็อกอยู่ห้ามเปิดไม้เด็ดขาด
+    if(!selMode||!entryPrice||!slPrice) return;
     const trade: Trade = {
-      id:editingWyckoffId || uid(), status:"CLOSED", mode:"WYCKOFF",
+      id:uid(), status:"OPEN", mode:selMode,
       date:entryDate, time:entryTime, session,
-      direction, asset, timeframe, grade,
-      entryPrice:0, slPrice:0, lotPerOrder:0, lotInput:"", riskAmount:risk,
-      emotion:"😌 Calm", checklistJson:"{}",
-      exitPrices:[], avgExit:0, orderCount:0, totalLot:0,
-      totalPL:Math.round(rr*risk*100)/100, rr, result:wyResult, exitReason:"",
-      notes:wyNotes.trim(),
-      screenshotUrl:afterScreenshotUrl || beforeScreenshotUrl || "",
-      screenshotBeforeUrl:beforeScreenshotUrl,
-      screenshotAfterUrl:afterScreenshotUrl,
+      direction, entryPrice:Number(entryPrice), slPrice:Number(slPrice),
+      lotPerOrder:parseFloat(lotInput)||0.10, lotInput, riskAmount,
+      emotion, checklistJson:JSON.stringify(checklistObj()),
+      exitPrices:[], avgExit:0, orderCount:0, totalLot:0, totalPL:0,
+      rr:0, result:"BE", exitReason:"", notes:"", screenshotUrl:"",
       createdAt:new Date().toISOString(),
     };
-    const updated=editingWyckoffId ? trades.map(t=>t.id===editingWyckoffId?trade:t) : [trade,...trades];
-    setTrades(updated); save(updated);
-    const newStatus=calcDailyStatus(updated,trade.date);
-    if(trade.date===todayStr){
-      if(newStatus.isHardStop){
-        saveCooldownUntil(0); setCooldownUntil(0);
-        const hl:HardlockState={date:todayStr,submitted:false,reflectionText:"",submittedAt:""};
-        saveHardlock(hl); setHardlock(hl);
-        const weekCount=countHardStopDaysThisWeek(updated,todayStr);
-        if(weekCount>=3){
-          const tmr=tomorrowStr(todayStr); const existing=loadForcedLockDates();
-          if(!existing.includes(tmr)){ const next=[...existing,tmr]; saveForcedLockDates(next); setForcedLockDates(next); }
-        }
-      }else if(newStatus.lossStreak===2){
-        const until=Date.now()+COOLDOWN_MS; saveCooldownUntil(until); setCooldownUntil(until); setNowTick(Date.now());
-      }else{ saveCooldownUntil(0); setCooldownUntil(0); }
-    }
-    try{
-      const {data:{user}}=await supabase.auth.getUser();
-      if(user){
-        await supabase.from("journal_trades").upsert({
-          id:trade.id,user_id:user.id,date:trade.date,time:trade.time,
-          symbol:trade.asset||"XAUUSD",direction:trade.direction,session:trade.session,
-          entry_price:null,exit_prices:[],avg_exit:null,lot_per_order:null,
-          order_count:0,total_lot:0,total_pl:trade.totalPL,sl_price:null,tp_price:null,rr:trade.rr,
-          result:trade.result,smc_concept:[],htf_bias:"Neutral",entry_model:"WYCKOFF",tf:trade.timeframe,
-          notes:packWyckoffNotes(trade.notes,{asset:trade.asset||"XAUUSD",timeframe:trade.timeframe||"15s",grade:trade.grade||"A+",before:trade.screenshotBeforeUrl||"",after:trade.screenshotAfterUrl||""}),
-          screenshot_url:trade.screenshotAfterUrl||trade.screenshotBeforeUrl||null,
-          created_at:trade.createdAt,
-        },{onConflict:"id"});
-      }
-    }catch(e){ console.error("Supabase save error:",e); }
-    setBeforeScreenshotUrl(""); setAfterScreenshotUrl(""); setWyNotes(""); setWyResult("WIN"); setWyRR("1"); setGrade("A+"); setEditingWyckoffId(null);
-    sparkle(); setSaving(true); setTimeout(()=>setSaving(false),900);
+    setOpenTrade(trade); saveOpen(trade);
+    // reset form
+    setStep("mode"); setSelMode(null); setClSMC(defSMC()); setClSWR(defSWRange()); setClSWB(defSWBreak()); setClPB(defPullback()); setClM5(defM5Rev());
+    setEntryPrice(""); setSlPrice(""); setLotInput("0.10"); setEmotion("😌 Calm"); setSessionManual(false);
     setView("dashboard");
   };
-  // ── Legacy open-trade saver kept for old records / old editor ─────────────
-  const saveOpenTrade = async () => {
-    if (isLockedFromTrading) return;
-    if(!selMode||!entryPrice||!slPrice) return;
-    const trade: Trade = { id:uid(),status:"OPEN",mode:selMode,date:entryDate,time:entryTime,session,direction,
-      entryPrice:Number(entryPrice),slPrice:Number(slPrice),lotPerOrder:parseFloat(lotInput)||0.10,lotInput,riskAmount,emotion,
-      checklistJson:JSON.stringify(checklistObj()),exitPrices:[],avgExit:0,orderCount:0,totalLot:0,totalPL:0,rr:0,result:"BE",exitReason:"",notes:"",screenshotUrl:"",createdAt:new Date().toISOString() };
-    setOpenTrade(trade); saveOpen(trade); setView("dashboard");
-  };
-  // ── Legacy close handler kept for old OPEN trades ─────────────────────────
+  // ── Save Closed Trade (Post-exit) — ตรงนี้คือจุดที่ตรวจกฎ lock ทั้งหมด ────────
   const saveClosedTrade = async () => {
     if(!openTrade||!exitPrices.length) return;
-    const ep=Number(openTrade.entryPrice),lot=openTrade.lotPerOrder;
+    const ep=Number(openTrade.entryPrice), lot=openTrade.lotPerOrder;
     const perPLs=exitPrices.map(ex=>calcPL(openTrade.direction,ep,ex,lot,isCent));
     const totalPL=Math.round(perPLs.reduce((a,b)=>a+b,0)*100)/100;
     const avgExit=exitPrices.reduce((a,b)=>a+b,0)/exitPrices.length;
     const result:Result=totalPL>0.01?"WIN":totalPL<-0.01?"LOSS":"BE";
     const rr=openTrade.riskAmount>0?Math.round((totalPL/openTrade.riskAmount)*100)/100:0;
-    const closed:Trade={...openTrade,status:"CLOSED",exitPrices,avgExit:Math.round(avgExit*1000)/1000,orderCount:exitPrices.length,totalLot:exitPrices.length*lot,totalPL,rr,result,exitReason,notes:exitNotes,screenshotUrl};
-    const updated=[closed,...trades.filter(t=>t.id!==closed.id)]; setTrades(updated); save(updated); setOpenTrade(null); saveOpen(null);
-    const newStatus=calcDailyStatus(updated,closed.date);
-    if(closed.date===todayStr){ if(newStatus.isHardStop){saveCooldownUntil(0);setCooldownUntil(0);const hl:HardlockState={date:todayStr,submitted:false,reflectionText:"",submittedAt:""};saveHardlock(hl);setHardlock(hl);} else if(newStatus.lossStreak===2){const until=Date.now()+COOLDOWN_MS;saveCooldownUntil(until);setCooldownUntil(until);setNowTick(Date.now());} else {saveCooldownUntil(0);setCooldownUntil(0);} }
-    try{const {data:{user}}=await supabase.auth.getUser();if(user){await supabase.from("journal_trades").upsert({id:closed.id,user_id:user.id,date:closed.date,time:closed.time,symbol:closed.asset||"XAUUSD",direction:closed.direction,session:closed.session,entry_price:closed.entryPrice,exit_prices:closed.exitPrices,avg_exit:closed.avgExit,lot_per_order:closed.lotPerOrder,order_count:closed.orderCount,total_lot:closed.totalLot,total_pl:closed.totalPL,sl_price:closed.slPrice,tp_price:0,rr:closed.rr,result:closed.result,smc_concept:[],htf_bias:"Neutral",entry_model:closed.mode,tf:closed.timeframe||"M5",notes:closed.notes,screenshot_url:closed.screenshotUrl||null,created_at:closed.createdAt},{onConflict:"id"});}}catch(e){console.error(e);}
-    setExitPrices([]);setExitInput("");setPasteInput("");setExitReason("");setExitNotes("");setScreenshotUrl("");sparkle();setSaving(true);setTimeout(()=>setSaving(false),900);setView("dashboard");
+    const closed:Trade={
+      ...openTrade, status:"CLOSED",
+      exitPrices, avgExit:Math.round(avgExit*1000)/1000,
+      orderCount:exitPrices.length, totalLot:exitPrices.length*lot,
+      totalPL, rr, result, exitReason, notes:exitNotes, screenshotUrl,
+    };
+    const updated=[closed,...trades.filter(t=>t.id!==closed.id)];
+    setTrades(updated); save(updated);
+    setOpenTrade(null); saveOpen(null);
+    // ── ตรวจ Loss Streak Rules หลังบันทึกไม้นี้ ──
+    const newStatus = calcDailyStatus(updated, closed.date);
+    if (closed.date === todayStr) {
+      if (newStatus.isHardStop) {
+        // LOSS 3 ติด → hard lock ทั้งวัน เคลียร์ cooldown เดิม
+        saveCooldownUntil(0); setCooldownUntil(0);
+        const hl: HardlockState = { date: todayStr, submitted:false, reflectionText:"", submittedAt:"" };
+        saveHardlock(hl); setHardlock(hl);
+        // เช็ค pattern ซ้ำในสัปดาห์: hard-stop ครบ 3 วันขึ้นไปในสัปดาห์นี้ → ล็อกวันถัดไปด้วย
+        const weekCount = countHardStopDaysThisWeek(updated, todayStr);
+        if (weekCount >= 3) {
+          const tmr = tomorrowStr(todayStr);
+          const existing = loadForcedLockDates();
+          if (!existing.includes(tmr)) {
+            const next = [...existing, tmr];
+            saveForcedLockDates(next); setForcedLockDates(next);
+          }
+        }
+      } else if (newStatus.lossStreak === 2) {
+        // LOSS 2 ติด → cooldown บังคับ 15 นาที
+        const until = Date.now() + COOLDOWN_MS;
+        saveCooldownUntil(until); setCooldownUntil(until); setNowTick(Date.now());
+      } else {
+        // WIN/BE ทำให้ streak หลุด — เคลียร์ cooldown เดิม (ถ้ามี) แต่ hard lock ของวันไม่ถูกยกเลิก
+        saveCooldownUntil(0); setCooldownUntil(0);
+      }
+    }
+    // supabase
+    const {data:{user}}=await supabase.auth.getUser();
+    if(user){
+      await supabase.from("journal_trades").upsert({
+        id:closed.id,user_id:user.id,date:closed.date,time:closed.time,
+        symbol:"XAUUSDc",direction:closed.direction,session:closed.session,
+        entry_price:closed.entryPrice,exit_prices:closed.exitPrices,
+        avg_exit:closed.avgExit,lot_per_order:closed.lotPerOrder,
+        order_count:closed.orderCount,total_lot:closed.totalLot,
+        total_pl:closed.totalPL,sl_price:closed.slPrice,tp_price:0,rr:closed.rr,
+        result:closed.result,smc_concept:[],htf_bias:"Neutral",
+        entry_model:closed.mode,tf:"M5",notes:closed.notes,
+        screenshot_url:closed.screenshotUrl||null,created_at:closed.createdAt,
+      },{onConflict:"id"});
+    }
+    setExitPrices([]); setExitInput(""); setPasteInput(""); setExitReason(""); setExitNotes(""); setScreenshotUrl("");
+    sparkle(); setSaving(true); setTimeout(()=>setSaving(false),900);
+    setView("dashboard");
   };
   const submitReflection = (text: string) => {
     const hl: HardlockState = { date: todayStr, submitted:true, reflectionText:text, submittedAt:new Date().toISOString() };
@@ -946,30 +1461,19 @@ export default function JournalPage() {
     setShowResetConfirm(false);
     setView("dashboard");
   };
-  const uploadJournalImage=async(file:File,target:"before"|"after")=>{
+  const uploadScreenshot=async(file:File)=>{
+    const {data:{user}}=await supabase.auth.getUser();
+    if(!user){alert("Please log in");return;}
     setUploading(true);
     try{
-      const {data:{user}}=await supabase.auth.getUser();
-      if(user){
-        const ext=(file.name.split(".").pop()||"png").toLowerCase();
-        const path=`${user.id}/wyckoff-${Date.now()}-${target}.${ext}`;
-        const {error}=await supabase.storage.from("journal-screenshots").upload(path,file,{upsert:true,contentType:file.type});
-        if(error) throw error;
-        const {data}=supabase.storage.from("journal-screenshots").getPublicUrl(path);
-        if(target==="before") setBeforeScreenshotUrl(data.publicUrl);
-        else setAfterScreenshotUrl(data.publicUrl);
-      }else{
-        const dataUrl=await new Promise<string>((resolve,reject)=>{
-          const reader=new FileReader(); reader.onload=()=>resolve(String(reader.result||"")); reader.onerror=reject; reader.readAsDataURL(file);
-        });
-        if(target==="before") setBeforeScreenshotUrl(dataUrl);
-        else setAfterScreenshotUrl(dataUrl);
-      }
-    }catch(e){ console.error(e); alert("Upload รูปไม่สำเร็จ"); }
+      const ext=(file.name.split(".").pop()||"png").toLowerCase();
+      const path=`${user.id}/${Date.now()}.${ext}`;
+      const {error}=await supabase.storage.from("journal-screenshots").upload(path,file,{upsert:true,contentType:file.type});
+      if(error)alert("Upload failed");
+      else{const{data}=supabase.storage.from("journal-screenshots").getPublicUrl(path);setScreenshotUrl(data.publicUrl);}
+    }catch{alert("Upload error");}
     setUploading(false);
   };
-  // Legacy single-image uploader remains available for old trade editor.
-  const uploadScreenshot=async(file:File)=>{ await uploadJournalImage(file,"after"); setScreenshotUrl(afterScreenshotUrl); };
   const addExit=()=>{const v=parseFloat(exitInput);if(!isNaN(v)&&v>0){setExitPrices(p=>[...p,v]);setExitInput("");}};
   const parsePaste=()=>{
     const ns=pasteInput.split(/[\n,\s]+/).map(s=>parseFloat(s.replace(/,/g,""))).filter(n=>!isNaN(n)&&n>0);
@@ -984,14 +1488,14 @@ export default function JournalPage() {
     });
   };
   const editTrade=(t:Trade)=>{
-    if(t.mode==="WYCKOFF"){
-      setEditingWyckoffId(t.id);
-      setEntryDate(t.date||todayStr); setEntryTime(String(t.time||nowTime24()).slice(0,5)); setSession(t.session||"New York");
-      setAsset(t.asset||"XAUUSD"); setTimeframe(t.timeframe||"15s"); setGrade(t.grade||"A+"); setWyResult(t.result||"BE"); setWyRR("1"); setWyNotes(t.notes||"");
-      setBeforeScreenshotUrl(t.screenshotBeforeUrl||""); setAfterScreenshotUrl(t.screenshotAfterUrl||t.screenshotUrl||"");
-      setOpenTrade(t); setView("checklist"); return;
-    }
-    setOpenTrade(t); setExitPrices(Array.isArray(t.exitPrices) ? t.exitPrices : []); setExitReason(t.exitReason || ""); setExitNotes(t.notes || ""); setScreenshotUrl(t.screenshotUrl || ""); saveOpen(t); setView("exit");
+    // calendar / session → กดแก้ไข trade ที่ปิดแล้ว (เปิด exit view)
+    setOpenTrade(t);
+    setExitPrices(Array.isArray(t.exitPrices) ? t.exitPrices : []);
+    setExitReason(t.exitReason || "");
+    setExitNotes(t.notes || "");
+    setScreenshotUrl(t.screenshotUrl || "");
+    saveOpen(t);
+    setView("exit");
   };
   const deleteTrade=async(t:Trade)=>{
     const ok = window.confirm(`ลบการเทรดวันที่ ${t.date} เวลา ${t.time} ใช่ไหม?`);
@@ -1023,420 +1527,252 @@ export default function JournalPage() {
     return <main style={{minHeight:"100vh",background:"#f1e9da"}} />;
   }
   return (
-    <main className={`j-root theme-${theme}`}>
+    <main className="j-root">
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@500;600;700;800&family=Noto+Sans+Thai:wght@400;500;600;700&family=VT323&display=swap');
-
-        /* ================================================================
-           YOKIMURA SHINOBI — THEME SYSTEM
-           ================================================================ */
-        .j-root{
-          --j-paper:#080909;
-          --j-win:#0e1010;
-          --j-field:#0a0b0b;
-          --j-ink:#f2f2ef;
-          --j-soft:#8b8f8e;
-          --j-pink:#171919;
-          --j-mint:#e8e8e3;
-          --j-butter:#bdbdb6;
-          --j-lav:#252726;
-          --j-sky:#1b1d1d;
-          --j-peach:#303230;
-          --j-coral:#c9232c;
-          --j-red:#c9232c;
-          min-height:100vh;
-          color:var(--j-ink);
-          font-family:'Inter','Noto Sans Thai',sans-serif;
-          background:
-            radial-gradient(circle at 78% 12%,rgba(255,255,255,.055),transparent 24%),
-            radial-gradient(circle at 8% 88%,rgba(201,35,44,.045),transparent 22%),
-            linear-gradient(135deg,#050606 0%,#0b0c0c 48%,#070808 100%);
-          position:relative;
-          overflow-x:hidden;
-          padding-bottom:54px;
-        }
-
-        /* Theme variants */
-        .j-root.theme-minimal{
-          --j-paper:#f4f4f1;--j-win:#ffffff;--j-field:#fafafa;--j-ink:#171918;--j-soft:#707572;
-          --j-pink:#ededeb;--j-mint:#e4e7e3;--j-butter:#d7d9d6;--j-lav:#e7e8e5;--j-sky:#e8ebeb;--j-peach:#e7e5e1;--j-coral:#cfcfc9;
-          background:linear-gradient(180deg,#f8f8f5,#eeeeeb);
-        }
-        .j-root.theme-classic{
-          --j-paper:#211f1c;--j-win:#2b2925;--j-field:#23221f;--j-ink:#eee8dc;--j-soft:#a9a195;
-          --j-pink:#403b35;--j-mint:#52675b;--j-butter:#6b6049;--j-lav:#554b62;--j-sky:#414e55;--j-peach:#5f4c3e;--j-coral:#9b5049;
-          background:radial-gradient(circle at 50% 0,#37322c,#1d1b19 65%);
-        }
-        .j-root.theme-cyber{
-          --j-paper:#05070a;--j-win:#0b1015;--j-field:#070c11;--j-ink:#e8f7ff;--j-soft:#6d8490;
-          --j-pink:#14202a;--j-mint:#102f31;--j-butter:#283021;--j-lav:#171a32;--j-sky:#10232e;--j-peach:#18211f;--j-coral:#e43155;
-          background:radial-gradient(circle at 80% 10%,#0c2632,transparent 28%),#05070a;
-        }
-        .j-root.theme-sakura{
-          --j-paper:#151012;--j-win:#21181b;--j-field:#171114;--j-ink:#f7ecef;--j-soft:#b99da5;
-          --j-pink:#4b2732;--j-mint:#263a34;--j-butter:#4b3b2d;--j-lav:#3b2944;--j-sky:#293740;--j-peach:#49342e;--j-coral:#bd5268;
-          background:radial-gradient(circle at 85% 12%,#41232e,transparent 28%),#120e10;
-        }
-
-        .j-root::before{
-          content:'';
-          position:fixed;inset:0;pointer-events:none;z-index:999;
-          background:
-            repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(255,255,255,.018) 3px,rgba(255,255,255,.018) 4px),
-            linear-gradient(90deg,transparent 0 72%,rgba(255,255,255,.015) 72% 72.2%,transparent 72.2%);
-          mix-blend-mode:screen;
-          opacity:.65;
-        }
-        .j-root::after{
-          content:'忍';
-          position:fixed;
-          right:-30px;
-          bottom:-70px;
-          font-family:serif;
-          font-size:330px;
-          font-weight:700;
-          color:rgba(255,255,255,.018);
-          line-height:1;
-          pointer-events:none;
-          z-index:0;
-          transform:rotate(-7deg);
-        }
-
-        @keyframes scanmove{from{background-position:0 0}to{background-position:0 44px}}
+        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fredoka:wght@500;600;700&family=VT323&display=swap');
+        .j-root{--j-paper:#f1e9da;--j-win:#fffdf8;--j-ink:#5a4d42;--j-soft:#9a8d80;--j-pink:#f6cdd5;--j-mint:#c0e6d4;--j-butter:#f6e6ac;--j-lav:#ddccf0;--j-sky:#c6def0;--j-peach:#f8d6ba;--j-coral:#f3b0a8;min-height:100vh;color:var(--j-ink);font-family:'Fredoka',sans-serif;background-color:var(--j-paper);background-image:radial-gradient(var(--j-ink) 0.5px,transparent 0.6px);background-size:14px 14px;background-position:-7px -7px;padding-bottom:40px;}
+        .j-root::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:999;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(90,77,66,.03) 2px,rgba(90,77,66,.03) 4px);animation:scanmove 8s linear infinite;}
+        @keyframes scanmove{from{background-position:0 0}to{background-position:0 40px}}
         @keyframes bootfade{from{opacity:1}to{opacity:0;transform:scale(1.04)}}
-        .j-boot{
-          position:fixed;inset:0;z-index:9999;background:#050606;
-          display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
-          color:#fff;
-        }
-        .j-boot.done{animation:bootfade .5s ease forwards}
-        .j-boot-logo{
-          font-family:'Montserrat',sans-serif;font-size:clamp(32px,7vw,58px);font-weight:800;
-          letter-spacing:10px;color:#fff;text-shadow:0 0 28px rgba(255,255,255,.16);
-        }
-        .j-boot-logo::after{content:'  忍';color:#c9232c;font-family:serif}
-        @keyframes blink{50%{opacity:.65}}
-        .j-boot-cursor{display:inline-block;width:8px;height:15px;background:#fff;animation:cur .7s step-end infinite;vertical-align:middle}
+        .j-boot{position:fixed;inset:0;z-index:9999;background:#2a1f14;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;}
+        .j-boot.done{animation:bootfade .5s ease forwards;}
+        .j-boot-logo{font-family:'VT323',monospace;font-size:52px;color:#f6e6ac;letter-spacing:3px;text-shadow:0 0 20px #f6e6ac88;animation:blink 1s step-end infinite;}
+        @keyframes blink{50%{opacity:.7}}
+        .j-boot-cursor{display:inline-block;width:9px;height:15px;background:#c0e6d4;animation:cur .7s step-end infinite;vertical-align:middle;}
         @keyframes cur{50%{opacity:0}}
-        .j-boot-bar{width:min(320px,72vw);height:8px;border:1px solid #444;border-radius:2px;overflow:hidden;position:relative;background:#0c0d0d}
-        .j-boot-fill{height:100%;background:#fff;animation:barfill 1.2s ease forwards}
-        @keyframes barfill{from{width:0}to{width:100%}}
-
-        @keyframes winpop{0%{opacity:0;transform:translateY(5px)}100%{opacity:1;transform:none}}
-        .j-win{
-          animation:winpop .18s ease both;
-          background:var(--j-win);
-          border:1px solid rgba(255,255,255,.14);
-          border-radius:2px;
-          box-shadow:0 14px 40px rgba(0,0,0,.24);
-          overflow:hidden;
-          position:relative;
-          z-index:1;
-        }
-        .j-bar{
-          display:flex;align-items:center;gap:9px;padding:10px 13px;
-          border-bottom:1px solid rgba(255,255,255,.10);
-          background:linear-gradient(90deg,rgba(255,255,255,.045),transparent);
-        }
-        .j-t{
-          font-family:'DM Mono',monospace;font-size:10px;font-weight:600;letter-spacing:1.8px;
-          flex:1;display:flex;align-items:center;gap:7px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
-        }
-        .j-ctrl{display:flex;gap:4px;flex-shrink:0}
-        .j-ctrl span{
-          width:14px;height:14px;border:1px solid rgba(255,255,255,.28);border-radius:1px;
-          background:transparent;color:var(--j-ink);font-size:8px;line-height:12px;text-align:center;font-family:'DM Mono';
-        }
-        .j-body{padding:16px}
-        .j-lab{
-          font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1.8px;text-transform:uppercase;
-          color:var(--j-soft);margin-bottom:7px;display:block
-        }
-        .j-chip{
-          font-size:11px;font-weight:600;padding:7px 12px;border:1px solid rgba(255,255,255,.22);
-          border-radius:2px;background:var(--j-field);color:var(--j-ink);cursor:pointer;
-          box-shadow:none;transition:.15s;font-family:'Inter','Noto Sans Thai',sans-serif
-        }
-        .j-chip:hover{border-color:rgba(255,255,255,.55);background:rgba(255,255,255,.06)}
-        .j-chip:active{transform:translateY(1px)}
-        .j-chip.off{border-style:solid;color:var(--j-soft);background:transparent}
-        .j-in{
-          width:100%;background:var(--j-field)!important;border:1px solid rgba(255,255,255,.18);
-          border-radius:2px;padding:10px 11px;font-family:'DM Mono',monospace;font-size:12px;
-          color:var(--j-ink);outline:none;box-shadow:none
-        }
-        .j-in:focus{border-color:var(--j-ink);box-shadow:0 0 0 1px rgba(255,255,255,.08)}
-        .j-in::placeholder{color:var(--j-soft)}
-        .j-btn{
-          border:1px solid rgba(255,255,255,.28);border-radius:2px;cursor:pointer;
-          font-family:'Inter','Noto Sans Thai',sans-serif;font-weight:700;
-          box-shadow:none;transition:.15s;color:var(--j-ink)
-        }
-        .j-btn:hover{filter:brightness(1.08);transform:translateY(-1px)}
-        .j-btn:active{transform:translateY(0)}
-        .j-btn:disabled{opacity:.4;cursor:not-allowed}
-        .j-stat{
-          background:var(--j-win);border:1px solid rgba(255,255,255,.14);border-radius:2px;
-          box-shadow:none;padding:13px;text-align:center
-        }
-        .j-num{font-family:'VT323',monospace;font-size:34px;line-height:.9}
-        .j-statlab{font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1.5px;color:var(--j-soft);text-transform:uppercase;margin-top:5px}
-        .j-mini{font-size:9px;font-weight:600;padding:3px 8px;border:1px solid rgba(255,255,255,.2);border-radius:2px}
-        .j-tab{
-          font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;padding:10px 14px;cursor:pointer;
-          border:1px solid transparent;border-radius:2px 2px 0 0;background:transparent;color:var(--j-soft);font-weight:500
-        }
-        .j-tab.on{
-          background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.18);color:var(--j-ink);font-weight:700
-        }
-        @keyframes savepulse{0%,100%{box-shadow:none}50%{box-shadow:0 0 22px rgba(255,255,255,.14)}}
-        .j-saving{animation:savepulse .2s steps(2,end) 4}
+        .j-boot-bar{width:280px;height:22px;border:2px solid #c0e6d4;border-radius:4px;overflow:hidden;position:relative;}
+        .j-boot-fill{height:100%;background:linear-gradient(90deg,#c0e6d4,#8fd3b4);animation:barfill 1.2s ease forwards;}
+        @keyframes barfill{from{width:0%}to{width:100%}}
+        @keyframes winpop{0%{opacity:0;transform:scale(.92) translate(0,6px)}60%{transform:scale(1.03) translate(0,-2px)}80%{transform:scale(.98)}100%{opacity:1;transform:scale(1)}}
+        .j-win{animation:winpop .18s steps(3,end) both;background:var(--j-win);border:2.5px solid var(--j-ink);border-radius:9px;box-shadow:4px 4px 0 var(--j-ink);overflow:hidden;}
+        .j-bar{display:flex;align-items:center;gap:7px;padding:7px 10px;border-bottom:2.5px solid var(--j-ink);}
+        .j-t{font-family:'DM Mono',monospace;font-size:12px;font-weight:500;letter-spacing:.5px;flex:1;display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+        .j-ctrl{display:flex;gap:4px;flex-shrink:0;}
+        .j-ctrl span{width:15px;height:15px;border:2px solid var(--j-ink);border-radius:3px;background:var(--j-win);font-size:9px;line-height:11px;text-align:center;font-family:'DM Mono';}
+        .j-body{padding:13px;}
+        .j-lab{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--j-soft);margin-bottom:6px;display:block;}
+        .j-chip{font-size:13px;font-weight:500;padding:6px 12px;border:2px solid var(--j-ink);border-radius:7px;background:var(--j-win);color:var(--j-ink);cursor:pointer;box-shadow:2px 2px 0 var(--j-ink);transition:.1s;font-family:'Fredoka';}
+        .j-chip:active{transform:translate(2px,2px);box-shadow:0 0 0 var(--j-ink);}
+        .j-chip.off{box-shadow:none;border-style:dashed;color:var(--j-soft);background:transparent;}
+        .j-in{width:100%;background:#fbf6ea;border:2px solid var(--j-ink);border-radius:7px;padding:9px 11px;font-family:'DM Mono',monospace;font-size:14px;color:var(--j-ink);outline:none;box-shadow:inset 1px 1px 0 rgba(90,77,66,.08);}
+        .j-in:focus{box-shadow:2px 2px 0 var(--j-ink);}
+        .j-in::placeholder{color:#c3b8a8;}
+        .j-btn{border:2.5px solid var(--j-ink);border-radius:9px;cursor:pointer;font-family:'Fredoka';font-weight:700;box-shadow:3px 3px 0 var(--j-ink);transition:.1s;color:var(--j-ink);}
+        .j-btn:active{transform:translate(3px,3px);box-shadow:0 0 0 var(--j-ink);}
+        .j-btn:disabled{opacity:.45;cursor:not-allowed;}
+        .j-stat{background:var(--j-win);border:2.5px solid var(--j-ink);border-radius:9px;box-shadow:3px 3px 0 var(--j-ink);padding:10px;text-align:center;}
+        .j-num{font-family:'VT323',monospace;font-size:30px;line-height:.9;}
+        .j-statlab{font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1px;color:var(--j-soft);text-transform:uppercase;margin-top:2px;}
+        .j-mini{font-size:11px;font-weight:500;padding:3px 9px;border:1.5px solid var(--j-ink);border-radius:6px;}
+        .j-tab{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.5px;padding:9px 12px;cursor:pointer;border:2px solid transparent;border-radius:7px 7px 0 0;background:transparent;color:var(--j-soft);font-weight:500;}
+        .j-tab.on{background:var(--j-lav);border-color:var(--j-ink);color:var(--j-ink);font-weight:700;}
+        @keyframes savepulse{0%,100%{box-shadow:3px 3px 0 var(--j-ink)}50%{box-shadow:0 0 0 var(--j-ink),0 0 14px var(--j-mint)}}
+        .j-saving{animation:savepulse .2s steps(2,end) 4;}
         @keyframes tabslide{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-        .j-tabcontent{animation:tabslide .18s ease both}
-        .j-pixel{position:absolute;width:5px;height:5px;border:1px solid var(--j-ink);pointer-events:none;animation:pixelfly .7s steps(4,end) forwards}
-        @keyframes pixelfly{0%{opacity:1;transform:translate(0,0)}100%{opacity:0;transform:translate(var(--px),var(--py))}}
-
-        /* Calendar / legacy components */
-        .j-cal-nav{width:26px;height:26px;border:1px solid rgba(255,255,255,.24);border-radius:2px;background:var(--j-field);color:var(--j-ink);font-family:'DM Mono';font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer}
-        .j-cal-weekdays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-bottom:7px;text-align:center;font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);letter-spacing:1px}
-        .j-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
-        .j-cal-cell{position:relative;min-height:82px;border:1px solid rgba(255,255,255,.15);border-radius:2px;background:var(--j-field)!important;color:var(--j-ink);padding:8px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;cursor:pointer;text-align:left;font-family:'Inter','Noto Sans Thai',sans-serif;box-shadow:none;overflow:hidden}
-        .j-cal-cell.empty{visibility:hidden;cursor:default}
-        .j-cal-cell.has.win{background:rgba(230,230,225,.14)!important}
-        .j-cal-cell.has.loss{background:rgba(201,35,44,.18)!important}
-        .j-cal-cell.has.be{background:rgba(255,255,255,.07)!important}
-        .j-cal-cell.selected{outline:1px solid var(--j-ink);transform:none}
-        .j-cal-day{position:absolute;top:6px;right:8px;font-family:'DM Mono';font-size:11px;font-weight:700;color:var(--j-ink)}
-        .j-cal-content{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding-top:8px}
-        .j-cal-pl{font-family:'DM Mono';font-size:13px;line-height:1;white-space:nowrap;color:var(--j-ink)}
-        .j-cal-count,.j-cal-mini{font-family:'DM Mono';font-size:8px;color:var(--j-soft)}
-        .j-cal-mini{display:flex;gap:4px;flex-wrap:wrap;justify-content:center}
-        .j-cal-mini span{border:1px solid rgba(255,255,255,.16);border-radius:2px;background:rgba(255,255,255,.04);padding:1px 4px}
-        .j-cal-legend{display:flex;gap:14px;justify-content:center;align-items:center;margin-top:12px;flex-wrap:wrap;font-size:9px;font-family:'DM Mono';color:var(--j-soft)}
-        .j-cal-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;border:1px solid rgba(255,255,255,.4);margin-right:5px}
-        .j-cal-trade-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px dashed rgba(255,255,255,.12)}
-        .j-cal-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:12px}
-        .j-cal-summary-card{background:var(--j-field)!important;border:1px solid rgba(255,255,255,.15);border-radius:2px;padding:9px 8px;box-shadow:none;text-align:center}
-        .j-cal-summary-card span{display:block;font-family:'DM Mono';font-size:8px;letter-spacing:1px;color:var(--j-soft);text-transform:uppercase;margin-bottom:3px}
-        .j-cal-summary-card b{display:block;font-family:'VT323';font-size:24px;line-height:1;color:var(--j-ink)}
-        .j-cal-summary-card.win b{color:#e8e8e3}.j-cal-summary-card.loss b{color:#c9232c}
-        .j-cal-cell.today:after{content:'TODAY';position:absolute;left:6px;top:6px;font-family:'DM Mono';font-size:6px;font-weight:800;color:#fff;background:#c9232c;border:1px solid #c9232c;border-radius:1px;padding:1px 4px}
-        .j-cal-cell.today .j-cal-day{color:#fff}
-        .j-cal-empty-note{background:var(--j-field)!important;border:1px dashed rgba(255,255,255,.2);border-radius:2px;padding:10px;text-align:center;font-family:'DM Mono';font-size:9px;color:var(--j-soft)}
-        .j-open-edit-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-        .j-open-edit-grid.two{grid-template-columns:repeat(2,1fr)}
-        .j-open-edit-note{margin-top:10px;background:var(--j-field)!important;border:1px dashed rgba(255,255,255,.2);border-radius:2px;padding:8px 10px;font-family:'DM Mono';font-size:9px;color:var(--j-soft);line-height:1.5}
-
-        /* Shinobi brand/header */
-        .j-shinobi-header{
-          display:grid;grid-template-columns:minmax(0,1fr) auto;gap:22px;align-items:center;
-          min-height:112px;padding:20px 22px!important;
-          background:
-            linear-gradient(90deg,rgba(255,255,255,.045),transparent 42%),
-            linear-gradient(180deg,rgba(0,0,0,.1),transparent);
-        }
-        .j-brand-kicker{font-family:'DM Mono';font-size:9px;letter-spacing:4px;color:var(--j-soft);margin-bottom:8px}
-        .j-brand{
-          display:flex;align-items:center;gap:13px
-        }
-        .j-brand-mark{
-          width:48px;height:48px;display:flex;align-items:center;justify-content:center;
-          border:1px solid rgba(255,255,255,.24);font-family:serif;font-size:30px;
-          background:#090a0a;color:#fff;box-shadow:inset 0 0 20px rgba(255,255,255,.03)
-        }
-        .j-brand-name{
-          font-family:'Montserrat',sans-serif;font-weight:800;font-size:clamp(23px,4vw,38px);
-          letter-spacing:5px;line-height:1;color:#fff
-        }
-        .j-brand-sub{font-family:'DM Mono';font-size:8px;letter-spacing:3px;color:var(--j-soft);margin-top:7px}
-        .j-mantra{
-          max-width:360px;text-align:right;font-family:'DM Mono';font-size:9px;line-height:1.8;
-          letter-spacing:1.4px;color:var(--j-soft);text-transform:uppercase
-        }
-        .j-mantra strong{display:block;color:var(--j-ink);font-size:10px;letter-spacing:2px}
-        .j-theme-box{display:flex;align-items:center;gap:7px;margin-top:10px;justify-content:flex-end}
-        .j-theme-label{font-family:'DM Mono';font-size:8px;letter-spacing:1.4px;color:var(--j-soft);text-transform:uppercase}
-        .j-theme-select{
-          appearance:none;background:var(--j-field);color:var(--j-ink);border:1px solid rgba(255,255,255,.24);
-          border-radius:2px;padding:7px 28px 7px 9px;font-family:'DM Mono';font-size:9px;cursor:pointer;
-          background-image:linear-gradient(45deg,transparent 50%,#aaa 50%),linear-gradient(135deg,#aaa 50%,transparent 50%);
-          background-position:calc(100% - 12px) 11px,calc(100% - 8px) 11px;background-size:4px 4px,4px 4px;background-repeat:no-repeat;
-        }
-        .j-theme-select option{background:#101111;color:#fff}
-        .j-ninja-divider{height:1px;background:linear-gradient(90deg,transparent,var(--j-ink),transparent);opacity:.28;margin:0 8px}
-        .j-quote-strip{
-          max-width:780px;margin:12px auto 0;padding:0 12px;
-          display:flex;align-items:center;gap:12px;color:var(--j-soft)
-        }
-        .j-quote-strip i{width:34px;height:1px;background:var(--j-red);display:block;flex:0 0 auto}
-        .j-quote-strip span{font-family:'DM Mono';font-size:8px;letter-spacing:2px}
-        .j-quote-strip b{font-family:'Montserrat';font-size:9px;letter-spacing:2px;color:var(--j-ink);font-weight:600}
-
-        /* Wyckoff execution page */
-        .j-execution-card{border-color:rgba(255,255,255,.18)!important}
-        .j-execution-title{
-          font-family:'Montserrat';font-size:11px;letter-spacing:3px;font-weight:700;
-          color:var(--j-ink);text-transform:uppercase
-        }
-        .j-execution-heading{
-          font-family:'Montserrat';font-size:clamp(24px,5vw,38px);font-weight:800;letter-spacing:1px;
-          margin:2px 0 3px;color:#fff
-        }
-        .j-execution-sub{font-family:'Noto Sans Thai';font-size:10px;color:var(--j-soft);line-height:1.7}
-        .j-wy-badge{
-          display:inline-flex;align-items:center;gap:7px;padding:5px 9px;border:1px solid rgba(255,255,255,.18);
-          font-family:'DM Mono';font-size:9px;letter-spacing:1.5px;color:var(--j-soft);margin-bottom:13px
-        }
-        .j-result-row{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
-        .j-result-btn{
-          border:1px solid rgba(255,255,255,.16);background:var(--j-field);color:var(--j-soft);
-          padding:11px 8px;font-family:'DM Mono';font-size:10px;cursor:pointer;border-radius:2px;transition:.15s
-        }
-        .j-result-btn:hover{border-color:rgba(255,255,255,.4);color:#fff}
-        .j-result-btn.active{background:#fff;color:#050606;border-color:#fff;font-weight:700}
-        .j-result-btn.loss.active{background:#c9232c;color:#fff;border-color:#c9232c}
-        .j-result-btn.be.active{background:#686b68;color:#fff;border-color:#686b68}
-        .j-rr-fixed{
-          display:flex;align-items:center;justify-content:space-between;padding:11px 12px;
-          background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.12);border-radius:2px
-        }
-        .j-rr-fixed span{font-family:'DM Mono';font-size:8px;letter-spacing:1.5px;color:var(--j-soft)}
-        .j-rr-fixed b{font-family:'VT323';font-size:26px;line-height:1;color:#fff}
-        .j-upload-box{
-          border:1px dashed rgba(255,255,255,.22);background:rgba(255,255,255,.018);
-          min-height:145px;display:flex;flex-direction:column;align-items:center;justify-content:center;
-          padding:14px;transition:.15s
-        }
-        .j-upload-box:hover{border-color:rgba(255,255,255,.55);background:rgba(255,255,255,.035)}
-        .j-upload-icon{font-size:28px;line-height:1;margin-bottom:8px;filter:grayscale(1)}
-        .j-upload-title{font-family:'Montserrat';font-size:11px;font-weight:700;letter-spacing:1px}
-        .j-upload-sub{font-family:'DM Mono';font-size:8px;color:var(--j-soft);margin-top:6px;text-align:center}
-        .j-save-primary{
-          background:#f1f1ed!important;color:#070808!important;border-color:#fff!important;
-          letter-spacing:.4px
-        }
-        .j-save-primary:hover{background:#fff!important;box-shadow:0 0 24px rgba(255,255,255,.12)}
-
-        /* Mobile */
-        .j-page-shell{max-width:780px;margin:0 auto;padding:16px 12px 0;position:relative;z-index:1}
-        .j-tabs-wrap{max-width:780px;margin:14px auto 0;display:flex;gap:7px;padding:0 12px 4px;overflow-x:auto;-webkit-overflow-scrolling:touch;border-bottom:1px solid rgba(255,255,255,.14);position:relative;z-index:2}
-        .j-tabs-wrap::-webkit-scrollbar{display:none}
-        .j-mobile-grid,.j-input-pair{min-width:0}
-        input,textarea,button,select{max-width:100%}
-        img{max-width:100%}
-        .j-header-wrap{position:relative;z-index:3}
-        @media(max-width:720px){
-          .j-shinobi-header{grid-template-columns:1fr;gap:14px;min-height:auto}
-          .j-mantra{text-align:left;max-width:none}
-          .j-theme-box{justify-content:flex-start}
-          .j-cal-grid{gap:4px}.j-cal-weekdays{gap:4px}.j-cal-cell{min-height:68px;padding:6px}
-          .j-cal-pl{font-size:11px}.j-cal-count,.j-cal-mini{display:none}
-          .j-cal-day{font-size:10px}
-          .j-cal-summary-grid,.j-open-edit-grid,.j-open-edit-grid.two{grid-template-columns:1fr 1fr}
-        }
+        .j-tabcontent{animation:tabslide .15s steps(2,end) both;}
+        .j-pixel{position:absolute;width:8px;height:8px;border:1.5px solid var(--j-ink);pointer-events:none;animation:pixelfly .7s steps(4,end) forwards;}
+        @keyframes pixelfly{0%{opacity:1;transform:translate(0,0) scale(1)}50%{opacity:1;transform:translate(var(--px),var(--py)) scale(1.2)}100%{opacity:0;transform:translate(var(--px),calc(var(--py) + 20px)) scale(0)}}
+        .j-cal-nav{width:24px;height:24px;border:2px solid var(--j-ink);border-radius:5px;background:var(--j-win);color:var(--j-ink);font-family:'DM Mono',monospace;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:1px 1px 0 var(--j-ink);}
+        .j-cal-nav:active{transform:translate(1px,1px);box-shadow:none;}
+        .j-cal-weekdays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;margin-bottom:8px;text-align:center;font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);letter-spacing:1px;}
+        .j-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;}
+        .j-cal-cell{position:relative;min-height:86px;border:2px solid var(--j-ink);border-radius:8px;background:#fbf6ea;color:var(--j-ink);padding:8px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;cursor:pointer;text-align:left;font-family:'Fredoka','Noto Sans Thai',sans-serif;box-shadow:2px 2px 0 var(--j-ink);overflow:hidden;}
+        .j-cal-cell.empty{visibility:hidden;box-shadow:none;cursor:default;}
+        .j-cal-cell.has.win{background:var(--j-mint);}
+        .j-cal-cell.has.loss{background:var(--j-pink);}
+        .j-cal-cell.has.be{background:var(--j-lav);}
+        .j-cal-cell.selected{outline:3px solid var(--j-butter);transform:translate(1px,1px);box-shadow:1px 1px 0 var(--j-ink);}
+        .j-cal-day{position:absolute;top:6px;right:8px;font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--j-ink);line-height:1;}
+        .j-cal-content{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding-top:8px;}
+        .j-cal-pl{font-family:'DM Mono',monospace;font-size:15px;line-height:1;white-space:nowrap;color:var(--j-ink);}
+        .j-cal-count{font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);white-space:nowrap;}
+        .j-cal-mini{display:flex;gap:4px;flex-wrap:wrap;justify-content:center;font-family:'DM Mono',monospace;font-size:8px;color:var(--j-soft);}
+        .j-cal-mini span{border:1px solid var(--j-ink);border-radius:4px;background:rgba(255,253,248,.55);padding:1px 4px;}
+        .j-cal-legend{display:flex;gap:14px;justify-content:center;align-items:center;margin-top:12px;flex-wrap:wrap;font-size:10px;font-family:'DM Mono',monospace;color:var(--j-soft);}
+        .j-cal-legend i{display:inline-block;width:9px;height:9px;border-radius:50%;border:1px solid var(--j-ink);margin-right:5px;vertical-align:-1px;}
+        .j-cal-trade-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1.5px dashed #e3d9c4;}
+        .j-cal-trade-row:last-child{border-bottom:none;}
+        .j-cal-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;}
+        .j-cal-summary-card{background:#fbf6ea;border:2px solid var(--j-ink);border-radius:8px;padding:9px 8px;box-shadow:2px 2px 0 var(--j-ink);text-align:center;}
+        .j-cal-summary-card span{display:block;font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1px;color:var(--j-soft);text-transform:uppercase;margin-bottom:3px;}
+        .j-cal-summary-card b{display:block;font-family:'VT323',monospace;font-size:24px;line-height:1;color:var(--j-ink);}
+        .j-cal-summary-card.win b{color:#3f9b73}.j-cal-summary-card.loss b{color:#d4685f}
+        .j-cal-cell.today:after{content:'TODAY';position:absolute;left:6px;top:6px;font-family:'DM Mono',monospace;font-size:7px;font-weight:800;color:#d4a65f;background:var(--j-butter);border:1px solid var(--j-ink);border-radius:4px;padding:1px 4px;}
+        .j-cal-cell.today .j-cal-day{color:#d4a65f;}
+        .j-cal-empty-note{background:#fbf6ea;border:1.5px dashed var(--j-ink);border-radius:8px;padding:10px;text-align:center;font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);}
+        .j-open-edit-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+        .j-open-edit-grid.two{grid-template-columns:repeat(2,1fr);}
+        .j-open-edit-note{margin-top:10px;background:#fbf6ea;border:1.5px dashed var(--j-ink);border-radius:8px;padding:8px 10px;font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);line-height:1.5;}
+        @media(max-width:720px){.j-cal-grid{gap:5px}.j-cal-weekdays{gap:5px}.j-cal-cell{min-height:70px;padding:6px}.j-cal-pl{font-size:12px}.j-cal-count,.j-cal-mini{display:none}.j-cal-day{font-size:11px;top:5px;right:6px}.j-cal-trade-row{align-items:flex-start;flex-wrap:wrap}.j-cal-trade-row b{margin-left:auto}.j-cal-summary-grid,.j-open-edit-grid,.j-open-edit-grid.two{grid-template-columns:1fr 1fr}}
+        .j-tools-screen{display:flex;flex-direction:column;gap:12px;}
+        .j-tools-layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:12px;align-items:start;}
+        .j-tool-label{font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px;}
+        .j-tool-sub{font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);line-height:1.5;margin-top:4px;}
+        .j-tool-stack{display:flex;flex-direction:column;gap:10px;}
+        .j-tool-next{min-width:94px;text-align:center;border:2px solid var(--j-ink);border-radius:8px;background:var(--j-win);padding:7px 8px;font-family:'DM Mono',monospace;box-shadow:2px 2px 0 var(--j-ink);}
+        .j-tool-next span{display:block;font-size:8px;color:var(--j-soft);text-transform:uppercase;}
+        .j-tool-next b{display:block;font-size:12px;margin-top:2px;}
+        .j-tool-next small{display:block;font-size:9px;color:#3f9b73;margin-top:1px;}
+        .j-tool-tip{font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);line-height:1.55;background:#fbf6ea;border:1.5px dashed var(--j-ink);border-radius:8px;padding:9px 10px;}
+        .j-rpg-panel{display:flex;flex-direction:column;gap:12px;}
+        .j-rpg-top{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fbf6ea;border:2px solid var(--j-ink);border-radius:9px;padding:12px;box-shadow:2px 2px 0 var(--j-ink);}
+        .j-rpg-name{font-family:'VT323',monospace;font-size:34px;line-height:1;color:var(--j-ink);letter-spacing:1px;}
+        .j-rpg-title-sm{font-family:'VT323',monospace;font-size:26px;line-height:1;color:var(--j-ink);letter-spacing:.5px;}
+        .j-signal-badge{border:2px solid var(--j-ink);border-radius:9px;padding:8px 10px;box-shadow:2px 2px 0 var(--j-ink);font-family:'DM Mono',monospace;display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;white-space:nowrap;}
+        .j-signal-badge.mint{background:var(--j-mint);}.j-signal-badge.butter{background:var(--j-butter);}.j-signal-badge.coral{background:var(--j-coral);}
+        .j-rpg-avatar-row{display:grid;grid-template-columns:92px minmax(0,1fr);gap:12px;align-items:stretch;}
+        .j-rpg-avatar{border:3px solid var(--j-ink);border-radius:12px;background:linear-gradient(180deg,var(--j-butter),var(--j-peach));box-shadow:3px 3px 0 var(--j-ink);display:flex;align-items:center;justify-content:center;font-size:42px;min-height:112px;image-rendering:pixelated;}
+        .j-rpg-bars{display:flex;flex-direction:column;gap:9px;justify-content:center;}
+        .j-rpg-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;}
+        .j-rpg-line{display:flex;flex-direction:column;gap:5px;min-width:0;}
+        .j-rpg-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);text-transform:uppercase;}
+        .j-rpg-meta b{color:var(--j-ink);font-size:9px;white-space:nowrap;}
+        .j-rpg-bar{height:18px;position:relative;border:2px solid var(--j-ink);border-radius:6px;background:#e3d9c4;box-shadow:2px 2px 0 var(--j-ink);overflow:hidden;}
+        .j-rpg-bar i{position:absolute;inset:0 auto 0 0;width:0%;transition:width .45s steps(8,end);background:var(--j-mint);}
+        .j-rpg-line.sky .j-rpg-bar i{background:var(--j-sky);}.j-rpg-line.lav .j-rpg-bar i{background:var(--j-lav);}.j-rpg-line.butter .j-rpg-bar i{background:var(--j-butter);}.j-rpg-line.coral .j-rpg-bar i{background:var(--j-coral);}.j-rpg-line.peach .j-rpg-bar i{background:var(--j-peach);}
+        .j-rpg-segments{position:absolute;inset:2px;display:grid;grid-template-columns:repeat(12,1fr);gap:2px;}
+        .j-rpg-segments span{border-right:1px solid rgba(90,77,66,.28);background:rgba(255,253,248,.22);}
+        .j-rpg-segments span.fill{background:rgba(255,253,248,.06);}
+        .j-rpg-command-box{border:2px solid var(--j-ink);border-radius:9px;background:var(--j-win);padding:10px 12px;box-shadow:2px 2px 0 var(--j-ink);}
+        .j-rpg-command-title{font-family:'VT323',monospace;font-size:20px;line-height:1;margin-bottom:4px;}
+        .j-rpg-command-text{font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);line-height:1.6;}
+        .j-rpg-mini-header{display:flex;justify-content:space-between;gap:10px;align-items:center;background:#fbf6ea;border:2px solid var(--j-ink);border-radius:9px;padding:12px;box-shadow:2px 2px 0 var(--j-ink);}
+        .j-session-grid{display:grid;grid-template-columns:1fr;gap:9px;}
+        .j-session-card{border:2px solid var(--j-ink);border-radius:9px;background:var(--j-win);padding:10px;box-shadow:2px 2px 0 var(--j-ink);transition:.15s;}
+        .j-session-card.off{opacity:.72;box-shadow:none;background:#fbf6ea;}
+        .j-session-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+        .j-session-icon{width:30px;height:30px;border:2px solid var(--j-ink);border-radius:8px;display:flex;align-items:center;justify-content:center;box-shadow:1px 1px 0 var(--j-ink);}
+        .j-session-head b{display:block;font-family:'DM Mono',monospace;font-size:12px;line-height:1;color:var(--j-ink);}
+        .j-session-head small{display:block;font-family:'DM Mono',monospace;font-size:8px;color:var(--j-soft);margin-top:3px;}
+        .j-session-head em{margin-left:auto;font-style:normal;font-family:'DM Mono',monospace;font-size:8px;font-weight:700;border:1.5px solid var(--j-ink);border-radius:5px;padding:2px 5px;background:rgba(255,253,248,.65);}
+        .battle-screen{gap:14px;}
+        .battle-layout{grid-template-columns:minmax(0,1.12fr) 390px;}
+        .battle-hero{background:linear-gradient(135deg,var(--j-lav),#fffdf8 68%);}
+        .battle-main{grid-template-columns:118px minmax(0,1fr);}
+        .battle-avatar{background:linear-gradient(180deg,var(--j-butter),var(--j-peach));min-height:128px;position:relative;overflow:hidden;}
+        .battle-avatar:before{content:'';position:absolute;inset:10px;border:2px dashed rgba(90,77,66,.35);border-radius:9px;}
+        .battle-score{position:relative;text-align:center;font-family:'VT323',monospace;color:var(--j-ink);line-height:.9;}
+        .battle-score span{display:block;font-size:48px;}
+        .battle-score small{font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);}
+        .battle-stat-grid{grid-template-columns:repeat(3,minmax(0,1fr));}
+        .battle-mini-card{background:#fbf6ea;border:2px solid var(--j-ink);border-radius:9px;padding:10px;box-shadow:2px 2px 0 var(--j-ink);display:flex;flex-direction:column;gap:8px;min-width:0;}
+        .battle-mini-card>b{font-family:'VT323',monospace;font-size:22px;line-height:1;color:var(--j-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .battle-command{background:linear-gradient(180deg,#fffdf8,#fbf6ea);}
+        .battle-log{display:flex;flex-direction:column;gap:6px;font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);line-height:1.5;}
+        .battle-log div{display:flex;gap:7px;align-items:flex-start;}
+        .battle-log span{color:var(--j-ink);font-weight:800;}
+        .session-edge-mini{display:flex;justify-content:space-between;gap:8px;margin-top:7px;font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);}
+        .session-edge-mini b{color:var(--j-ink);}
+        .battle-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+        .battle-summary-card{background:#fbf6ea;border:2px solid var(--j-ink);border-radius:9px;padding:11px 10px;box-shadow:2px 2px 0 var(--j-ink);text-align:center;}
+        .battle-summary-card span{display:block;font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);text-transform:uppercase;letter-spacing:1px;}
+        .battle-summary-card b{display:block;font-family:'VT323',monospace;font-size:30px;line-height:1;margin-top:3px;color:var(--j-ink);}
+        .battle-summary-card small{display:block;font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);margin-top:2px;}
+        @media(max-width:820px){.j-tools-layout,.battle-layout{grid-template-columns:1fr}.j-rpg-avatar-row,.battle-main{grid-template-columns:1fr}.j-rpg-avatar{min-height:76px}.battle-avatar{min-height:96px}.j-rpg-grid,.battle-stat-grid,.battle-summary-grid{grid-template-columns:1fr}.j-rpg-mini-header{align-items:flex-start;flex-direction:column}.j-tool-next{width:100%;}.j-rpg-top{align-items:flex-start;flex-direction:column}.j-signal-badge{width:100%;justify-content:center;}} 
+        /* ─── Mobile First Polish ───────────────────────────────────────── */
+        .j-page-shell{max-width:780px;margin:0 auto;padding:16px 12px 0;}
+        .j-tabs-wrap{max-width:780px;margin:14px auto 0;display:flex;gap:8px;padding:0 12px 4px;overflow-x:auto;-webkit-overflow-scrolling:touch;border-bottom:none;} .j-tabs-wrap::-webkit-scrollbar{display:none;}
+        .j-mobile-grid{min-width:0;}
+        .j-input-pair{min-width:0;}
+        input, textarea, button, select{max-width:100%;}
+        img{max-width:100%;}
         @media(max-width:640px){
-          .j-root{overflow-x:hidden}
-          .j-header-wrap{padding:8px 8px 0!important}
-          .j-page-shell{padding:10px 8px 0!important;max-width:100%!important}
-          .j-win{border-radius:2px;margin-bottom:10px}
-          .j-bar{padding:9px 10px}
-          .j-t{font-size:9px;letter-spacing:1px;white-space:normal;line-height:1.3}
-          .j-body{padding:11px!important}
-          .j-lab{font-size:8px!important;letter-spacing:1.2px}
-          .j-chip{font-size:10px!important;padding:8px 9px!important;min-height:34px}
-          .j-btn{min-height:40px}
-          .j-in{font-size:12px;padding:10px}
-          .j-num{font-size:27px}
-          .j-stat{padding:10px 6px}
-          .j-statlab{font-size:7px}
-          .j-header-wrap > .j-win{max-width:100%!important;margin:0!important}
-          .j-tabs-wrap{margin:10px auto 0!important;padding:0 8px 4px!important;border-bottom:1px solid rgba(255,255,255,.14)!important}
-          .j-tab{flex:0 0 auto!important;border:1px solid rgba(255,255,255,.16)!important;border-radius:2px!important;background:var(--j-win)!important;padding:8px 12px!important;font-size:9px!important;box-shadow:none}
-          .j-tab.on{background:rgba(255,255,255,.08)!important;color:var(--j-ink)!important}
-          .j-mobile-grid,.j-upload-grid,.j-open-edit-grid,.j-open-edit-grid.two{grid-template-columns:1fr!important}
-          .j-input-pair{grid-template-columns:1fr 1fr!important}
-          .j-cal-weekdays{font-size:7px}.j-cal-grid{gap:3px}
-          .j-cal-cell{min-height:52px;padding:4px}
-          .j-cal-pl{font-size:9px}
-          .j-cal-count,.j-cal-mini{font-size:6px}
-          .grid{min-width:0}
-          .space-y-4 > * + *{margin-top:10px!important}
-          .space-y-3 > * + *{margin-top:8px!important}
-          textarea{min-height:76px!important}
-          .j-brand-name{font-size:22px;letter-spacing:3px}
-          .j-brand-mark{width:42px;height:42px;font-size:26px}
-          .j-brand-sub{font-size:7px;letter-spacing:2px}
-          .j-mantra{font-size:8px}
-          .j-theme-select{font-size:8px}
-          .j-execution-heading{font-size:27px}
+          .j-root{background-size:12px 12px;overflow-x:hidden;}
+          .j-header-wrap{padding:8px 8px 0!important;}
+          .j-page-shell{padding:10px 8px 0!important;max-width:100%!important;}
+          .j-win{border-width:2px;border-radius:12px;box-shadow:2px 2px 0 var(--j-ink);margin-bottom:10px;}
+          .j-bar{padding:8px 9px;border-bottom-width:2px;}
+          .j-t{font-size:10px;letter-spacing:.1px;white-space:normal;line-height:1.25;}
+          .j-ctrl span{width:13px;height:13px;line-height:9px;font-size:8px;border-width:1.5px;}
+          .j-body{padding:10px!important;}
+          .j-lab,.j-tool-label{font-size:9px!important;letter-spacing:.7px;}
+          .j-chip{font-size:11px!important;padding:8px 9px!important;min-height:36px;border-width:1.8px;border-radius:9px;box-shadow:1.5px 1.5px 0 var(--j-ink);}
+          .j-btn{min-height:40px;border-width:2px;border-radius:10px;box-shadow:2px 2px 0 var(--j-ink);}
+          .j-in{font-size:13px;padding:10px 10px;}
+          .j-num{font-size:26px;}
+          .j-stat{padding:8px 6px;border-width:2px;box-shadow:2px 2px 0 var(--j-ink);}
+          .j-statlab{font-size:7px;}
+          .j-header-wrap > .j-win{max-width:100%!important;margin:0!important;}
+          .j-header-wrap .j-body{align-items:flex-start!important;gap:10px!important;}
+          .j-header-wrap .j-body > div:first-child{width:100%;}
+          .j-header-wrap .j-body > div:first-child div:first-child{font-size:28px!important;line-height:.9!important;}
+          .j-header-wrap .j-body > div:last-child{width:100%;display:flex!important;flex-wrap:wrap!important;gap:8px!important;}
+          .j-header-wrap .j-body > div:last-child button{width:100%;}
+          .j-tabs-wrap{position:relative!important;left:auto;right:auto;bottom:auto;z-index:10;max-width:780px!important;margin:12px auto 0!important;padding:0 12px 4px!important;display:flex!important;gap:8px!important;overflow-x:auto!important;white-space:nowrap!important;border-top:none!important;border-bottom:none!important;background:transparent!important;box-shadow:none;-webkit-overflow-scrolling:touch;}
+          .j-tabs-wrap::-webkit-scrollbar{display:none;}
+          .j-tab{flex:0 0 auto!important;border:2px solid var(--j-ink)!important;border-radius:20px!important;background:var(--j-win)!important;padding:9px 16px!important;font-size:12px!important;line-height:1.25!important;text-align:center!important;box-shadow:2px 2px 0 var(--j-ink);white-space:nowrap!important;display:flex!important;align-items:center!important;gap:5px!important;}
+          .j-tab.on{background:var(--j-lav)!important;border-bottom-color:var(--j-ink)!important;color:var(--j-ink)!important;}
+          .j-mobile-grid,.j-upload-grid,.j-tools-layout,.battle-layout,.j-open-edit-grid,.j-open-edit-grid.two{grid-template-columns:1fr!important;}
+          .j-input-pair{grid-template-columns:1fr 1fr!important;}
+          .j-cal-summary-grid,.battle-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+          .j-rpg-grid,.battle-stat-grid{grid-template-columns:1fr!important;}
+          .j-rpg-avatar-row,.battle-main{grid-template-columns:1fr!important;}
+          .j-rpg-avatar,.battle-avatar{min-height:80px!important;}
+          .battle-score span{font-size:38px!important;}
+          .j-cal-weekdays{gap:4px;font-size:8px;}
+          .j-cal-grid{gap:4px;}
+          .j-cal-cell{min-height:54px;padding:5px;border-width:1.5px;border-radius:7px;box-shadow:1px 1px 0 var(--j-ink);}
+          .j-cal-day{font-size:10px;top:4px;right:5px;}
+          .j-cal-pl{font-size:10px;}
+          .j-cal-count,.j-cal-mini{font-size:7px;}
+          .j-cal-cell.today:after{display:none;}
+          .grid{min-width:0;}
+          .grid.grid-cols-2{gap:8px!important;}
+          .space-y-4 > * + *{margin-top:10px!important;}
+          .space-y-3 > * + *{margin-top:8px!important;}
+          [style*="maxWidth:560"],[style*="max-width:560px"]{max-width:100%!important;}
+          [style*="gridTemplateColumns"]{min-width:0;}
+          textarea{min-height:76px!important;}
         }
-        .open-badge{animation:blink .8s step-end infinite}
+        .open-badge{animation:blink .8s step-end infinite;}
       `}</style>
       {/* Boot */}
-      {booting&&(<div className={`j-boot ${bootDone?"done":""}`}><div className="j-boot-logo">JOURNAL.EXE</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:13,color:"#c0e6d4",minHeight:40,whiteSpace:"pre"}}>{bootText}<span className="j-boot-cursor"/></div><div className="j-boot-bar"><div className="j-boot-fill"/></div><div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"#8b8f8e",opacity:.8,letterSpacing:2}}>YOKIMURA SHINOBI · WYCKOFF · TRUST YOUR PROCESS</div></div>)}
-      {/* Header — Yokimura Shinobi */}
+      {booting&&(<div className={`j-boot ${bootDone?"done":""}`}><div className="j-boot-logo">JOURNAL.EXE</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:13,color:"#c0e6d4",minHeight:40,whiteSpace:"pre"}}>{bootText}<span className="j-boot-cursor"/></div><div className="j-boot-bar"><div className="j-boot-fill"/></div><div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#c0e6d4",opacity:.6,letterSpacing:2}}>SMC · XAUUSD · TRUST YOUR OWN</div></div>)}
+      {/* Header */}
       <div className="j-header-wrap" style={{padding:"14px 12px 0"}}>
         <div className="j-win" style={{maxWidth:780,margin:"0 auto"}}>
-          <div className="j-bar" style={{background:"rgba(255,255,255,.025)"}}>
-            <span className="j-t">忍 YOKIMURA SHINOBI — TRADING JOURNAL / WYCKOFF</span>
-            <span className="j-ctrl">
-              <span>_</span><span>▢</span>
-              <Link href="/" style={{textDecoration:"none",color:"var(--j-ink)"}}><span>✕</span></Link>
-            </span>
+          <div className="j-bar" style={{background:"var(--j-pink)"}}>
+            <span className="j-t">★ JOURNAL.EXE — XAUUSD SMC</span>
+            <span className="j-ctrl"><span>_</span><span>▢</span><Link href="/" style={{textDecoration:"none",color:"var(--j-ink)"}}><span>✕</span></Link></span>
           </div>
-
-          <div className="j-body j-shinobi-header">
+          <div className="j-body" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
             <div>
-              <div className="j-brand-kicker">TRADER JOURNAL · 01 / DISCIPLINE SYSTEM</div>
-              <div className="j-brand">
-                <div className="j-brand-mark">忍</div>
-                <div>
-                  <div className="j-brand-name">YOKIMURA SHINOBI</div>
-                  <div className="j-brand-sub">PRACTICE · PATIENCE · DISCIPLINE · FOR THE FAMILY.</div>
-                </div>
-              </div>
+              <div style={{fontFamily:"'VT323',monospace",fontSize:34,lineHeight:.8}}>TRADING JOURNAL</div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,letterSpacing:2,color:"var(--j-soft)",marginTop:4}}>✦ SMC PRO MAX · M15/M5/M1 ✦</div>
             </div>
-
-            <div>
-              <div className="j-mantra">
-                <strong>忍 — SHINOBI CODE</strong>
-                PRACTICE. PATIENCE. DISCIPLINE.<br/>
-                <span>FOR THE FAMILY.</span>
-              </div>
-              <div className="j-theme-box">
-                <span className="j-theme-label">Theme</span>
-                <select
-                  value={theme}
-                  onChange={e=>setTheme(e.target.value as JournalTheme)}
-                  className="j-theme-select"
-                  aria-label="Journal theme"
-                >
-                  <option value="ninja">🥷 Ninja / Black</option>
-                  <option value="minimal">◻ Minimal / White</option>
-                  <option value="classic">◼ Classic / Dark</option>
-                  <option value="cyber">⚡ Cyber / Blue</option>
-                  <option value="sakura">🌸 Sakura / Night</option>
-                </select>
-              </div>
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+              <button onClick={()=>setAccountType(accountType==="cent"?"standard":"cent")} className="j-chip" style={{fontSize:11,background:accountType==="cent"?"var(--j-butter)":"var(--j-lav)"}}>{accountType==="cent"?"Cent":"Std"}</button>
+              <button onClick={()=>setShowResetConfirm(true)} className="j-chip" style={{fontSize:11,background:"var(--j-pink)"}} title="ลบข้อมูลทั้งหมด เริ่มใหม่">🗑️ Reset</button>
+              {/* ── Discipline Lock priority: Forced > HardLock > Cooldown > Open Trade > New Trade ── */}
+              {isForcedLockToday ? (
+                <ForcedLockBanner/>
+              ) : isHardLockToday ? (
+                <HardLockBanner onWriteReflection={()=>setShowReflection(true)} submitted={hardlock?.date===todayStr && hardlock?.submitted}/>
+              ) : cooldownRemainingMs > 0 ? (
+                <CooldownBanner remainingMs={cooldownRemainingMs}/>
+              ) : openTrade ? (
+                <button onClick={()=>setView("exit")} className="j-btn open-badge" style={{padding:"9px 14px",background:"var(--j-butter)",fontSize:12}}>
+                  🟡 ไม้ค้างอยู่! → กรอกจุดออก
+                </button>
+              ) : (
+                <button onClick={()=>{setStep("mode");setSelMode(null);setView("checklist");}} className="j-btn" style={{padding:"9px 14px",background:"var(--j-mint)",fontSize:13}}>
+                  ✎ New Trade
+                </button>
+              )}
             </div>
           </div>
         </div>
-
-        <div className="j-quote-strip">
-          <i/>
-          <span>YOKIMURA SHINOBI</span>
-          <b>PRACTICE · PATIENCE · DISCIPLINE · FOR THE FAMILY.</b>
-        </div>
-
         {/* Tabs */}
-        <div className="j-tabs-wrap">
-          {([["dashboard","◫ Dashboard"],["list","▤ Sessions"]] as const).map(([v,label])=>(
+        <div className="j-tabs-wrap" style={{maxWidth:780,margin:"14px auto 0",display:"flex",gap:6,borderBottom:"2.5px solid var(--j-ink)"}}>
+          {([["dashboard","📊 Dashboard"],["list","📋 Sessions"]] as const).map(([v,label])=>(
             <button key={v} onClick={()=>setView(v)} className={`j-tab ${view===v?"on":""}`}>{label}</button>
           ))}
-          <button onClick={()=>setView("calendar" as any)} className={`j-tab ${view==="calendar"?"on":""}`}>▦ Calendar</button>
+          <button onClick={()=>setView("calendar" as any)} className={`j-tab ${view==="calendar"?"on":""}`}>📅 Calendar</button>
+          <button onClick={()=>setView("tools")} className={`j-tab ${view==="tools"?"on":""}`}>⚔️ Battle Coach</button>
+          <button onClick={()=>setView("aiCoach")} className={`j-tab ${view==="aiCoach"?"on":""}`}>🤖 AI Coach</button>
           {openTrade&&!isLockedFromTrading&&(
-            <button onClick={()=>setView("exit")} className={`j-tab ${view==="exit"?"on":""}`} style={{color:"#c9232c",fontWeight:700}}>
-              ● OPEN TRADE
+            <button onClick={()=>setView("exit")} className={`j-tab ${view==="exit"?"on":""}`} style={{color:"#d4a65f",fontWeight:600}}>
+              🟡 OPEN TRADE
             </button>
           )}
         </div>
@@ -1522,7 +1858,7 @@ export default function JournalPage() {
                     <div><span style={{color:"var(--j-soft)"}}>SL </span><b style={{color:"#e08a82"}}>{t.slPrice}</b></div>
                     <div><span style={{color:"var(--j-soft)"}}>Exit </span><b>{t.exitReason||"-"}</b></div>
                   </div>
-                  {(t.screenshotBeforeUrl||t.screenshotAfterUrl||t.screenshotUrl)&&(<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>{(t.screenshotBeforeUrl||t.screenshotUrl)&&<img src={t.screenshotBeforeUrl||t.screenshotUrl} alt="before" onClick={()=>setLightbox(t.screenshotBeforeUrl||t.screenshotUrl)} style={{width:"100%",height:140,objectFit:"cover",border:"2px solid var(--j-ink)",borderRadius:7,cursor:"zoom-in"}}/>}{t.screenshotAfterUrl&&<img src={t.screenshotAfterUrl} alt="after" onClick={()=>setLightbox(t.screenshotAfterUrl||"")} style={{width:"100%",height:140,objectFit:"cover",border:"2px solid var(--j-ink)",borderRadius:7,cursor:"zoom-in"}}/>}</div>)}
+                  {t.screenshotUrl&&(<img src={t.screenshotUrl} alt="ss" onClick={()=>setLightbox(t.screenshotUrl)} style={{width:"100%",maxHeight:160,objectFit:"cover",border:"2px solid var(--j-ink)",borderRadius:7,cursor:"zoom-in",marginBottom:8,boxShadow:"2px 2px 0 var(--j-ink)"}}/>)}
                   {t.notes&&<p style={{fontFamily:"'DM Mono'",fontSize:12,borderTop:"1.5px dashed #d8cdbd",paddingTop:8}}>"{t.notes}"</p>}
                   <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:10,paddingTop:10,borderTop:"1.5px dashed #e3d9c4"}}>
                     <button onClick={()=>editTrade(t)} className="j-chip" style={{fontSize:11,background:"var(--j-butter)",padding:"5px 10px"}}>✎ แก้ไข</button>
@@ -1534,59 +1870,183 @@ export default function JournalPage() {
             {!filtered.length&&<p className="text-center py-10" style={{color:"var(--j-soft)"}}>No sessions</p>}
           </div>
         )}
-        {/* ── WYCKOFF JOURNAL ── */}
+        {/* ── CHECKLIST (Pre-Entry) ── */}
         {view==="checklist"&&(
-          <div className="space-y-4 j-tabcontent" style={{maxWidth:780,margin:"0 auto"}}>
+          isLockedFromTrading ? (
+            <div className="space-y-4 j-tabcontent" style={{maxWidth:560,margin:"0 auto"}}>
+              <Win title="🔒 ล็อกอยู่ — เข้าไม้ไม่ได้ตอนนี้" color="var(--j-coral)">
+                <div style={{textAlign:"center",padding:"12px 4px"}}>
+                  <div style={{fontSize:44,marginBottom:8}}>{isForcedLockToday?"🔒":isHardLockToday?"🛑":"⏸️"}</div>
+                  <div style={{fontFamily:"'Fredoka',sans-serif",fontSize:15,fontWeight:700,marginBottom:10}}>
+                    {isForcedLockToday?"วันนี้ล็อกทั้งวัน (Pattern ซ้ำในสัปดาห์)":isHardLockToday?"LOSS 3 ติด — หยุดเทรดวันนี้":`พักบังคับ เหลือ ${fmtMMSS(cooldownRemainingMs)}`}
+                  </div>
+                  <button onClick={()=>setView("dashboard")} className="j-btn" style={{padding:"10px 18px",background:"var(--j-mint)",fontSize:13}}>← กลับ Dashboard</button>
+                </div>
+              </Win>
+            </div>
+          ) : (
+          <div className="space-y-4 j-tabcontent" style={{maxWidth:560,margin:"0 auto"}}>
             <div className="flex items-center gap-3">
               <button onClick={()=>setView("dashboard")} className="j-chip off" style={{fontSize:12}}>← Cancel</button>
-              <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--j-soft)"}}>NEW EXECUTION</div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--j-soft)"}}>
+                {step==="mode"?"Step 1/3 — เลือก Mode":step==="checklist"?"Step 2/3 — Checklist":"Step 3/3 — Entry Details"}
+              </div>
             </div>
-            <Win title="忍  NEW EXECUTION · WYCKOFF" color="rgba(255,255,255,.035)"><div className="j-execution-title">YOKIMURA SHINOBI / TRADE RECORD</div><div className="j-execution-heading">บันทึกการฝึก</div><div className="j-execution-sub">Record the process. Respect the setup. Let the statistics speak.</div><div className="j-ninja-divider" style={{margin:"14px 0 16px"}}/>
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                <div><label className="j-lab">วันที่</label><input type="date" value={entryDate} onChange={e=>setEntryDate(e.target.value)} className="j-in"/></div>
-                <div><label className="j-lab">สินทรัพย์</label><select value={asset} onChange={e=>setAsset(e.target.value)} className="j-in"><option value="XAUUSD">XAUUSD</option><option value="BTCUSD">BTCUSD</option><option value="EURUSD">EURUSD</option><option value="GBPUSD">GBPUSD</option><option value="NAS100">NAS100</option><option value="US30">US30</option><option value="OTHER">อื่นๆ</option></select></div>
-              </div>
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                <div><label className="j-lab">Session</label><select value={session} onChange={e=>setSession(e.target.value as Session)} className="j-in">{SESSIONS.map(s=><option key={s}>{s}</option>)}</select></div>
-                <div><label className="j-lab">Timeframe</label><select value={timeframe} onChange={e=>setTimeframe(e.target.value)} className="j-in"><option>15s</option><option>1m</option><option>5m</option><option>15m</option><option>1H</option><option>4H</option><option>Daily</option></select></div>
-              </div>
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                <div><label className="j-lab">Setup</label><select value="WYCKOFF" disabled className="j-in"><option value="WYCKOFF">Wyckoff</option></select></div>
-                <div>
-  <label className="j-lab">ผลลัพธ์</label>
-  <div className="j-result-row">
-    {(["WIN","LOSS","BE"] as const).map(r=>(
-      <button
-        key={r}
-        type="button"
-        onClick={()=>{setWyResult(r);setWyRR(r==="WIN"?"1":r==="LOSS"?"-1":"0");}}
-        className={`j-result-btn ${r==="LOSS"?"loss":r==="BE"?"be":""} ${wyResult===r?"active":""}`}
-      >
-        {r==="WIN"?"✓ WIN":r==="LOSS"?"✕ LOSS":"= BE"}
-      </button>
-    ))}
-  </div>
-</div>
-              </div>
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                <div><label className="j-lab">RR</label><input value={wyRR+"R"} readOnly className="j-in" style={{fontWeight:700,color:wyResult==="WIN"?"#5fae89":wyResult==="LOSS"?"#d4685f":"var(--j-soft)"}}/><div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",marginTop:4}}>ระบบ 1:1 · Win = +1R · Loss = -1R · BE = 0R</div></div>
-                <div><label className="j-lab">Grade</label><select value={grade} onChange={e=>setGrade(e.target.value)} className="j-in"><option>A+</option><option>A</option><option>B+</option><option>B</option><option>C</option><option>D</option></select></div>
-              </div>
-              <label className="j-lab">เหตุผล / บทเรียน</label>
-              <textarea value={wyNotes} onChange={e=>setWyNotes(e.target.value)} rows={3} placeholder="เห็นอะไร เข้าเพราะอะไร สิ่งที่ทำได้ดี / สิ่งที่ต้องแก้..." className="j-in mb-3" style={{resize:"none",fontSize:13,fontFamily:"'Fredoka'"}}/>
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                {[{key:"before",label:"ภาพก่อนเข้า",url:beforeScreenshotUrl,set:setBeforeScreenshotUrl},{key:"after",label:"ภาพหลังจบ",url:afterScreenshotUrl,set:setAfterScreenshotUrl}].map(item=>(
-                  <div key={item.key} className="j-upload-box">
-                    <label className="j-lab" style={{textAlign:"center",display:"block"}}>{item.key==="before"?"ก่อน":"หลัง"}</label>
-                    <div style={{fontFamily:"'Fredoka',sans-serif",fontSize:13,fontWeight:600,textAlign:"center",marginBottom:6}}>{item.label}</div>
-                    {item.url ? <div><img src={item.url} alt={item.label} onClick={()=>setLightbox(item.url)} style={{width:"100%",height:150,objectFit:"cover",border:"2px solid var(--j-ink)",borderRadius:7,cursor:"zoom-in"}}/><button onClick={()=>item.set("")} className="j-chip mt-2" style={{fontSize:10,background:"var(--j-coral)",width:"100%"}}>🗑 ลบรูป</button></div> : <label className="j-btn" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:7,padding:12,background:item.key==="before"?"var(--j-sky)":"var(--j-mint)",fontSize:12,cursor:uploading?"wait":"pointer",marginTop:12}}>{uploading?"⌛ Uploading...":"📎 อัพรูป"}<input type="file" accept="image/*" disabled={uploading} style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)uploadJournalImage(f,item.key as "before"|"after");}}/></label>}
+            {/* STEP 1: เลือก Mode */}
+            {step==="mode"&&(
+              <Win title="🎯 STEP 1 — วัฏจักรตอนนี้คืออะไร?" color="var(--j-lav)">
+                <div className="space-y-3">
+                  {(Object.entries(MODE_INFO) as [TradeMode,typeof MODE_INFO[TradeMode]][]).map(([mode,info])=>(
+                    <button key={mode} onClick={()=>{setSelMode(mode);setStep("checklist");}}
+                      style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"12px 14px",border:"2.5px solid var(--j-ink)",borderRadius:9,background:info.color,cursor:"pointer",boxShadow:"3px 3px 0 var(--j-ink)",textAlign:"left",fontFamily:"'Fredoka',sans-serif",transition:".1s"}}
+                      onMouseDown={e=>(e.currentTarget.style.transform="translate(2px,2px)")}
+                      onMouseUp={e=>(e.currentTarget.style.transform="")}>
+                      <span style={{fontSize:26}}>{info.emoji}</span>
+                      <div>
+                        <div style={{fontSize:16,fontWeight:700,color:"var(--j-ink)"}}>{info.label}</div>
+                        <div style={{fontSize:11,color:"var(--j-soft)",fontFamily:"'DM Mono',monospace"}}>{info.desc}</div>
+                      </div>
+                      <span style={{marginLeft:"auto",fontSize:18}}>→</span>
+                    </button>
+                  ))}
+                </div>
+              </Win>
+            )}
+            {/* STEP 2: Checklist */}
+            {step==="checklist"&&selMode&&(()=>{
+              const info=MODE_INFO[selMode];
+              const done=checklistComplete();
+              return (
+                <Win title={`${info.emoji} STEP 2 — ${info.label} Checklist`} color={info.color}>
+                  {selMode==="SMC"&&(<>
+                    <div style={{background:"#fbf6ea",border:"1.5px dashed var(--j-ink)",borderRadius:7,padding:"7px 10px",marginBottom:10,fontFamily:"'DM Mono',monospace",fontSize:10,color:"#d4685f"}}>⚠️ ไม่ครบทุกข้อ = ไม่เข้า เด็ดขาด</div>
+                    <CL checked={clSMC.c1_trend} onChange={v=>setClSMC(p=>({...p,c1_trend:v}))} label="M15 — วัฏจักร = TREND ยืนยัน (ไม่ใช่ SW/Pullback)"/>
+                    <CL checked={clSMC.c2_bos}   onChange={v=>setClSMC(p=>({...p,c2_bos:v}))}   label="M15 — BOS หรือ CHoCH เกิดแล้ว"/>
+                    <CL checked={clSMC.c3_dzsz}  onChange={v=>setClSMC(p=>({...p,c3_dzsz:v}))}  label="M15 — Mark DZ/SZ สำคัญไว้แล้ว"/>
+                    <CL checked={clSMC.c4_ob}    onChange={v=>setClSMC(p=>({...p,c4_ob:v}))}    label="M5 — หา Order Block + DZ/SZ ได้แล้ว"/>
+                    <CL checked={clSMC.c5_liq}   onChange={v=>setClSMC(p=>({...p,c5_liq:v}))}   label="M5 — Liquidity $$$ เคลียร์แล้ว"/>
+                    <CL checked={clSMC.c6_reject} onChange={v=>setClSMC(p=>({...p,c6_reject:v}))} label="M5 — มี Rejection ยืนยัน"/>
+                    <CL checked={clSMC.c7_retest} onChange={v=>setClSMC(p=>({...p,c7_retest:v}))} label="M1 — LTF Retest ครบ (Buy=ยกโลว์ / Sell=กดไฮ)"/>
+                    <CL checked={clSMC.c8_mss}   onChange={v=>setClSMC(p=>({...p,c8_mss:v}))}   label="M1 — MSS ผ่านแล้ว → พร้อมโดด" warn/>
+                  </>)}
+                  {selMode==="SW_RANGE"&&(<>
+                    <div style={{background:"#fbf6ea",border:"1.5px dashed var(--j-ink)",borderRadius:7,padding:"7px 10px",marginBottom:10,fontFamily:"'DM Mono',monospace",fontSize:10,color:"#5a8de0"}}>กรอบบน = Sell / กรอบล่าง = Buy · RR ≥ 3 เท่านั้น</div>
+                    <CL checked={clSWR.c1_sw}    onChange={v=>setClSWR(p=>({...p,c1_sw:v}))}    label="M15 — วัฏจักร = SIDE WAY ยืนยัน"/>
+                    <CL checked={clSWR.c2_level} onChange={v=>setClSWR(p=>({...p,c2_level:v}))} label="ระบุกรอบบน (Resistance) และกรอบล่าง (Support) ชัดเจน"/>
+                    <CL checked={clSWR.c3_near}  onChange={v=>setClSWR(p=>({...p,c3_near:v}))}  label="ราคาอยู่ใกล้กรอบที่จะเทรด (ไม่ใช่กลางกรอบ)"/>
+                    <CL checked={clSWR.c4_pa}    onChange={v=>setClSWR(p=>({...p,c4_pa:v}))}    label="M5 PA ยืนยัน — Pa sell ที่ 2 กดไฮ / Pa buy ที่ 2 ยกโลว์"/>
+                    <CL checked={clSWR.c5_rr}    onChange={v=>setClSWR(p=>({...p,c5_rr:v}))}    label="RR ≥ 3 ถึงจะเข้า (คำนวณแล้ว ยืนยัน)" warn/>
+                  </>)}
+                  {selMode==="SW_BREAKOUT"&&(<>
+                    <div style={{background:"#f6e6ac88",border:"1.5px dashed var(--j-ink)",borderRadius:7,padding:"7px 10px",marginBottom:10,fontFamily:"'DM Mono',monospace",fontSize:10,color:"#d4a65f"}}>⚠️ ระวัง FOMO — รอ Retest ก่อนเสมอ</div>
+                    <CL checked={clSWB.c1_sw}     onChange={v=>setClSWB(p=>({...p,c1_sw:v}))}     label="M15 — กรอบ SW ชัดเจน Mark ไว้แล้ว"/>
+                    <CL checked={clSWB.c2_close}  onChange={v=>setClSWB(p=>({...p,c2_close:v}))}  label="ราคาปิดออกนอกกรอบจริง (ไม่ใช่แค่ Wick)"/>
+                    <CL checked={clSWB.c3_retest} onChange={v=>setClSWB(p=>({...p,c3_retest:v}))} label="รอ Retest กลับมาที่กรอบก่อน ถึงเข้า" warn/>
+                    <CL checked={clSWB.c4_noFomo} onChange={v=>setClSWB(p=>({...p,c4_noFomo:v}))} label="ยืนยัน: ฉันไม่ได้ FOMO เข้าทันทีหลัง Breakout" warn/>
+                  </>)}
+                  {selMode==="PULLBACK"&&(<>
+                    <div style={{background:"#f8d6ba88",border:"1.5px dashed var(--j-ink)",borderRadius:7,padding:"7px 10px",marginBottom:10,fontFamily:"'DM Mono',monospace",fontSize:10,color:"#c47c3a"}}>เก็บสั้น ขยันซอย — ไม่ถือยาว</div>
+                    <CL checked={clPB.c1_trend} onChange={v=>setClPB(p=>({...p,c1_trend:v}))} label="M15 — ระบุทิศเทรนด์หลักชัดเจน"/>
+                    <CL checked={clPB.c2_dzsz}  onChange={v=>setClPB(p=>({...p,c2_dzsz:v}))}  label="ราคา Pullback มาที่ DZ/SZ ใหญ่ที่ Mark ไว้"/>
+                    <CL checked={clPB.c3_pa}    onChange={v=>setClPB(p=>({...p,c3_pa:v}))}    label="M5 — PA ยืนยันกลับตัว"/>
+                    <CL checked={clPB.c4_short} onChange={v=>setClPB(p=>({...p,c4_short:v}))} label="วางแผนเก็บสั้น ขยันซอย — ไม่โลภถือยาว" warn/>
+                  </>)}
+                  {selMode==="M5_REVERSAL"&&(<>
+                    <div style={{background:"#c0e6d488",border:"1.5px dashed var(--j-ink)",borderRadius:7,padding:"7px 10px",marginBottom:10,fontFamily:"'DM Mono',monospace",fontSize:10,color:"#3f9b73"}}>ใช้ได้ทุกวัฏจักร · ตามเทรนด์=ถือยาว / สวน=รีบโดด</div>
+                    <CL checked={clM5.c1_pa2}  onChange={v=>setClM5(p=>({...p,c1_pa2:v}))}  label="M5 — Pa ที่ 2 ยืนยันแล้ว"/>
+                    <CL checked={clM5.c2_dir}  onChange={v=>setClM5(p=>({...p,c2_dir:v}))}  label="Buy=ยกโลว์ยืนยัน / Sell=กดไฮยืนยัน"/>
+                    <CL checked={clM5.c3_plan} onChange={v=>setClM5(p=>({...p,c3_plan:v}))} label="วางแผนแล้ว: ตามเทรนด์=ถือยาว / สวนเทรนด์=Rejection รีบโดด" warn/>
+                  </>)}
+                  <div style={{display:"flex",gap:8,marginTop:4}}>
+                    <button onClick={()=>setStep("mode")} className="j-chip off" style={{fontSize:12}}>← กลับ</button>
+                    <button onClick={()=>setStep("entry")} disabled={!done} className="j-btn" style={{flex:1,padding:"12px",background:done?"var(--j-mint)":"#e3d9c4",fontSize:14}}>
+                      {done?"✓ Checklist ครบ → กรอก Entry":"ยังไม่ครบทุกข้อ"}
+                    </button>
                   </div>
-                ))}
-              </div>
-              <div style={{background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.14)",borderRadius:2,padding:"9px 12px",marginBottom:12,fontFamily:"'DM Mono',monospace",fontSize:9,textAlign:"center",letterSpacing:1}}>Wyckoff · {asset} · {timeframe} · {session} · {wyResult} · {wyRR}R · {grade}</div>
-              <button onClick={saveWyckoffTrade} disabled={isLockedFromTrading||saving||!entryDate||!asset||!wyResult} className={`j-btn j-save-primary w-full ${saving?"j-saving":""}`} style={{padding:14,background:"var(--j-coral)",fontSize:15}}>{saving?"💾 SAVING...":"💾 บันทึกการฝึก"}</button>
-            </Win>
+                </Win>
+              );
+            })()}
+            {/* STEP 3: Entry Details */}
+            {step==="entry"&&selMode&&(
+              <Win title={`${getModeInfo(selMode).emoji} STEP 3 — Entry Details`} color={getModeInfo(selMode).color}>
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  <div>
+                    <label className="j-lab">Date</label>
+                    <input type="date" value={entryDate} onChange={e=>setEntryDate(e.target.value)} className="j-in" style={{fontSize:11}}/>
+                  </div>
+                  <div>
+                    <label className="j-lab">Time 24H</label>
+                    <div style={{display:"flex",gap:6}}>
+                      <input
+                        type="time"
+                        lang="en-GB"
+                        step="60"
+                        value={entryTime}
+                        onChange={e=>setEntryTimeAuto(e.target.value)}
+                        className="j-in"
+                        style={{fontSize:14,fontWeight:700}}
+                      />
+                      <button type="button" onClick={setNowEntryTime} className="j-chip" style={{fontSize:10,padding:"6px 8px",boxShadow:"none",whiteSpace:"nowrap"}}>NOW</button>
+                    </div>
+                  </div>
+                  <div><label className="j-lab">Session {sessionManual?"Manual":"Auto"}</label>
+                    <select
+                      value={session}
+                      onChange={e=>{setSession(e.target.value as Session);setSessionManual(true);}}
+                      className="j-in"
+                      style={{fontSize:11,fontWeight:700}}
+                    >
+                      {SESSIONS.map(s=><option key={s}>{s}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",marginBottom:10}}>
+                  เวลาใช้รูปแบบ 24 ชั่วโมง เช่น 09:30 / 14:45 · Session ตั้งให้อัตโนมัติตามเวลา แต่เลือกเองได้
+                </div>
+                <label className="j-lab">Direction</label>
+                <div className="flex gap-2 mb-3">
+                  {(["LONG","SHORT"] as Direction[]).map(d=>(
+                    <button key={d} onClick={()=>setDirection(d)} className={`j-chip flex-1 ${direction===d?"":"off"}`} style={direction===d?{background:d==="LONG"?"var(--j-mint)":"var(--j-coral)",textAlign:"center"}:{textAlign:"center"}}>
+                      {d==="LONG"?"▲ LONG":"▼ SHORT"}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div><label className="j-lab">Entry Price</label>
+                    <input type="number" step="0.001" value={entryPrice} placeholder="4171.200" onChange={e=>setEntryPrice(parseFloat(e.target.value)||"")} className="j-in" style={{fontSize:16,fontWeight:700}}/>
+                  </div>
+                  <div><label className="j-lab">🔴 SL Price</label>
+                    <input type="number" step="0.001" value={slPrice} placeholder="SL" onChange={e=>setSlPrice(parseFloat(e.target.value)||"")} className="j-in" style={{color:"#d4685f",fontWeight:700}}/>
+                  </div>
+                </div>
+                <div className="mb-3">
+                  <label className="j-lab">Lot / Order</label>
+                  <input type="text" inputMode="decimal" value={lotInput} placeholder="0.10"
+                    onChange={e=>{const v=e.target.value;if(v===""||/^\d*\.?\d*$/.test(v))setLotInput(v);}} className="j-in"/>
+                </div>
+                <label className="j-lab">อารมณ์ตอนเข้า</label>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {EMOTIONS.map(em=>(
+                    <button key={em} onClick={()=>setEmotion(em)} className={`j-chip ${emotion===em?"":"off"}`}
+                      style={emotion===em?{background:em.includes("FOMO")||em.includes("Fearful")||em.includes("Revenge")?"var(--j-coral)":"var(--j-mint)",fontSize:12}:{fontSize:12}}>
+                      {em}
+                    </button>
+                  ))}
+                </div>
+                <div style={{background:"var(--j-lav)",border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 12px",marginBottom:12,fontFamily:"'DM Mono',monospace",fontSize:10}}>
+                  Risk $5 · Mode: {MODE_INFO[selMode].label} · {direction}
+                  {entryPrice&&slPrice&&<span> · SL = {Math.abs(Number(entryPrice)-Number(slPrice)).toFixed(3)} pts</span>}
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>setStep("checklist")} className="j-chip off" style={{fontSize:12}}>← กลับ</button>
+                  <button onClick={saveOpenTrade} disabled={!entryPrice||!slPrice||isLockedFromTrading} className="j-btn" style={{flex:1,padding:"13px",background:"var(--j-coral)",fontSize:14}}>
+                    🟡 บันทึกไม้ — รอกรอกจุดออก
+                  </button>
+                </div>
+              </Win>
+            )}
           </div>
+          )
         )}
         {/* ── EXIT (Post-Exit) ── */}
         {view==="exit"&&openTrade&&(
@@ -1836,10 +2296,10 @@ export default function JournalPage() {
                                 <span style={{background:info.color,border:"1.5px solid var(--j-ink)",borderRadius:6,padding:"1px 6px",fontSize:10}}>{info.label}</span>
                               </div>
                               <div style={{fontSize:10,color:"var(--j-soft)",fontFamily:"'DM Mono',monospace",marginTop:2}}>
-                                {t.asset||"XAUUSD"} · {t.timeframe||"-"} · {t.mode==="WYCKOFF"?"Wyckoff":getModeInfo(t.mode).label} · RR {Number(t.rr||0).toFixed(1)}R · Grade {t.grade||"-"}
+                                Entry {t.entryPrice} → Exit {t.avgExit} · {t.orderCount} order{t.orderCount>1?"s":""} · RR {Number(t.rr||0).toFixed(2)}
                               </div>
                             </div>
-                            {(t.screenshotBeforeUrl||t.screenshotAfterUrl||t.screenshotUrl)&&<button onClick={()=>setLightbox(t.screenshotAfterUrl||t.screenshotBeforeUrl||t.screenshotUrl)} className="j-chip off" style={{fontSize:10,padding:"3px 7px"}}>🖼</button>}
+                            {t.screenshotUrl&&<button onClick={()=>setLightbox(t.screenshotUrl)} className="j-chip off" style={{fontSize:10,padding:"3px 7px"}}>🖼</button>}
                             <b style={{fontFamily:"'DM Mono',monospace",fontSize:13,color:t.totalPL>=0?"#3f9b73":"#d4685f",minWidth:76,textAlign:"right"}}>{money(t.totalPL)}</b>
                             <button onClick={()=>editTrade(t)} className="j-chip off" style={{fontSize:10,padding:"3px 7px"}}>✎</button>
                             <button onClick={()=>deleteTrade(t)} className="j-chip off" style={{fontSize:10,padding:"3px 7px",color:"#d4685f"}}>🗑</button>
@@ -1858,6 +2318,9 @@ export default function JournalPage() {
             </div>
           );
         })()}
+        {/* ── BATTLE COACH ── */}
+        {view==="tools"&&(<BattleCoachPanel trades={trades} dailyStatus={dailyStatus} stats={stats} />)}
+        {view==="aiCoach"&&(<AICoachPanel dailyStatus={dailyStatus} setLightbox={setLightbox} />)}
       {/* Alert Popup */}
       {showAlert&&(dailyStatus.isHardStop||dailyStatus.isDayDone)&&(
         <div style={{position:"fixed",inset:0,zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center",padding:20,background:"rgba(42,31,20,.85)",backdropFilter:"blur(3px)"}}>
