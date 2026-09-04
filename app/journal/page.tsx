@@ -8,7 +8,7 @@ type Direction   = "LONG"|"SHORT";
 type Result      = "WIN"|"LOSS"|"BE";
 type Session     = "Tokyo"|"London"|"New York"|"Overlap";
 type AccountType = "cent"|"standard";
-type TradeMode    = "SMC"|"SW_RANGE"|"SW_BREAKOUT"|"PULLBACK"|"M5_REVERSAL";
+type TradeMode    = "WYCKOFF"|"SMC"|"SW_RANGE"|"SW_BREAKOUT"|"PULLBACK"|"M5_REVERSAL";
 type Emotion     = "😌 Calm"|"😎 Confident"|"😤 FOMO"|"😰 Fearful"|"😡 Revenge";
 type ExitReason  = "TP Hit"|"SL Hit"|"Manual"|"Rejection"|"MSS Failed"|"Other";
 type TradeStatus = "OPEN"|"CLOSED";
@@ -53,15 +53,20 @@ type Trade = {
   date: string; time: string;
   session: Session;
   direction: Direction;
+  // New Wyckoff journal fields
+  asset?: string;
+  timeframe?: string;
+  grade?: string;
+  screenshotBeforeUrl?: string;
+  screenshotAfterUrl?: string;
+  // Legacy fields kept so Dashboard / Calendar / old records continue to work
   entryPrice: number;
   slPrice: number;
   lotPerOrder: number;
   lotInput: string;
   riskAmount: number;
   emotion: Emotion;
-  // checklist (stored as JSON string)
   checklistJson: string;
-  // post-exit
   exitPrices: number[];
   avgExit: number;
   orderCount: number;
@@ -125,6 +130,15 @@ function fmtMMSS(ms: number) {
   const s = total % 60;
   return `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
 }
+const WYCKOFF_META_PREFIX = "__WYCKOFF_V1__";
+function packWyckoffNotes(text:string, meta:{asset:string;timeframe:string;grade:string;before:string;after:string}) {
+  return WYCKOFF_META_PREFIX + JSON.stringify({text, ...meta});
+}
+function unpackWyckoffNotes(raw:string) {
+  if(!raw?.startsWith(WYCKOFF_META_PREFIX)) return null;
+  try { return JSON.parse(raw.slice(WYCKOFF_META_PREFIX.length)); } catch { return null; }
+}
+
 // migrate ข้อมูลจาก v3 → v4 (เพิ่ม status/mode/checklistJson/exitReason ให้ของเก่า)
 function migrateOldTrades(rawTrades: any[]): Trade[] {
   return (rawTrades || []).map((t: any) => ({
@@ -135,6 +149,11 @@ function migrateOldTrades(rawTrades: any[]): Trade[] {
     time: t.time || "00:00",
     session: (t.session || "Tokyo") as Session,
     direction: (t.direction || "SHORT") as Direction,
+    asset: t.asset || t.symbol || unpackWyckoffNotes(String(t.notes || ""))?.asset || "XAUUSD",
+    timeframe: t.timeframe || t.tf || unpackWyckoffNotes(String(t.notes || ""))?.timeframe || "15s",
+    grade: t.grade || unpackWyckoffNotes(String(t.notes || ""))?.grade || "A+",
+    screenshotBeforeUrl: t.screenshotBeforeUrl || t.screenshot_before_url || unpackWyckoffNotes(String(t.notes || ""))?.before || "",
+    screenshotAfterUrl: t.screenshotAfterUrl || t.screenshot_after_url || unpackWyckoffNotes(String(t.notes || ""))?.after || t.screenshotUrl || t.screenshot_url || "",
     entryPrice: Number(t.entryPrice ?? t.entry_price ?? 0),
     slPrice: Number(t.slPrice ?? t.sl_price ?? 0),
     lotPerOrder: Number(t.lotPerOrder ?? t.lot_per_order ?? 0.1),
@@ -150,8 +169,8 @@ function migrateOldTrades(rawTrades: any[]): Trade[] {
     rr: Number(t.rr ?? 0),
     result: (t.result || "BE") as Result,
     exitReason: (t.exitReason || "") as ExitReason | "",
-    notes: t.notes || "",
-    screenshotUrl: t.screenshotUrl || t.screenshot_url || "",
+    notes: (unpackWyckoffNotes(String(t.notes || ""))?.text ?? t.notes) || "",
+    screenshotUrl: t.screenshotUrl || t.screenshot_url || unpackWyckoffNotes(String(t.notes || ""))?.after || unpackWyckoffNotes(String(t.notes || ""))?.before || "",
     createdAt: t.createdAt || t.created_at || new Date().toISOString(),
   }));
 }
@@ -384,6 +403,7 @@ function CL({checked,label,onChange,warn}:{checked:boolean;label:string;onChange
 }
 // ─── Mode labels ──────────────────────────────────────────────────────────────
 const MODE_INFO: Record<TradeMode,{label:string;color:string;emoji:string;desc:string}> = {
+  WYCKOFF:      {label:"Wyckoff",          color:"var(--j-lav)",    emoji:"🟣",desc:"Wyckoff setup"},
   SMC:          {label:"SMC Pro Max",     color:"var(--j-lav)",    emoji:"🔵",desc:"Trend เท่านั้น · BOS→OB→MSS"},
   SW_RANGE:     {label:"SW Range",        color:"var(--j-sky)",    emoji:"🟦",desc:"กรอบบน=Sell / ล่าง=Buy · RR≥3"},
   SW_BREAKOUT:  {label:"SW Breakout",     color:"var(--j-butter)", emoji:"🟡",desc:"ปิดออกกรอบ → รอ Retest"},
@@ -1198,7 +1218,17 @@ export default function JournalPage() {
   const [lotInput,setLotInput]     = useState("0.10");
   const [riskAmount]               = useState(5);
   const [emotion,setEmotion]       = useState<Emotion>("😌 Calm");
-  // ── Exit form ─────────────────────────────────────────────────────────────
+  // ── Wyckoff journal form ──────────────────────────────────────────────────
+  const [asset,setAsset]           = useState("XAUUSD");
+  const [timeframe,setTimeframe]   = useState("15s");
+  const [grade,setGrade]           = useState("A+");
+  const [wyResult,setWyResult]     = useState<Result>("WIN");
+  const [wyRR,setWyRR]             = useState("1");
+  const [wyNotes,setWyNotes]       = useState("");
+  const [beforeScreenshotUrl,setBeforeScreenshotUrl] = useState("");
+  const [afterScreenshotUrl,setAfterScreenshotUrl]   = useState("");
+  const [editingWyckoffId,setEditingWyckoffId] = useState<string|null>(null);
+  // ── Exit form (legacy trades only) ────────────────────────────────────────
   const [exitInput,setExitInput]   = useState("");
   const [exitPrices,setExitPrices] = useState<number[]>([]);
   const [pasteInput,setPasteInput] = useState("");
@@ -1342,89 +1372,85 @@ export default function JournalPage() {
     if(selMode==="M5_REVERSAL") return clM5;
     return {};
   };
-  // ── Save Open Trade (Pre-entry) ────────────────────────────────────────────
-  const saveOpenTrade = async () => {
-    if (isLockedFromTrading) return; // กันเหนียว: ล็อกอยู่ห้ามเปิดไม้เด็ดขาด
-    if(!selMode||!entryPrice||!slPrice) return;
+  // ── Save Wyckoff Journal Trade — single-page record ───────────────────────
+  const saveWyckoffTrade = async () => {
+    if (isLockedFromTrading || saving) return;
+    const rr = wyResult === "WIN" ? 1 : wyResult === "LOSS" ? -1 : 0;
+    const risk = 5;
     const trade: Trade = {
-      id:uid(), status:"OPEN", mode:selMode,
+      id:editingWyckoffId || uid(), status:"CLOSED", mode:"WYCKOFF",
       date:entryDate, time:entryTime, session,
-      direction, entryPrice:Number(entryPrice), slPrice:Number(slPrice),
-      lotPerOrder:parseFloat(lotInput)||0.10, lotInput, riskAmount,
-      emotion, checklistJson:JSON.stringify(checklistObj()),
-      exitPrices:[], avgExit:0, orderCount:0, totalLot:0, totalPL:0,
-      rr:0, result:"BE", exitReason:"", notes:"", screenshotUrl:"",
+      direction, asset, timeframe, grade,
+      entryPrice:0, slPrice:0, lotPerOrder:0, lotInput:"", riskAmount:risk,
+      emotion:"😌 Calm", checklistJson:"{}",
+      exitPrices:[], avgExit:0, orderCount:0, totalLot:0,
+      totalPL:Math.round(rr*risk*100)/100, rr, result:wyResult, exitReason:"",
+      notes:wyNotes.trim(),
+      screenshotUrl:afterScreenshotUrl || beforeScreenshotUrl || "",
+      screenshotBeforeUrl:beforeScreenshotUrl,
+      screenshotAfterUrl:afterScreenshotUrl,
       createdAt:new Date().toISOString(),
     };
-    setOpenTrade(trade); saveOpen(trade);
-    // reset form
-    setStep("mode"); setSelMode(null); setClSMC(defSMC()); setClSWR(defSWRange()); setClSWB(defSWBreak()); setClPB(defPullback()); setClM5(defM5Rev());
-    setEntryPrice(""); setSlPrice(""); setLotInput("0.10"); setEmotion("😌 Calm"); setSessionManual(false);
+    const updated=editingWyckoffId ? trades.map(t=>t.id===editingWyckoffId?trade:t) : [trade,...trades];
+    setTrades(updated); save(updated);
+    const newStatus=calcDailyStatus(updated,trade.date);
+    if(trade.date===todayStr){
+      if(newStatus.isHardStop){
+        saveCooldownUntil(0); setCooldownUntil(0);
+        const hl:HardlockState={date:todayStr,submitted:false,reflectionText:"",submittedAt:""};
+        saveHardlock(hl); setHardlock(hl);
+        const weekCount=countHardStopDaysThisWeek(updated,todayStr);
+        if(weekCount>=3){
+          const tmr=tomorrowStr(todayStr); const existing=loadForcedLockDates();
+          if(!existing.includes(tmr)){ const next=[...existing,tmr]; saveForcedLockDates(next); setForcedLockDates(next); }
+        }
+      }else if(newStatus.lossStreak===2){
+        const until=Date.now()+COOLDOWN_MS; saveCooldownUntil(until); setCooldownUntil(until); setNowTick(Date.now());
+      }else{ saveCooldownUntil(0); setCooldownUntil(0); }
+    }
+    try{
+      const {data:{user}}=await supabase.auth.getUser();
+      if(user){
+        await supabase.from("journal_trades").upsert({
+          id:trade.id,user_id:user.id,date:trade.date,time:trade.time,
+          symbol:trade.asset||"XAUUSD",direction:trade.direction,session:trade.session,
+          entry_price:null,exit_prices:[],avg_exit:null,lot_per_order:null,
+          order_count:0,total_lot:0,total_pl:trade.totalPL,sl_price:null,tp_price:null,rr:trade.rr,
+          result:trade.result,smc_concept:[],htf_bias:"Neutral",entry_model:"WYCKOFF",tf:trade.timeframe,
+          notes:packWyckoffNotes(trade.notes,{asset:trade.asset||"XAUUSD",timeframe:trade.timeframe||"15s",grade:trade.grade||"A+",before:trade.screenshotBeforeUrl||"",after:trade.screenshotAfterUrl||""}),
+          screenshot_url:trade.screenshotAfterUrl||trade.screenshotBeforeUrl||null,
+          created_at:trade.createdAt,
+        },{onConflict:"id"});
+      }
+    }catch(e){ console.error("Supabase save error:",e); }
+    setBeforeScreenshotUrl(""); setAfterScreenshotUrl(""); setWyNotes(""); setWyResult("WIN"); setWyRR("1"); setGrade("A+"); setEditingWyckoffId(null);
+    sparkle(); setSaving(true); setTimeout(()=>setSaving(false),900);
     setView("dashboard");
   };
-  // ── Save Closed Trade (Post-exit) — ตรงนี้คือจุดที่ตรวจกฎ lock ทั้งหมด ────────
+  // ── Legacy open-trade saver kept for old records / old editor ─────────────
+  const saveOpenTrade = async () => {
+    if (isLockedFromTrading) return;
+    if(!selMode||!entryPrice||!slPrice) return;
+    const trade: Trade = { id:uid(),status:"OPEN",mode:selMode,date:entryDate,time:entryTime,session,direction,
+      entryPrice:Number(entryPrice),slPrice:Number(slPrice),lotPerOrder:parseFloat(lotInput)||0.10,lotInput,riskAmount,emotion,
+      checklistJson:JSON.stringify(checklistObj()),exitPrices:[],avgExit:0,orderCount:0,totalLot:0,totalPL:0,rr:0,result:"BE",exitReason:"",notes:"",screenshotUrl:"",createdAt:new Date().toISOString() };
+    setOpenTrade(trade); saveOpen(trade); setView("dashboard");
+  };
+  // ── Legacy close handler kept for old OPEN trades ─────────────────────────
   const saveClosedTrade = async () => {
     if(!openTrade||!exitPrices.length) return;
-    const ep=Number(openTrade.entryPrice), lot=openTrade.lotPerOrder;
+    const ep=Number(openTrade.entryPrice),lot=openTrade.lotPerOrder;
     const perPLs=exitPrices.map(ex=>calcPL(openTrade.direction,ep,ex,lot,isCent));
     const totalPL=Math.round(perPLs.reduce((a,b)=>a+b,0)*100)/100;
     const avgExit=exitPrices.reduce((a,b)=>a+b,0)/exitPrices.length;
     const result:Result=totalPL>0.01?"WIN":totalPL<-0.01?"LOSS":"BE";
     const rr=openTrade.riskAmount>0?Math.round((totalPL/openTrade.riskAmount)*100)/100:0;
-    const closed:Trade={
-      ...openTrade, status:"CLOSED",
-      exitPrices, avgExit:Math.round(avgExit*1000)/1000,
-      orderCount:exitPrices.length, totalLot:exitPrices.length*lot,
-      totalPL, rr, result, exitReason, notes:exitNotes, screenshotUrl,
-    };
-    const updated=[closed,...trades.filter(t=>t.id!==closed.id)];
-    setTrades(updated); save(updated);
-    setOpenTrade(null); saveOpen(null);
-    // ── ตรวจ Loss Streak Rules หลังบันทึกไม้นี้ ──
-    const newStatus = calcDailyStatus(updated, closed.date);
-    if (closed.date === todayStr) {
-      if (newStatus.isHardStop) {
-        // LOSS 3 ติด → hard lock ทั้งวัน เคลียร์ cooldown เดิม
-        saveCooldownUntil(0); setCooldownUntil(0);
-        const hl: HardlockState = { date: todayStr, submitted:false, reflectionText:"", submittedAt:"" };
-        saveHardlock(hl); setHardlock(hl);
-        // เช็ค pattern ซ้ำในสัปดาห์: hard-stop ครบ 3 วันขึ้นไปในสัปดาห์นี้ → ล็อกวันถัดไปด้วย
-        const weekCount = countHardStopDaysThisWeek(updated, todayStr);
-        if (weekCount >= 3) {
-          const tmr = tomorrowStr(todayStr);
-          const existing = loadForcedLockDates();
-          if (!existing.includes(tmr)) {
-            const next = [...existing, tmr];
-            saveForcedLockDates(next); setForcedLockDates(next);
-          }
-        }
-      } else if (newStatus.lossStreak === 2) {
-        // LOSS 2 ติด → cooldown บังคับ 15 นาที
-        const until = Date.now() + COOLDOWN_MS;
-        saveCooldownUntil(until); setCooldownUntil(until); setNowTick(Date.now());
-      } else {
-        // WIN/BE ทำให้ streak หลุด — เคลียร์ cooldown เดิม (ถ้ามี) แต่ hard lock ของวันไม่ถูกยกเลิก
-        saveCooldownUntil(0); setCooldownUntil(0);
-      }
-    }
-    // supabase
-    const {data:{user}}=await supabase.auth.getUser();
-    if(user){
-      await supabase.from("journal_trades").upsert({
-        id:closed.id,user_id:user.id,date:closed.date,time:closed.time,
-        symbol:"XAUUSDc",direction:closed.direction,session:closed.session,
-        entry_price:closed.entryPrice,exit_prices:closed.exitPrices,
-        avg_exit:closed.avgExit,lot_per_order:closed.lotPerOrder,
-        order_count:closed.orderCount,total_lot:closed.totalLot,
-        total_pl:closed.totalPL,sl_price:closed.slPrice,tp_price:0,rr:closed.rr,
-        result:closed.result,smc_concept:[],htf_bias:"Neutral",
-        entry_model:closed.mode,tf:"M5",notes:closed.notes,
-        screenshot_url:closed.screenshotUrl||null,created_at:closed.createdAt,
-      },{onConflict:"id"});
-    }
-    setExitPrices([]); setExitInput(""); setPasteInput(""); setExitReason(""); setExitNotes(""); setScreenshotUrl("");
-    sparkle(); setSaving(true); setTimeout(()=>setSaving(false),900);
-    setView("dashboard");
+    const closed:Trade={...openTrade,status:"CLOSED",exitPrices,avgExit:Math.round(avgExit*1000)/1000,orderCount:exitPrices.length,totalLot:exitPrices.length*lot,totalPL,rr,result,exitReason,notes:exitNotes,screenshotUrl};
+    const updated=[closed,...trades.filter(t=>t.id!==closed.id)]; setTrades(updated); save(updated); setOpenTrade(null); saveOpen(null);
+    const newStatus=calcDailyStatus(updated,closed.date);
+    if(closed.date===todayStr){ if(newStatus.isHardStop){saveCooldownUntil(0);setCooldownUntil(0);const hl:HardlockState={date:todayStr,submitted:false,reflectionText:"",submittedAt:""};saveHardlock(hl);setHardlock(hl);} else if(newStatus.lossStreak===2){const until=Date.now()+COOLDOWN_MS;saveCooldownUntil(until);setCooldownUntil(until);setNowTick(Date.now());} else {saveCooldownUntil(0);setCooldownUntil(0);} }
+    try{const {data:{user}}=await supabase.auth.getUser();if(user){await supabase.from("journal_trades").upsert({id:closed.id,user_id:user.id,date:closed.date,time:closed.time,symbol:closed.asset||"XAUUSD",direction:closed.direction,session:closed.session,entry_price:closed.entryPrice,exit_prices:closed.exitPrices,avg_exit:closed.avgExit,lot_per_order:closed.lotPerOrder,order_count:closed.orderCount,total_lot:closed.totalLot,total_pl:closed.totalPL,sl_price:closed.slPrice,tp_price:0,rr:closed.rr,result:closed.result,smc_concept:[],htf_bias:"Neutral",entry_model:closed.mode,tf:closed.timeframe||"M5",notes:closed.notes,screenshot_url:closed.screenshotUrl||null,created_at:closed.createdAt},{onConflict:"id"});}}catch(e){console.error(e);}
+    setExitPrices([]);setExitInput("");setPasteInput("");setExitReason("");setExitNotes("");setScreenshotUrl("");sparkle();setSaving(true);setTimeout(()=>setSaving(false),900);setView("dashboard");
   };
   const submitReflection = (text: string) => {
     const hl: HardlockState = { date: todayStr, submitted:true, reflectionText:text, submittedAt:new Date().toISOString() };
@@ -1461,19 +1487,30 @@ export default function JournalPage() {
     setShowResetConfirm(false);
     setView("dashboard");
   };
-  const uploadScreenshot=async(file:File)=>{
-    const {data:{user}}=await supabase.auth.getUser();
-    if(!user){alert("Please log in");return;}
+  const uploadJournalImage=async(file:File,target:"before"|"after")=>{
     setUploading(true);
     try{
-      const ext=(file.name.split(".").pop()||"png").toLowerCase();
-      const path=`${user.id}/${Date.now()}.${ext}`;
-      const {error}=await supabase.storage.from("journal-screenshots").upload(path,file,{upsert:true,contentType:file.type});
-      if(error)alert("Upload failed");
-      else{const{data}=supabase.storage.from("journal-screenshots").getPublicUrl(path);setScreenshotUrl(data.publicUrl);}
-    }catch{alert("Upload error");}
+      const {data:{user}}=await supabase.auth.getUser();
+      if(user){
+        const ext=(file.name.split(".").pop()||"png").toLowerCase();
+        const path=`${user.id}/wyckoff-${Date.now()}-${target}.${ext}`;
+        const {error}=await supabase.storage.from("journal-screenshots").upload(path,file,{upsert:true,contentType:file.type});
+        if(error) throw error;
+        const {data}=supabase.storage.from("journal-screenshots").getPublicUrl(path);
+        if(target==="before") setBeforeScreenshotUrl(data.publicUrl);
+        else setAfterScreenshotUrl(data.publicUrl);
+      }else{
+        const dataUrl=await new Promise<string>((resolve,reject)=>{
+          const reader=new FileReader(); reader.onload=()=>resolve(String(reader.result||"")); reader.onerror=reject; reader.readAsDataURL(file);
+        });
+        if(target==="before") setBeforeScreenshotUrl(dataUrl);
+        else setAfterScreenshotUrl(dataUrl);
+      }
+    }catch(e){ console.error(e); alert("Upload รูปไม่สำเร็จ"); }
     setUploading(false);
   };
+  // Legacy single-image uploader remains available for old trade editor.
+  const uploadScreenshot=async(file:File)=>{ await uploadJournalImage(file,"after"); setScreenshotUrl(afterScreenshotUrl); };
   const addExit=()=>{const v=parseFloat(exitInput);if(!isNaN(v)&&v>0){setExitPrices(p=>[...p,v]);setExitInput("");}};
   const parsePaste=()=>{
     const ns=pasteInput.split(/[\n,\s]+/).map(s=>parseFloat(s.replace(/,/g,""))).filter(n=>!isNaN(n)&&n>0);
@@ -1488,14 +1525,14 @@ export default function JournalPage() {
     });
   };
   const editTrade=(t:Trade)=>{
-    // calendar / session → กดแก้ไข trade ที่ปิดแล้ว (เปิด exit view)
-    setOpenTrade(t);
-    setExitPrices(Array.isArray(t.exitPrices) ? t.exitPrices : []);
-    setExitReason(t.exitReason || "");
-    setExitNotes(t.notes || "");
-    setScreenshotUrl(t.screenshotUrl || "");
-    saveOpen(t);
-    setView("exit");
+    if(t.mode==="WYCKOFF"){
+      setEditingWyckoffId(t.id);
+      setEntryDate(t.date||todayStr); setEntryTime(String(t.time||nowTime24()).slice(0,5)); setSession(t.session||"New York");
+      setAsset(t.asset||"XAUUSD"); setTimeframe(t.timeframe||"15s"); setGrade(t.grade||"A+"); setWyResult(t.result||"BE"); setWyRR("1"); setWyNotes(t.notes||"");
+      setBeforeScreenshotUrl(t.screenshotBeforeUrl||""); setAfterScreenshotUrl(t.screenshotAfterUrl||t.screenshotUrl||"");
+      setOpenTrade(t); setView("checklist"); return;
+    }
+    setOpenTrade(t); setExitPrices(Array.isArray(t.exitPrices) ? t.exitPrices : []); setExitReason(t.exitReason || ""); setExitNotes(t.notes || ""); setScreenshotUrl(t.screenshotUrl || ""); saveOpen(t); setView("exit");
   };
   const deleteTrade=async(t:Trade)=>{
     const ok = window.confirm(`ลบการเทรดวันที่ ${t.date} เวลา ${t.time} ใช่ไหม?`);
@@ -1727,18 +1764,18 @@ export default function JournalPage() {
         .open-badge{animation:blink .8s step-end infinite;}
       `}</style>
       {/* Boot */}
-      {booting&&(<div className={`j-boot ${bootDone?"done":""}`}><div className="j-boot-logo">JOURNAL.EXE</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:13,color:"#c0e6d4",minHeight:40,whiteSpace:"pre"}}>{bootText}<span className="j-boot-cursor"/></div><div className="j-boot-bar"><div className="j-boot-fill"/></div><div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#c0e6d4",opacity:.6,letterSpacing:2}}>SMC · XAUUSD · TRUST YOUR OWN</div></div>)}
+      {booting&&(<div className={`j-boot ${bootDone?"done":""}`}><div className="j-boot-logo">JOURNAL.EXE</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:13,color:"#c0e6d4",minHeight:40,whiteSpace:"pre"}}>{bootText}<span className="j-boot-cursor"/></div><div className="j-boot-bar"><div className="j-boot-fill"/></div><div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#c0e6d4",opacity:.6,letterSpacing:2}}>WYCKOFF · TRUST YOUR OWN</div></div>)}
       {/* Header */}
       <div className="j-header-wrap" style={{padding:"14px 12px 0"}}>
         <div className="j-win" style={{maxWidth:780,margin:"0 auto"}}>
           <div className="j-bar" style={{background:"var(--j-pink)"}}>
-            <span className="j-t">★ JOURNAL.EXE — XAUUSD SMC</span>
+            <span className="j-t">★ JOURNAL.EXE — TRADING JOURNAL</span>
             <span className="j-ctrl"><span>_</span><span>▢</span><Link href="/" style={{textDecoration:"none",color:"var(--j-ink)"}}><span>✕</span></Link></span>
           </div>
           <div className="j-body" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
             <div>
               <div style={{fontFamily:"'VT323',monospace",fontSize:34,lineHeight:.8}}>TRADING JOURNAL</div>
-              <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,letterSpacing:2,color:"var(--j-soft)",marginTop:4}}>✦ SMC PRO MAX · M15/M5/M1 ✦</div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,letterSpacing:2,color:"var(--j-soft)",marginTop:4}}>✦ WYCKOFF TRADING JOURNAL ✦</div>
             </div>
             <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
               <button onClick={()=>setAccountType(accountType==="cent"?"standard":"cent")} className="j-chip" style={{fontSize:11,background:accountType==="cent"?"var(--j-butter)":"var(--j-lav)"}}>{accountType==="cent"?"Cent":"Std"}</button>
@@ -1755,7 +1792,7 @@ export default function JournalPage() {
                   🟡 ไม้ค้างอยู่! → กรอกจุดออก
                 </button>
               ) : (
-                <button onClick={()=>{setStep("mode");setSelMode(null);setView("checklist");}} className="j-btn" style={{padding:"9px 14px",background:"var(--j-mint)",fontSize:13}}>
+                <button onClick={()=>{setEntryDate(new Date().toISOString().split("T")[0]);setEntryTime(nowTime24());setSession(autoSessionFromTime(nowTime24()));setAsset("XAUUSD");setTimeframe("15s");setGrade("A+");setWyResult("WIN");setWyRR("1");setWyNotes("");setBeforeScreenshotUrl("");setAfterScreenshotUrl("");setEditingWyckoffId(null);setOpenTrade(null);setView("checklist");}} className="j-btn" style={{padding:"9px 14px",background:"var(--j-mint)",fontSize:13}}>
                   ✎ New Trade
                 </button>
               )}
@@ -1858,7 +1895,7 @@ export default function JournalPage() {
                     <div><span style={{color:"var(--j-soft)"}}>SL </span><b style={{color:"#e08a82"}}>{t.slPrice}</b></div>
                     <div><span style={{color:"var(--j-soft)"}}>Exit </span><b>{t.exitReason||"-"}</b></div>
                   </div>
-                  {t.screenshotUrl&&(<img src={t.screenshotUrl} alt="ss" onClick={()=>setLightbox(t.screenshotUrl)} style={{width:"100%",maxHeight:160,objectFit:"cover",border:"2px solid var(--j-ink)",borderRadius:7,cursor:"zoom-in",marginBottom:8,boxShadow:"2px 2px 0 var(--j-ink)"}}/>)}
+                  {(t.screenshotBeforeUrl||t.screenshotAfterUrl||t.screenshotUrl)&&(<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>{(t.screenshotBeforeUrl||t.screenshotUrl)&&<img src={t.screenshotBeforeUrl||t.screenshotUrl} alt="before" onClick={()=>setLightbox(t.screenshotBeforeUrl||t.screenshotUrl)} style={{width:"100%",height:140,objectFit:"cover",border:"2px solid var(--j-ink)",borderRadius:7,cursor:"zoom-in"}}/>}{t.screenshotAfterUrl&&<img src={t.screenshotAfterUrl} alt="after" onClick={()=>setLightbox(t.screenshotAfterUrl||"")} style={{width:"100%",height:140,objectFit:"cover",border:"2px solid var(--j-ink)",borderRadius:7,cursor:"zoom-in"}}/>}</div>)}
                   {t.notes&&<p style={{fontFamily:"'DM Mono'",fontSize:12,borderTop:"1.5px dashed #d8cdbd",paddingTop:8}}>"{t.notes}"</p>}
                   <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:10,paddingTop:10,borderTop:"1.5px dashed #e3d9c4"}}>
                     <button onClick={()=>editTrade(t)} className="j-chip" style={{fontSize:11,background:"var(--j-butter)",padding:"5px 10px"}}>✎ แก้ไข</button>
@@ -1870,183 +1907,45 @@ export default function JournalPage() {
             {!filtered.length&&<p className="text-center py-10" style={{color:"var(--j-soft)"}}>No sessions</p>}
           </div>
         )}
-        {/* ── CHECKLIST (Pre-Entry) ── */}
+        {/* ── WYCKOFF JOURNAL ── */}
         {view==="checklist"&&(
-          isLockedFromTrading ? (
-            <div className="space-y-4 j-tabcontent" style={{maxWidth:560,margin:"0 auto"}}>
-              <Win title="🔒 ล็อกอยู่ — เข้าไม้ไม่ได้ตอนนี้" color="var(--j-coral)">
-                <div style={{textAlign:"center",padding:"12px 4px"}}>
-                  <div style={{fontSize:44,marginBottom:8}}>{isForcedLockToday?"🔒":isHardLockToday?"🛑":"⏸️"}</div>
-                  <div style={{fontFamily:"'Fredoka',sans-serif",fontSize:15,fontWeight:700,marginBottom:10}}>
-                    {isForcedLockToday?"วันนี้ล็อกทั้งวัน (Pattern ซ้ำในสัปดาห์)":isHardLockToday?"LOSS 3 ติด — หยุดเทรดวันนี้":`พักบังคับ เหลือ ${fmtMMSS(cooldownRemainingMs)}`}
-                  </div>
-                  <button onClick={()=>setView("dashboard")} className="j-btn" style={{padding:"10px 18px",background:"var(--j-mint)",fontSize:13}}>← กลับ Dashboard</button>
-                </div>
-              </Win>
-            </div>
-          ) : (
-          <div className="space-y-4 j-tabcontent" style={{maxWidth:560,margin:"0 auto"}}>
+          <div className="space-y-4 j-tabcontent" style={{maxWidth:780,margin:"0 auto"}}>
             <div className="flex items-center gap-3">
               <button onClick={()=>setView("dashboard")} className="j-chip off" style={{fontSize:12}}>← Cancel</button>
-              <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--j-soft)"}}>
-                {step==="mode"?"Step 1/3 — เลือก Mode":step==="checklist"?"Step 2/3 — Checklist":"Step 3/3 — Entry Details"}
-              </div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--j-soft)"}}>NEW EXECUTION</div>
             </div>
-            {/* STEP 1: เลือก Mode */}
-            {step==="mode"&&(
-              <Win title="🎯 STEP 1 — วัฏจักรตอนนี้คืออะไร?" color="var(--j-lav)">
-                <div className="space-y-3">
-                  {(Object.entries(MODE_INFO) as [TradeMode,typeof MODE_INFO[TradeMode]][]).map(([mode,info])=>(
-                    <button key={mode} onClick={()=>{setSelMode(mode);setStep("checklist");}}
-                      style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"12px 14px",border:"2.5px solid var(--j-ink)",borderRadius:9,background:info.color,cursor:"pointer",boxShadow:"3px 3px 0 var(--j-ink)",textAlign:"left",fontFamily:"'Fredoka',sans-serif",transition:".1s"}}
-                      onMouseDown={e=>(e.currentTarget.style.transform="translate(2px,2px)")}
-                      onMouseUp={e=>(e.currentTarget.style.transform="")}>
-                      <span style={{fontSize:26}}>{info.emoji}</span>
-                      <div>
-                        <div style={{fontSize:16,fontWeight:700,color:"var(--j-ink)"}}>{info.label}</div>
-                        <div style={{fontSize:11,color:"var(--j-soft)",fontFamily:"'DM Mono',monospace"}}>{info.desc}</div>
-                      </div>
-                      <span style={{marginLeft:"auto",fontSize:18}}>→</span>
-                    </button>
-                  ))}
-                </div>
-              </Win>
-            )}
-            {/* STEP 2: Checklist */}
-            {step==="checklist"&&selMode&&(()=>{
-              const info=MODE_INFO[selMode];
-              const done=checklistComplete();
-              return (
-                <Win title={`${info.emoji} STEP 2 — ${info.label} Checklist`} color={info.color}>
-                  {selMode==="SMC"&&(<>
-                    <div style={{background:"#fbf6ea",border:"1.5px dashed var(--j-ink)",borderRadius:7,padding:"7px 10px",marginBottom:10,fontFamily:"'DM Mono',monospace",fontSize:10,color:"#d4685f"}}>⚠️ ไม่ครบทุกข้อ = ไม่เข้า เด็ดขาด</div>
-                    <CL checked={clSMC.c1_trend} onChange={v=>setClSMC(p=>({...p,c1_trend:v}))} label="M15 — วัฏจักร = TREND ยืนยัน (ไม่ใช่ SW/Pullback)"/>
-                    <CL checked={clSMC.c2_bos}   onChange={v=>setClSMC(p=>({...p,c2_bos:v}))}   label="M15 — BOS หรือ CHoCH เกิดแล้ว"/>
-                    <CL checked={clSMC.c3_dzsz}  onChange={v=>setClSMC(p=>({...p,c3_dzsz:v}))}  label="M15 — Mark DZ/SZ สำคัญไว้แล้ว"/>
-                    <CL checked={clSMC.c4_ob}    onChange={v=>setClSMC(p=>({...p,c4_ob:v}))}    label="M5 — หา Order Block + DZ/SZ ได้แล้ว"/>
-                    <CL checked={clSMC.c5_liq}   onChange={v=>setClSMC(p=>({...p,c5_liq:v}))}   label="M5 — Liquidity $$$ เคลียร์แล้ว"/>
-                    <CL checked={clSMC.c6_reject} onChange={v=>setClSMC(p=>({...p,c6_reject:v}))} label="M5 — มี Rejection ยืนยัน"/>
-                    <CL checked={clSMC.c7_retest} onChange={v=>setClSMC(p=>({...p,c7_retest:v}))} label="M1 — LTF Retest ครบ (Buy=ยกโลว์ / Sell=กดไฮ)"/>
-                    <CL checked={clSMC.c8_mss}   onChange={v=>setClSMC(p=>({...p,c8_mss:v}))}   label="M1 — MSS ผ่านแล้ว → พร้อมโดด" warn/>
-                  </>)}
-                  {selMode==="SW_RANGE"&&(<>
-                    <div style={{background:"#fbf6ea",border:"1.5px dashed var(--j-ink)",borderRadius:7,padding:"7px 10px",marginBottom:10,fontFamily:"'DM Mono',monospace",fontSize:10,color:"#5a8de0"}}>กรอบบน = Sell / กรอบล่าง = Buy · RR ≥ 3 เท่านั้น</div>
-                    <CL checked={clSWR.c1_sw}    onChange={v=>setClSWR(p=>({...p,c1_sw:v}))}    label="M15 — วัฏจักร = SIDE WAY ยืนยัน"/>
-                    <CL checked={clSWR.c2_level} onChange={v=>setClSWR(p=>({...p,c2_level:v}))} label="ระบุกรอบบน (Resistance) และกรอบล่าง (Support) ชัดเจน"/>
-                    <CL checked={clSWR.c3_near}  onChange={v=>setClSWR(p=>({...p,c3_near:v}))}  label="ราคาอยู่ใกล้กรอบที่จะเทรด (ไม่ใช่กลางกรอบ)"/>
-                    <CL checked={clSWR.c4_pa}    onChange={v=>setClSWR(p=>({...p,c4_pa:v}))}    label="M5 PA ยืนยัน — Pa sell ที่ 2 กดไฮ / Pa buy ที่ 2 ยกโลว์"/>
-                    <CL checked={clSWR.c5_rr}    onChange={v=>setClSWR(p=>({...p,c5_rr:v}))}    label="RR ≥ 3 ถึงจะเข้า (คำนวณแล้ว ยืนยัน)" warn/>
-                  </>)}
-                  {selMode==="SW_BREAKOUT"&&(<>
-                    <div style={{background:"#f6e6ac88",border:"1.5px dashed var(--j-ink)",borderRadius:7,padding:"7px 10px",marginBottom:10,fontFamily:"'DM Mono',monospace",fontSize:10,color:"#d4a65f"}}>⚠️ ระวัง FOMO — รอ Retest ก่อนเสมอ</div>
-                    <CL checked={clSWB.c1_sw}     onChange={v=>setClSWB(p=>({...p,c1_sw:v}))}     label="M15 — กรอบ SW ชัดเจน Mark ไว้แล้ว"/>
-                    <CL checked={clSWB.c2_close}  onChange={v=>setClSWB(p=>({...p,c2_close:v}))}  label="ราคาปิดออกนอกกรอบจริง (ไม่ใช่แค่ Wick)"/>
-                    <CL checked={clSWB.c3_retest} onChange={v=>setClSWB(p=>({...p,c3_retest:v}))} label="รอ Retest กลับมาที่กรอบก่อน ถึงเข้า" warn/>
-                    <CL checked={clSWB.c4_noFomo} onChange={v=>setClSWB(p=>({...p,c4_noFomo:v}))} label="ยืนยัน: ฉันไม่ได้ FOMO เข้าทันทีหลัง Breakout" warn/>
-                  </>)}
-                  {selMode==="PULLBACK"&&(<>
-                    <div style={{background:"#f8d6ba88",border:"1.5px dashed var(--j-ink)",borderRadius:7,padding:"7px 10px",marginBottom:10,fontFamily:"'DM Mono',monospace",fontSize:10,color:"#c47c3a"}}>เก็บสั้น ขยันซอย — ไม่ถือยาว</div>
-                    <CL checked={clPB.c1_trend} onChange={v=>setClPB(p=>({...p,c1_trend:v}))} label="M15 — ระบุทิศเทรนด์หลักชัดเจน"/>
-                    <CL checked={clPB.c2_dzsz}  onChange={v=>setClPB(p=>({...p,c2_dzsz:v}))}  label="ราคา Pullback มาที่ DZ/SZ ใหญ่ที่ Mark ไว้"/>
-                    <CL checked={clPB.c3_pa}    onChange={v=>setClPB(p=>({...p,c3_pa:v}))}    label="M5 — PA ยืนยันกลับตัว"/>
-                    <CL checked={clPB.c4_short} onChange={v=>setClPB(p=>({...p,c4_short:v}))} label="วางแผนเก็บสั้น ขยันซอย — ไม่โลภถือยาว" warn/>
-                  </>)}
-                  {selMode==="M5_REVERSAL"&&(<>
-                    <div style={{background:"#c0e6d488",border:"1.5px dashed var(--j-ink)",borderRadius:7,padding:"7px 10px",marginBottom:10,fontFamily:"'DM Mono',monospace",fontSize:10,color:"#3f9b73"}}>ใช้ได้ทุกวัฏจักร · ตามเทรนด์=ถือยาว / สวน=รีบโดด</div>
-                    <CL checked={clM5.c1_pa2}  onChange={v=>setClM5(p=>({...p,c1_pa2:v}))}  label="M5 — Pa ที่ 2 ยืนยันแล้ว"/>
-                    <CL checked={clM5.c2_dir}  onChange={v=>setClM5(p=>({...p,c2_dir:v}))}  label="Buy=ยกโลว์ยืนยัน / Sell=กดไฮยืนยัน"/>
-                    <CL checked={clM5.c3_plan} onChange={v=>setClM5(p=>({...p,c3_plan:v}))} label="วางแผนแล้ว: ตามเทรนด์=ถือยาว / สวนเทรนด์=Rejection รีบโดด" warn/>
-                  </>)}
-                  <div style={{display:"flex",gap:8,marginTop:4}}>
-                    <button onClick={()=>setStep("mode")} className="j-chip off" style={{fontSize:12}}>← กลับ</button>
-                    <button onClick={()=>setStep("entry")} disabled={!done} className="j-btn" style={{flex:1,padding:"12px",background:done?"var(--j-mint)":"#e3d9c4",fontSize:14}}>
-                      {done?"✓ Checklist ครบ → กรอก Entry":"ยังไม่ครบทุกข้อ"}
-                    </button>
+            <Win title="บันทึกการฝึก" color="var(--j-lav)">
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <div><label className="j-lab">วันที่</label><input type="date" value={entryDate} onChange={e=>setEntryDate(e.target.value)} className="j-in"/></div>
+                <div><label className="j-lab">สินทรัพย์</label><select value={asset} onChange={e=>setAsset(e.target.value)} className="j-in"><option value="XAUUSD">XAUUSD</option><option value="BTCUSD">BTCUSD</option><option value="EURUSD">EURUSD</option><option value="GBPUSD">GBPUSD</option><option value="NAS100">NAS100</option><option value="US30">US30</option><option value="OTHER">อื่นๆ</option></select></div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <div><label className="j-lab">Session</label><select value={session} onChange={e=>setSession(e.target.value as Session)} className="j-in">{SESSIONS.map(s=><option key={s}>{s}</option>)}</select></div>
+                <div><label className="j-lab">Timeframe</label><select value={timeframe} onChange={e=>setTimeframe(e.target.value)} className="j-in"><option>15s</option><option>1m</option><option>5m</option><option>15m</option><option>1H</option><option>4H</option><option>Daily</option></select></div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <div><label className="j-lab">Setup</label><select value="WYCKOFF" disabled className="j-in"><option value="WYCKOFF">Wyckoff</option></select></div>
+                <div><label className="j-lab">ผลลัพธ์</label><select value={wyResult} onChange={e=>{const r=e.target.value as Result;setWyResult(r);setWyRR(r==="WIN"?"1":r==="LOSS"?"-1":"0");}} className="j-in"><option value="WIN">Win</option><option value="LOSS">Loss</option><option value="BE">BE</option></select></div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <div><label className="j-lab">RR</label><input value={wyRR+"R"} readOnly className="j-in" style={{fontWeight:700,color:wyResult==="WIN"?"#5fae89":wyResult==="LOSS"?"#d4685f":"var(--j-soft)"}}/><div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",marginTop:4}}>ระบบ 1:1 · Win = +1R · Loss = -1R · BE = 0R</div></div>
+                <div><label className="j-lab">Grade</label><select value={grade} onChange={e=>setGrade(e.target.value)} className="j-in"><option>A+</option><option>A</option><option>B+</option><option>B</option><option>C</option><option>D</option></select></div>
+              </div>
+              <label className="j-lab">เหตุผล / บทเรียน</label>
+              <textarea value={wyNotes} onChange={e=>setWyNotes(e.target.value)} rows={3} placeholder="เห็นอะไร เข้าเพราะอะไร สิ่งที่ทำได้ดี / สิ่งที่ต้องแก้..." className="j-in mb-3" style={{resize:"none",fontSize:13,fontFamily:"'Fredoka'"}}/>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                {[{key:"before",label:"ภาพก่อนเข้า",url:beforeScreenshotUrl,set:setBeforeScreenshotUrl},{key:"after",label:"ภาพหลังจบ",url:afterScreenshotUrl,set:setAfterScreenshotUrl}].map(item=>(
+                  <div key={item.key} style={{border:"1.5px dashed var(--j-ink)",borderRadius:8,padding:10,background:"#fbf6ea",minHeight:120}}>
+                    <label className="j-lab" style={{textAlign:"center",display:"block"}}>{item.key==="before"?"ก่อน":"หลัง"}</label>
+                    <div style={{fontFamily:"'Fredoka',sans-serif",fontSize:13,fontWeight:600,textAlign:"center",marginBottom:6}}>{item.label}</div>
+                    {item.url ? <div><img src={item.url} alt={item.label} onClick={()=>setLightbox(item.url)} style={{width:"100%",height:150,objectFit:"cover",border:"2px solid var(--j-ink)",borderRadius:7,cursor:"zoom-in"}}/><button onClick={()=>item.set("")} className="j-chip mt-2" style={{fontSize:10,background:"var(--j-coral)",width:"100%"}}>🗑 ลบรูป</button></div> : <label className="j-btn" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:7,padding:12,background:item.key==="before"?"var(--j-sky)":"var(--j-mint)",fontSize:12,cursor:uploading?"wait":"pointer",marginTop:12}}>{uploading?"⌛ Uploading...":"📎 อัพรูป"}<input type="file" accept="image/*" disabled={uploading} style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)uploadJournalImage(f,item.key as "before"|"after");}}/></label>}
                   </div>
-                </Win>
-              );
-            })()}
-            {/* STEP 3: Entry Details */}
-            {step==="entry"&&selMode&&(
-              <Win title={`${getModeInfo(selMode).emoji} STEP 3 — Entry Details`} color={getModeInfo(selMode).color}>
-                <div className="grid grid-cols-3 gap-2 mb-2">
-                  <div>
-                    <label className="j-lab">Date</label>
-                    <input type="date" value={entryDate} onChange={e=>setEntryDate(e.target.value)} className="j-in" style={{fontSize:11}}/>
-                  </div>
-                  <div>
-                    <label className="j-lab">Time 24H</label>
-                    <div style={{display:"flex",gap:6}}>
-                      <input
-                        type="time"
-                        lang="en-GB"
-                        step="60"
-                        value={entryTime}
-                        onChange={e=>setEntryTimeAuto(e.target.value)}
-                        className="j-in"
-                        style={{fontSize:14,fontWeight:700}}
-                      />
-                      <button type="button" onClick={setNowEntryTime} className="j-chip" style={{fontSize:10,padding:"6px 8px",boxShadow:"none",whiteSpace:"nowrap"}}>NOW</button>
-                    </div>
-                  </div>
-                  <div><label className="j-lab">Session {sessionManual?"Manual":"Auto"}</label>
-                    <select
-                      value={session}
-                      onChange={e=>{setSession(e.target.value as Session);setSessionManual(true);}}
-                      className="j-in"
-                      style={{fontSize:11,fontWeight:700}}
-                    >
-                      {SESSIONS.map(s=><option key={s}>{s}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",marginBottom:10}}>
-                  เวลาใช้รูปแบบ 24 ชั่วโมง เช่น 09:30 / 14:45 · Session ตั้งให้อัตโนมัติตามเวลา แต่เลือกเองได้
-                </div>
-                <label className="j-lab">Direction</label>
-                <div className="flex gap-2 mb-3">
-                  {(["LONG","SHORT"] as Direction[]).map(d=>(
-                    <button key={d} onClick={()=>setDirection(d)} className={`j-chip flex-1 ${direction===d?"":"off"}`} style={direction===d?{background:d==="LONG"?"var(--j-mint)":"var(--j-coral)",textAlign:"center"}:{textAlign:"center"}}>
-                      {d==="LONG"?"▲ LONG":"▼ SHORT"}
-                    </button>
-                  ))}
-                </div>
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  <div><label className="j-lab">Entry Price</label>
-                    <input type="number" step="0.001" value={entryPrice} placeholder="4171.200" onChange={e=>setEntryPrice(parseFloat(e.target.value)||"")} className="j-in" style={{fontSize:16,fontWeight:700}}/>
-                  </div>
-                  <div><label className="j-lab">🔴 SL Price</label>
-                    <input type="number" step="0.001" value={slPrice} placeholder="SL" onChange={e=>setSlPrice(parseFloat(e.target.value)||"")} className="j-in" style={{color:"#d4685f",fontWeight:700}}/>
-                  </div>
-                </div>
-                <div className="mb-3">
-                  <label className="j-lab">Lot / Order</label>
-                  <input type="text" inputMode="decimal" value={lotInput} placeholder="0.10"
-                    onChange={e=>{const v=e.target.value;if(v===""||/^\d*\.?\d*$/.test(v))setLotInput(v);}} className="j-in"/>
-                </div>
-                <label className="j-lab">อารมณ์ตอนเข้า</label>
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {EMOTIONS.map(em=>(
-                    <button key={em} onClick={()=>setEmotion(em)} className={`j-chip ${emotion===em?"":"off"}`}
-                      style={emotion===em?{background:em.includes("FOMO")||em.includes("Fearful")||em.includes("Revenge")?"var(--j-coral)":"var(--j-mint)",fontSize:12}:{fontSize:12}}>
-                      {em}
-                    </button>
-                  ))}
-                </div>
-                <div style={{background:"var(--j-lav)",border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 12px",marginBottom:12,fontFamily:"'DM Mono',monospace",fontSize:10}}>
-                  Risk $5 · Mode: {MODE_INFO[selMode].label} · {direction}
-                  {entryPrice&&slPrice&&<span> · SL = {Math.abs(Number(entryPrice)-Number(slPrice)).toFixed(3)} pts</span>}
-                </div>
-                <div style={{display:"flex",gap:8}}>
-                  <button onClick={()=>setStep("checklist")} className="j-chip off" style={{fontSize:12}}>← กลับ</button>
-                  <button onClick={saveOpenTrade} disabled={!entryPrice||!slPrice||isLockedFromTrading} className="j-btn" style={{flex:1,padding:"13px",background:"var(--j-coral)",fontSize:14}}>
-                    🟡 บันทึกไม้ — รอกรอกจุดออก
-                  </button>
-                </div>
-              </Win>
-            )}
+                ))}
+              </div>
+              <div style={{background:"var(--j-lav)",border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 12px",marginBottom:12,fontFamily:"'DM Mono',monospace",fontSize:10,textAlign:"center"}}>Wyckoff · {asset} · {timeframe} · {session} · {wyResult} · {wyRR}R · {grade}</div>
+              <button onClick={saveWyckoffTrade} disabled={isLockedFromTrading||saving||!entryDate||!asset||!wyResult} className={`j-btn w-full ${saving?"j-saving":""}`} style={{padding:14,background:"var(--j-coral)",fontSize:15}}>{saving?"💾 SAVING...":"💾 บันทึกการฝึก"}</button>
+            </Win>
           </div>
-          )
         )}
         {/* ── EXIT (Post-Exit) ── */}
         {view==="exit"&&openTrade&&(
@@ -2296,10 +2195,10 @@ export default function JournalPage() {
                                 <span style={{background:info.color,border:"1.5px solid var(--j-ink)",borderRadius:6,padding:"1px 6px",fontSize:10}}>{info.label}</span>
                               </div>
                               <div style={{fontSize:10,color:"var(--j-soft)",fontFamily:"'DM Mono',monospace",marginTop:2}}>
-                                Entry {t.entryPrice} → Exit {t.avgExit} · {t.orderCount} order{t.orderCount>1?"s":""} · RR {Number(t.rr||0).toFixed(2)}
+                                {t.asset||"XAUUSD"} · {t.timeframe||"-"} · {t.mode==="WYCKOFF"?"Wyckoff":getModeInfo(t.mode).label} · RR {Number(t.rr||0).toFixed(1)}R · Grade {t.grade||"-"}
                               </div>
                             </div>
-                            {t.screenshotUrl&&<button onClick={()=>setLightbox(t.screenshotUrl)} className="j-chip off" style={{fontSize:10,padding:"3px 7px"}}>🖼</button>}
+                            {(t.screenshotBeforeUrl||t.screenshotAfterUrl||t.screenshotUrl)&&<button onClick={()=>setLightbox(t.screenshotAfterUrl||t.screenshotBeforeUrl||t.screenshotUrl)} className="j-chip off" style={{fontSize:10,padding:"3px 7px"}}>🖼</button>}
                             <b style={{fontFamily:"'DM Mono',monospace",fontSize:13,color:t.totalPL>=0?"#3f9b73":"#d4685f",minWidth:76,textAlign:"right"}}>{money(t.totalPL)}</b>
                             <button onClick={()=>editTrade(t)} className="j-chip off" style={{fontSize:10,padding:"3px 7px"}}>✎</button>
                             <button onClick={()=>deleteTrade(t)} className="j-chip off" style={{fontSize:10,padding:"3px 7px",color:"#d4685f"}}>🗑</button>
