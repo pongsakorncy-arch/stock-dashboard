@@ -1168,7 +1168,7 @@ export default function JournalPage() {
 
         /* ---------- App shell ---------- */
         .j-app-frame{
-          min-height:100vh;display:grid;grid-template-columns:248px minmax(0,1fr);
+          min-height:100vh;display:grid;grid-template-columns:210px minmax(0,1fr);
           position:relative;z-index:1;
         }
         .j-sidebar{
@@ -1235,10 +1235,10 @@ export default function JournalPage() {
             repeating-linear-gradient(95deg,transparent 0 85px,rgba(255,255,255,.012) 85px 87px);
         }
         .j-header-wrap,.j-page-shell{position:relative;z-index:2}
-        .j-header-wrap{padding:15px 24px 0!important}
-        .j-page-shell{max-width:min(1500px,93vw)!important;margin:0 auto;padding:18px 24px 36px!important}
-        .j-app-main .j-header-wrap > .j-win{max-width:min(1500px,93vw)!important;margin:0 auto}
-        .j-app-main .j-tabs-wrap{max-width:min(1500px,93vw)!important;margin:15px auto 0!important;padding:0!important}
+        .j-header-wrap{padding:18px 26px 0!important}
+        .j-page-shell{max-width:1280px!important;margin:0 auto;padding:20px 26px 38px!important}
+        .j-app-main .j-header-wrap > .j-win{max-width:1280px!important;margin:0 auto}
+        .j-app-main .j-tabs-wrap{max-width:1280px!important;margin:16px auto 0!important;padding:0!important}
         .j-app-main .j-shinobi-header{min-height:124px;padding:23px 28px!important}
 
         /* ---------- Brand ---------- */
@@ -1289,8 +1289,8 @@ export default function JournalPage() {
 
         /* ---------- Windows / form ---------- */
         .j-win{
-          background:rgba(10,12,12,.86);border:1px solid var(--j-line);border-radius:2px;
-          box-shadow:0 20px 55px rgba(0,0,0,.30);overflow:hidden
+          background:rgba(8,10,10,.90);border:1px solid rgba(255,255,255,.19);border-radius:4px;
+          box-shadow:0 22px 60px rgba(0,0,0,.34);overflow:hidden
         }
         .j-bar{
           min-height:32px;display:flex;align-items:center;gap:9px;padding:7px 11px;
@@ -1371,6 +1371,105 @@ export default function JournalPage() {
         .j-tab.on{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.18);color:#fff}
         .j-tab:hover{color:#fff}
 
+        /* ---------- Wyckoff responsive composition ---------- */
+        .j-wy-form{
+          width:100%;
+          max-width:1080px;
+          margin:0 auto;
+        }
+        .j-wy-meta-grid{
+          display:grid;
+          grid-template-columns:repeat(4,minmax(0,1fr));
+          gap:10px;
+          margin-bottom:10px;
+        }
+        .j-wy-trade-grid{
+          display:grid;
+          grid-template-columns:1.05fr 1.55fr .9fr .9fr;
+          gap:10px;
+          margin-bottom:10px;
+          align-items:start;
+        }
+        .j-wy-media-grid{
+          display:grid;
+          grid-template-columns:repeat(2,minmax(0,1fr));
+          gap:12px;
+          margin-bottom:12px;
+        }
+        .j-wy-actions{
+          display:grid;
+          grid-template-columns:220px minmax(0,1fr);
+          gap:10px;
+        }
+        .j-wy-form .j-upload-box{
+          min-height:168px;
+        }
+        .j-wy-form .j-upload-box img{
+          height:185px!important;
+          display:block;
+        }
+        .j-wy-form .j-ninja-divider{
+          margin:16px 0 18px!important;
+        }
+        .j-wy-form .j-in{
+          min-height:43px;
+        }
+        .j-wy-form textarea.j-in{
+          min-height:88px!important;
+        }
+        .j-wy-form .j-result-btn{
+          min-height:43px;
+        }
+
+        @media(max-width:1100px){
+          .j-wy-form{max-width:100%}
+          .j-wy-meta-grid,.j-wy-trade-grid{
+            grid-template-columns:repeat(2,minmax(0,1fr));
+          }
+          .j-wy-actions{
+            grid-template-columns:1fr 1.8fr;
+          }
+        }
+
+        @media(max-width:680px){
+          .j-header-wrap{padding:9px 8px 0!important}
+          .j-page-shell{padding:10px 8px 22px!important}
+          .j-wy-meta-grid,.j-wy-trade-grid{
+            grid-template-columns:repeat(2,minmax(0,1fr));
+            gap:8px;
+            margin-bottom:8px;
+          }
+          .j-wy-trade-grid > div:nth-child(1){
+            grid-column:1 / -1;
+          }
+          .j-wy-trade-grid > div:nth-child(2){
+            grid-column:1 / -1;
+          }
+          .j-wy-media-grid{
+            grid-template-columns:repeat(2,minmax(0,1fr));
+            gap:8px;
+          }
+          .j-wy-form .j-upload-box{
+            min-height:132px;
+            padding:10px 8px;
+          }
+          .j-wy-form .j-upload-box img{
+            height:110px!important;
+          }
+          .j-wy-actions{
+            grid-template-columns:1fr;
+          }
+          .j-wy-form .j-body{
+            padding:14px!important;
+          }
+          .j-wy-form .j-execution-heading{
+            font-size:34px;
+          }
+          .j-wy-form .j-kanji-quote{
+            display:none;
+          }
+        }
+
         /* ---------- Legacy screens inherit the same visual language ---------- */
         .j-stat,.j-cal-summary-card,.j-cal-empty-note,.j-open-edit-note{
           background:#0b0d0d!important;border-color:var(--j-line)!important;box-shadow:none!important
@@ -1445,9 +1544,10 @@ export default function JournalPage() {
 
         /* ---------- Wide desktop scale-up (large monitors) ---------- */
         @media(min-width:1400px){
+          .j-wy-form{max-width:1040px}
           .j-app-main .j-shinobi-header{min-height:150px;padding:32px 40px!important}
           .j-brand-mark{width:64px;height:64px}
-          .j-brand-logo-img{height:62px}
+          .j-brand-logo-img{height:66px}
           .j-brand-sub{font-size:9px;letter-spacing:2.4px}
           .j-brand-kicker{font-size:9px;margin-bottom:10px}
           .j-mantra{max-width:420px;font-size:9px}
@@ -1838,7 +1938,7 @@ export default function JournalPage() {
         )}
         {/* ── WYCKOFF JOURNAL ── */}
         {view==="checklist"&&(
-          <div className="space-y-4 j-tabcontent" style={{maxWidth:780,margin:"0 auto"}}>
+          <div className="space-y-4 j-tabcontent j-wy-form">
             <div className="flex items-center gap-3">
               <button onClick={()=>setView("dashboard")} className="j-chip off" style={{fontSize:12}}>← Cancel</button>
               <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--j-soft)"}}>NEW EXECUTION</div>
@@ -1857,15 +1957,14 @@ export default function JournalPage() {
                 </div>
               </div>
               <div className="j-ninja-divider" style={{margin:"14px 0 16px"}}/>
-              <div className="grid grid-cols-2 gap-2 mb-3">
+              <div className="j-wy-meta-grid">
                 <div><label className="j-lab">วันที่</label><input type="date" value={entryDate} onChange={e=>setEntryDate(e.target.value)} className="j-in"/></div>
                 <div><label className="j-lab">สินทรัพย์</label><select value={asset} onChange={e=>setAsset(e.target.value)} className="j-in"><option value="XAUUSD">XAUUSD</option><option value="BTCUSD">BTCUSD</option><option value="EURUSD">EURUSD</option><option value="GBPUSD">GBPUSD</option><option value="NAS100">NAS100</option><option value="US30">US30</option><option value="OTHER">อื่นๆ</option></select></div>
-              </div>
-              <div className="grid grid-cols-2 gap-2 mb-3">
+              
                 <div><label className="j-lab">Session</label><select value={session} onChange={e=>setSession(e.target.value as Session)} className="j-in">{SESSIONS.map(s=><option key={s}>{s}</option>)}</select></div>
                 <div><label className="j-lab">Timeframe</label><select value={timeframe} onChange={e=>setTimeframe(e.target.value)} className="j-in"><option>15s</option><option>1m</option><option>5m</option><option>15m</option><option>1H</option><option>4H</option><option>Daily</option></select></div>
               </div>
-              <div className="grid grid-cols-2 gap-2 mb-3">
+              <div className="j-wy-trade-grid">
                 <div><label className="j-lab">Setup</label><select value="WYCKOFF" className="j-in"><option value="WYCKOFF">Wyckoff</option></select></div>
                 <div>
   <label className="j-lab">ผลลัพธ์</label>
@@ -1882,14 +1981,12 @@ export default function JournalPage() {
     ))}
   </div>
 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2 mb-3">
+              
                 <div><label className="j-lab">RR</label><input value={wyRR+"R"} readOnly className="j-in" style={{fontWeight:700,color:wyResult==="WIN"?"#5fae89":wyResult==="LOSS"?"#d4685f":"var(--j-soft)"}}/><div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",marginTop:4}}>ระบบ 1:1 · Win = +1R · Loss = -1R · BE = 0R</div></div>
-                <div><label className="j-lab">Grade</label><select value={grade} onChange={e=>setGrade(e.target.value)} className="j-in"><option>A+</option><option>A</option><option>B+</option><option>B</option><option>C</option><option>D</option></select></div>
-              </div>
+                <div><label className="j-lab">Grade</label><select value={grade} onChange={e=>setGrade(e.target.value)} className="j-in"><option>A+</option><option>A</option><option>B+</option><option>B</option><option>C</option><option>D</option></select></div></div>
               <label className="j-lab">เหตุผล / บทเรียน</label>
               <textarea value={wyNotes} onChange={e=>setWyNotes(e.target.value)} rows={3} placeholder="เห็นอะไร เข้าเพราะอะไร สิ่งที่ทำได้ดี / สิ่งที่ต้องแก้..." className="j-in mb-3" style={{resize:"none",fontSize:13,fontFamily:"'Fredoka'"}}/>
-              <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="j-wy-media-grid">
                 {[{key:"before",label:"ภาพก่อนเข้า",url:beforeScreenshotUrl,set:setBeforeScreenshotUrl},{key:"after",label:"ภาพหลังจบ",url:afterScreenshotUrl,set:setAfterScreenshotUrl}].map(item=>(
                   <div key={item.key} className="j-upload-box">
                     <label className="j-lab" style={{textAlign:"center",display:"block"}}>{item.key==="before"?"ก่อน":"หลัง"}</label>
@@ -1899,7 +1996,7 @@ export default function JournalPage() {
                 ))}
               </div>
               <div style={{background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.14)",borderRadius:2,padding:"9px 12px",marginBottom:12,fontFamily:"'DM Mono',monospace",fontSize:9,textAlign:"center",letterSpacing:1}}>Wyckoff · {asset} · {timeframe} · {session} · {wyResult} · {wyRR}R · {grade}</div>
-              <div style={{display:"flex",gap:10}}>
+              <div className="j-wy-actions">
                 <button onClick={resetWyckoffForm} disabled={saving} className="j-btn" style={{flex:"0 0 34%",padding:14,background:"transparent",border:"1px solid rgba(255,255,255,.28)",color:"var(--j-ink)",fontSize:13}}>↻ ล้างแบบฟอร์ม</button>
                 <button onClick={saveWyckoffTrade} disabled={isLockedFromTrading||saving||!entryDate||!asset||!wyResult} className={`j-btn j-save-primary ${saving?"j-saving":""}`} style={{flex:1,padding:14,fontSize:15}}>{saving?"💾 SAVING...":"💾 บันทึกการฝึก"}</button>
               </div>
