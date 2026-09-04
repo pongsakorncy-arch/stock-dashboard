@@ -887,6 +887,22 @@ export default function JournalPage() {
     sparkle(); setSaving(true); setTimeout(()=>setSaving(false),900);
     setView("dashboard");
   };
+  // ── Reset (clear) the Wyckoff execution form without saving ───────────────
+  const resetWyckoffForm = () => {
+    setBeforeScreenshotUrl("");
+    setAfterScreenshotUrl("");
+    setWyNotes("");
+    setWyResult("WIN");
+    setWyRR("1");
+    setGrade("A+");
+    setEditingWyckoffId(null);
+    setAsset("XAUUSD");
+    setTimeframe("15s");
+    setEntryDate(new Date().toISOString().split("T")[0]);
+    setEntryTime(nowTime24());
+    setSession(autoSessionFromTime(nowTime24()));
+    setSessionManual(false);
+  };
   // ── Legacy open-trade saver kept for old records / old editor ─────────────
   const saveOpenTrade = async () => {
     if (isLockedFromTrading) return;
@@ -1129,7 +1145,7 @@ export default function JournalPage() {
           width:100%;min-height:42px;border:1px solid transparent;border-radius:2px;
           display:flex;align-items:center;gap:12px;padding:9px 10px;
           background:transparent;color:#858a88;cursor:pointer;text-align:left;
-          font-family:'Noto Sans Thai','Inter',sans-serif;font-size:12px;font-weight:600;
+          font-family:'Noto Sans Thai','Inter',sans-serif;font-size:12px;font-weight:500;
           transition:background .15s,border-color .15s,color .15s,transform .15s;
         }
         .j-side-btn:hover{background:rgba(255,255,255,.045);border-color:rgba(255,255,255,.12);color:#fff}
@@ -1145,11 +1161,10 @@ export default function JournalPage() {
         .j-sidebar-footer-sub{font-family:'DM Mono';font-size:7px;letter-spacing:2px;color:#525654;margin-top:7px}
         .j-sidebar-line{width:25px;height:1px;background:#fff;margin-top:10px;opacity:.6}
         .j-sidebar-hero{
-          position:absolute;left:-62px;right:-62px;bottom:-2px;height:350px;z-index:1;opacity:.96;pointer-events:none;
-          filter:contrast(1.06) drop-shadow(0 0 18px rgba(255,255,255,.035))
+          position:absolute;left:-25px;right:-25px;bottom:24px;height:220px;z-index:1;opacity:.9;pointer-events:none
         }
         .j-sidebar-hero svg{width:100%;height:100%;display:block}
-        .j-sidebar-hero .moon{fill:#e6e6e0;opacity:.92}
+        .j-sidebar-hero .moon{fill:#d7d7d2;opacity:.84}
         .j-sidebar-hero .ink{fill:#040505}
         .j-sidebar-hero .mist{fill:#fff;opacity:.05}
         .j-sidebar-hero .blade{fill:#fff;opacity:.78}
@@ -1159,30 +1174,10 @@ export default function JournalPage() {
         .j-app-main:before{
           content:'';position:absolute;inset:0;pointer-events:none;
           background:
-            radial-gradient(ellipse at 84% 18%,rgba(255,255,255,.055),transparent 22%),
-            radial-gradient(ellipse at 76% 72%,rgba(210,31,43,.028),transparent 26%),
+            radial-gradient(ellipse at 84% 18%,rgba(255,255,255,.045),transparent 22%),
             repeating-linear-gradient(95deg,transparent 0 85px,rgba(255,255,255,.012) 85px 87px);
         }
-        .j-app-main:after{
-          content:'';
-          position:absolute;right:-75px;top:90px;width:310px;height:680px;pointer-events:none;z-index:0;opacity:.16;
-          background:
-            linear-gradient(79deg,transparent 0 17%,rgba(255,255,255,.16) 17.3% 18%,transparent 18.3%),
-            linear-gradient(82deg,transparent 0 45%,rgba(255,255,255,.10) 45.3% 46%,transparent 46.3%),
-            linear-gradient(76deg,transparent 0 72%,rgba(255,255,255,.075) 72.3% 73%,transparent 73.3%);
-          transform:rotate(-3deg);
-          mask-image:linear-gradient(180deg,transparent 0,#000 13%,#000 84%,transparent 100%);
-        }
-        .j-ink-brush{
-          position:absolute;right:0;bottom:0;width:430px;height:300px;pointer-events:none;z-index:0;opacity:.08;
-          background:
-            radial-gradient(ellipse at 70% 70%,#fff 0 1%,transparent 2%),
-            radial-gradient(ellipse at 55% 62%,#fff 0 2%,transparent 3%),
-            linear-gradient(145deg,transparent 0 42%,#fff 42.3% 43%,transparent 43.5%);
-          filter:blur(.2px);
-        }
         .j-header-wrap,.j-page-shell{position:relative;z-index:2}
-        .j-tabs-wrap{position:relative;z-index:3}
         .j-header-wrap{padding:15px 24px 0!important}
         .j-page-shell{max-width:1180px!important;margin:0 auto;padding:18px 24px 36px!important}
         .j-app-main .j-header-wrap > .j-win{max-width:1180px!important;margin:0 auto}
@@ -1335,11 +1330,7 @@ export default function JournalPage() {
           .j-sidebar-brand-top{font-size:0;letter-spacing:0}
           .j-sidebar-brand-top:after{content:'忍';font-family:serif;font-size:29px;color:#fff}
           .j-sidebar-brand-mark{display:none}
-          .j-sidebar-code,.j-sidebar-footer{display:none}
-          .j-sidebar-hero{
-            display:block;left:auto;right:-72px;bottom:-190px;width:250px;height:330px;
-            opacity:.13;z-index:0
-          }
+          .j-sidebar-code,.j-sidebar-footer,.j-sidebar-hero{display:none}
           .j-side-btn{justify-content:center;padding:11px 6px}
           .j-side-btn span:last-child{display:none}
           .j-side-icon{font-size:19px}
@@ -1364,11 +1355,7 @@ export default function JournalPage() {
           .j-sidebar-brand-mark{
             display:flex;width:25px;height:25px;margin:0 0 0 8px;font-size:16px
           }
-          .j-sidebar-code,.j-sidebar-footer{display:none}
-          .j-sidebar-hero{
-            display:block;position:absolute;right:-95px;bottom:-235px;width:245px;height:325px;
-            opacity:.10;z-index:0
-          }
+          .j-sidebar-code,.j-sidebar-footer,.j-sidebar-hero{display:none}
           .j-side-nav{
             position:absolute;right:7px;top:7px;margin:0;display:flex;flex-direction:row;gap:3px;
             overflow:visible
@@ -1519,70 +1506,55 @@ export default function JournalPage() {
           </nav>
 
           <div className="j-sidebar-hero" aria-hidden="true">
-            <svg viewBox="0 0 360 420" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+            <svg viewBox="0 0 300 250" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
               <defs>
-                <radialGradient id="shMoon" cx="48%" cy="45%" r="52%">
-                  <stop offset="0%" stopColor="#ffffff" stopOpacity=".98"/>
-                  <stop offset="70%" stopColor="#deded8" stopOpacity=".94"/>
-                  <stop offset="100%" stopColor="#aaa" stopOpacity=".10"/>
+                <radialGradient id="moonGlow" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stopColor="#f4f4ef" stopOpacity=".98"/>
+                  <stop offset="72%" stopColor="#d8d8d2" stopOpacity=".9"/>
+                  <stop offset="100%" stopColor="#aaa" stopOpacity=".18"/>
                 </radialGradient>
-                <linearGradient id="shMist" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#fff" stopOpacity=".02"/>
-                  <stop offset="55%" stopColor="#fff" stopOpacity=".11"/>
-                  <stop offset="100%" stopColor="#fff" stopOpacity="0"/>
+                <linearGradient id="inkFade" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#020303"/>
+                  <stop offset="100%" stopColor="#191b1a"/>
                 </linearGradient>
-                <filter id="shBlur"><feGaussianBlur stdDeviation="2.2"/></filter>
+                <filter id="softInk">
+                  <feGaussianBlur stdDeviation="1.8"/>
+                </filter>
               </defs>
+              <circle cx="153" cy="83" r="67" fill="url(#moonGlow)"/>
+              <circle cx="131" cy="66" r="5" fill="#777" opacity=".12"/>
+              <circle cx="177" cy="99" r="8" fill="#777" opacity=".09"/>
+              <circle cx="161" cy="50" r="3" fill="#777" opacity=".12"/>
 
-              {/* full moon */}
-              <circle cx="183" cy="126" r="101" fill="url(#shMoon)"/>
-              <g opacity=".10" fill="#666">
-                <circle cx="142" cy="94" r="8"/><circle cx="214" cy="84" r="11"/>
-                <circle cx="225" cy="151" r="7"/><circle cx="165" cy="164" r="9"/>
-                <circle cx="190" cy="111" r="4"/><circle cx="128" cy="139" r="5"/>
-              </g>
+              {/* distant mountains / ink wash */}
+              <path d="M0 191 C35 161 56 166 84 181 C111 196 132 171 155 176 C190 183 205 153 233 164 C262 176 278 154 300 148 L300 250 L0 250Z"
+                    fill="url(#inkFade)" opacity=".92"/>
+              <path d="M0 209 C43 187 68 198 101 207 C130 216 157 191 183 200 C216 211 242 184 300 176 L300 250 L0 250Z"
+                    fill="#020303" opacity=".94"/>
+              <path d="M0 201 Q45 181 92 203 T183 201 T300 190" fill="none" stroke="#fff" strokeOpacity=".045" strokeWidth="5" filter="url(#softInk)"/>
 
-              {/* ink mountains */}
-              <path d="M0 286 C39 249 73 252 105 270 C137 288 159 252 188 263
-                       C221 276 242 241 270 251 C301 262 328 239 360 222
-                       L360 420 L0 420Z" fill="#050606"/>
-              <path d="M0 320 C48 289 81 300 117 317 C150 333 177 295 208 306
-                       C243 319 273 286 309 294 C330 298 347 286 360 279
-                       L360 420 L0 420Z" fill="#020303"/>
-
-              {/* large shinobi silhouette */}
-              {/* cloak */}
-              <path d="M142 203 C137 227 126 248 112 270 C101 287 91 314 80 354
-                       L117 334 L135 383 L164 326 L183 386 L213 335 L245 359
-                       C235 321 223 287 208 263 C194 241 190 219 186 202Z"
-                    fill="#010202"/>
-              {/* head / hood */}
-              <path d="M145 190 C145 169 155 154 174 148 C194 154 205 170 202 193
-                       L190 215 L157 214Z" fill="#010202"/>
-              {/* face opening */}
-              <path d="M156 180 Q174 170 193 180 L190 194 Q174 188 159 195Z"
-                    fill="#d9d9d3" opacity=".68"/>
-              {/* hood peak */}
-              <path d="M151 166 L172 132 L194 167 L184 178 L159 176Z" fill="#010202"/>
-              {/* shoulder / arms */}
-              <path d="M151 210 C129 213 108 228 91 252 L106 264 L139 242Z" fill="#020303"/>
-              <path d="M194 210 C216 217 236 233 251 252 L237 265 L206 242Z" fill="#020303"/>
-              {/* red scarf accent */}
-              <path d="M151 202 Q173 213 197 201 L191 214 Q174 221 155 214Z" fill="#d21f2b"/>
-              <path d="M154 211 C134 224 120 240 106 255 C129 246 147 239 164 231Z" fill="#080909"/>
-              {/* sword + handle */}
-              <path d="M199 224 L286 167 L290 172 L205 235Z" fill="#f2f2ed" opacity=".86"/>
-              <path d="M194 222 L208 239" stroke="#d21f2b" strokeWidth="5" strokeLinecap="square"/>
+              {/* ninja body */}
+              <path d="M128 177 C129 151 137 136 151 132 C168 136 176 151 178 177
+                       L190 214 L111 214 Z" fill="#030404"/>
+              <path d="M142 133 L151 112 L164 134 L160 155 L143 153Z" fill="#020303"/>
+              <path d="M144 130 L150 119 L157 130 L152 137Z" fill="#d21f2b"/>
+              {/* face slit */}
+              <path d="M144 136 Q152 132 160 136 L158 143 Q152 140 146 143Z" fill="#c9c9c3" opacity=".48"/>
+              {/* scarf */}
+              <path d="M139 148 C128 154 117 162 107 179 C120 169 132 165 145 162Z" fill="#060707"/>
+              <path d="M161 149 C176 154 188 165 199 180 C184 169 173 165 158 162Z" fill="#060707"/>
+              {/* sword */}
+              <path d="M162 143 L224 111 L227 114 L166 149Z" fill="#efefea" opacity=".74"/>
+              <path d="M157 146 L165 151" stroke="#d21f2b" strokeWidth="3"/>
               {/* cloak folds */}
-              <path d="M151 222 L132 309 L157 281 L169 330 L180 250Z" fill="#0b0c0c"/>
-              <path d="M193 223 L215 307 L190 281 L181 330 L174 250Z" fill="#080909"/>
+              <path d="M122 174 L105 219 L128 198 L143 221 L151 181Z" fill="#080909"/>
+              <path d="M174 173 L195 219 L173 199 L161 222 L151 181Z" fill="#080909"/>
 
-              {/* foreground ink */}
-              <path d="M0 352 C45 329 81 339 110 357 C139 375 171 366 196 350
-                       C166 383 119 396 74 385 C43 378 20 382 0 395Z" fill="#010202"/>
-              <path d="M201 376 C247 349 292 348 360 365 L360 420 L191 420Z" fill="#010202"/>
-              <path d="M18 309 Q80 277 133 297" fill="none" stroke="#fff" strokeOpacity=".08" strokeWidth="7" filter="url(#shBlur)"/>
-              <path d="M233 295 Q294 264 350 286" fill="none" stroke="#fff" strokeOpacity=".06" strokeWidth="6" filter="url(#shBlur)"/>
+              {/* foreground ink splashes */}
+              <path d="M0 231 C30 215 58 220 77 231 C98 243 118 238 136 231 C112 247 91 250 63 247 C37 244 19 247 0 250Z" fill="#010202"/>
+              <path d="M300 216 C272 208 252 219 235 231 C256 222 278 224 300 235Z" fill="#010202"/>
+              <path d="M30 181 L86 158 L91 163 L35 190Z" fill="#fff" opacity=".045"/>
+              <path d="M215 190 L282 163 L286 168 L220 199Z" fill="#fff" opacity=".035"/>
             </svg>
           </div>
 
@@ -1594,7 +1566,6 @@ export default function JournalPage() {
         </aside>
 
         <section className="j-app-main">
-          <div className="j-ink-brush" aria-hidden="true"/>
       {/* Header — Yokimura Shinobi */}
       <div className="j-header-wrap" style={{padding:"14px 12px 0"}}>
         <div className="j-win" style={{maxWidth:780,margin:"0 auto"}}>
@@ -1619,8 +1590,18 @@ export default function JournalPage() {
             </div>
 
             <div>
+              <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:10,marginBottom:12}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,border:"1px solid rgba(255,255,255,.22)",borderRadius:20,padding:"5px 12px",fontFamily:"'DM Mono',monospace",fontSize:9,color:"#ddd"}}>
+                  <span>🥷</span><span>{theme==="ninja"?"Ninja / Dark":theme}</span>
+                </div>
+                <div style={{position:"relative",width:30,height:30,borderRadius:"50%",border:"1px solid rgba(255,255,255,.22)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>
+                  🔔
+                  <span style={{position:"absolute",top:2,right:2,width:6,height:6,borderRadius:"50%",background:"var(--j-red)"}}/>
+                </div>
+                <div style={{width:34,height:34,borderRadius:"50%",background:"#111",border:"1px solid rgba(255,255,255,.28)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>忍</div>
+              </div>
               <div className="j-mantra">
-                <strong>“SMALL DISCIPLINES MAKE A BIG DIFFERENCE.”</strong>
+                <strong>"SMALL DISCIPLINES MAKE A BIG DIFFERENCE."</strong>
                 PRACTICE. PATIENCE. DISCIPLINE.<br/>
                 <span>FOR THE FAMILY.</span>
               </div>
@@ -1772,7 +1753,7 @@ export default function JournalPage() {
                 <div><label className="j-lab">Timeframe</label><select value={timeframe} onChange={e=>setTimeframe(e.target.value)} className="j-in"><option>15s</option><option>1m</option><option>5m</option><option>15m</option><option>1H</option><option>4H</option><option>Daily</option></select></div>
               </div>
               <div className="grid grid-cols-2 gap-2 mb-3">
-                <div><label className="j-lab">Setup</label><select value="WYCKOFF" disabled className="j-in"><option value="WYCKOFF">Wyckoff</option></select></div>
+                <div><label className="j-lab">Setup</label><select value="WYCKOFF" className="j-in"><option value="WYCKOFF">Wyckoff</option></select></div>
                 <div>
   <label className="j-lab">ผลลัพธ์</label>
   <div className="j-result-row">
@@ -1805,7 +1786,10 @@ export default function JournalPage() {
                 ))}
               </div>
               <div style={{background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.14)",borderRadius:2,padding:"9px 12px",marginBottom:12,fontFamily:"'DM Mono',monospace",fontSize:9,textAlign:"center",letterSpacing:1}}>Wyckoff · {asset} · {timeframe} · {session} · {wyResult} · {wyRR}R · {grade}</div>
-              <button onClick={saveWyckoffTrade} disabled={isLockedFromTrading||saving||!entryDate||!asset||!wyResult} className={`j-btn j-save-primary w-full ${saving?"j-saving":""}`} style={{padding:14,background:"var(--j-coral)",fontSize:15}}>{saving?"💾 SAVING...":"💾 บันทึกการฝึก"}</button>
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={resetWyckoffForm} disabled={saving} className="j-btn" style={{flex:"0 0 34%",padding:14,background:"transparent",border:"1px solid rgba(255,255,255,.28)",color:"var(--j-ink)",fontSize:13}}>↻ ล้างแบบฟอร์ม</button>
+                <button onClick={saveWyckoffTrade} disabled={isLockedFromTrading||saving||!entryDate||!asset||!wyResult} className={`j-btn j-save-primary ${saving?"j-saving":""}`} style={{flex:1,padding:14,fontSize:15}}>{saving?"💾 SAVING...":"💾 บันทึกการฝึก"}</button>
+              </div>
             </Win>
           </div>
         )}
@@ -2134,14 +2118,6 @@ export default function JournalPage() {
             </div>
           </div>
         </div>
-      )}
-      {/* Reflection Modal — บังคับกรอกก่อนปิดแอปตอน Hard Lock */}
-      {showReflection && (
-        <ReflectionModal
-          initialText={hardlock?.reflectionText || ""}
-          onSubmit={submitReflection}
-          onClose={()=>setShowReflection(false)}
-        />
       )}
       {/* Reset Confirm Modal — ยืนยันก่อนล้างข้อมูลทั้งหมด (ใหม่) */}
       {showResetConfirm && (
