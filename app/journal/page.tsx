@@ -788,7 +788,7 @@ export default function JournalPage() {
       try {
         const { data:{user} } = await supabase.auth.getUser();
         if (!user) return;
-        const { data, error } = await supabase.from("wyckoff_trades")
+        const { data, error } = await supabase.from("journal_trades")
           .select("*").eq("user_id", user.id).order("created_at",{ascending:false});
         if (error || !data?.length) return;
         const mapped: Trade[] = migrateOldTrades(data.map((r:any) => ({
@@ -923,7 +923,7 @@ export default function JournalPage() {
     try{
       const {data:{user}}=await supabase.auth.getUser();
       if(user){
-        await supabase.from("wyckoff_trades").upsert({
+        await supabase.from("journal_trades").upsert({
           id:trade.id,user_id:user.id,date:trade.date,time:trade.time,
           symbol:trade.asset||"XAUUSD",direction:trade.direction,session:trade.session,
           entry_price:null,exit_prices:[],avg_exit:null,lot_per_order:null,
@@ -977,7 +977,7 @@ export default function JournalPage() {
     const updated=[closed,...trades.filter(t=>t.id!==closed.id)]; setTrades(updated); save(updated); setOpenTrade(null); saveOpen(null);
     const newStatus=calcDailyStatus(updated,closed.date);
     if(closed.date===todayStr){ if(newStatus.isHardStop){saveCooldownUntil(0);setCooldownUntil(0);const hl:HardlockState={date:todayStr,submitted:false,reflectionText:"",submittedAt:""};saveHardlock(hl);setHardlock(hl);} else if(newStatus.lossStreak===2){const until=Date.now()+COOLDOWN_MS;saveCooldownUntil(until);setCooldownUntil(until);setNowTick(Date.now());} else {saveCooldownUntil(0);setCooldownUntil(0);} }
-    try{const {data:{user}}=await supabase.auth.getUser();if(user){await supabase.from("wyckoff_trades").upsert({id:closed.id,user_id:user.id,date:closed.date,time:closed.time,symbol:closed.asset||"XAUUSD",direction:closed.direction,session:closed.session,entry_price:closed.entryPrice,exit_prices:closed.exitPrices,avg_exit:closed.avgExit,lot_per_order:closed.lotPerOrder,order_count:closed.orderCount,total_lot:closed.totalLot,total_pl:closed.totalPL,sl_price:closed.slPrice,tp_price:0,rr:closed.rr,result:closed.result,smc_concept:[],htf_bias:"Neutral",entry_model:closed.mode,tf:closed.timeframe||"M5",notes:closed.notes,screenshot_url:closed.screenshotUrl||null,created_at:closed.createdAt},{onConflict:"id"});}}catch(e){console.error(e);}
+    try{const {data:{user}}=await supabase.auth.getUser();if(user){await supabase.from("journal_trades").upsert({id:closed.id,user_id:user.id,date:closed.date,time:closed.time,symbol:closed.asset||"XAUUSD",direction:closed.direction,session:closed.session,entry_price:closed.entryPrice,exit_prices:closed.exitPrices,avg_exit:closed.avgExit,lot_per_order:closed.lotPerOrder,order_count:closed.orderCount,total_lot:closed.totalLot,total_pl:closed.totalPL,sl_price:closed.slPrice,tp_price:0,rr:closed.rr,result:closed.result,smc_concept:[],htf_bias:"Neutral",entry_model:closed.mode,tf:closed.timeframe||"M5",notes:closed.notes,screenshot_url:closed.screenshotUrl||null,created_at:closed.createdAt},{onConflict:"id"});}}catch(e){console.error(e);}
     setExitPrices([]);setExitInput("");setPasteInput("");setExitReason("");setExitNotes("");setScreenshotUrl("");sparkle();setSaving(true);setTimeout(()=>setSaving(false),900);setView("dashboard");
   };
   const submitReflection = (text: string) => {
@@ -1001,7 +1001,7 @@ export default function JournalPage() {
     try {
       const { data:{user} } = await supabase.auth.getUser();
       if (user) {
-        await supabase.from("wyckoff_trades").delete().eq("user_id", user.id);
+        await supabase.from("journal_trades").delete().eq("user_id", user.id);
       }
     } catch(e) { console.error("Supabase reset error:", e); }
     // เคลียร์ state ในแอปทั้งหมด
@@ -1075,7 +1075,7 @@ export default function JournalPage() {
     try{
       const {data:{user}} = await supabase.auth.getUser();
       if(user){
-        await supabase.from("wyckoff_trades").delete().eq("id",t.id).eq("user_id",user.id);
+        await supabase.from("journal_trades").delete().eq("id",t.id).eq("user_id",user.id);
       }
     }catch(e){
       console.error("Supabase delete error:",e);
@@ -1281,6 +1281,12 @@ export default function JournalPage() {
         .j-quote-strip i{width:30px;height:1px;background:var(--j-red);display:block;flex:0 0 auto}
         .j-quote-strip span,.j-quote-strip b{font-family:'DM Mono';font-size:7px;letter-spacing:1.5px}
         .j-quote-strip b{color:#bfc2bf;font-weight:500}
+        .j-page-footer{
+          max-width:1180px;margin:28px auto 0;padding:16px 4px 0;border-top:1px solid rgba(255,255,255,.08);
+          display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;
+        }
+        .j-page-footer span{font-family:'DM Mono';font-size:8px;letter-spacing:2px;color:#6d726f;text-transform:uppercase}
+        .j-page-footer i{width:22px;height:1px;background:rgba(255,255,255,.18);display:block;flex:0 0 auto}
 
         /* ---------- Windows / form ---------- */
         .j-win{
@@ -1309,6 +1315,10 @@ export default function JournalPage() {
           font-weight:800;letter-spacing:-.5px;line-height:1.25;color:#fff;margin:2px 0 3px
         }
         .j-execution-sub{font-family:'Noto Sans Thai','Inter',sans-serif;font-size:11px;font-weight:400;color:#8b908d;line-height:1.75}
+        .j-kanji-quote{text-align:right;flex:0 0 auto;max-width:200px}
+        .j-kanji-quote-mark{display:block;font-family:'Shippori Mincho','Noto Serif JP',serif;font-size:26px;color:rgba(255,255,255,.15);line-height:1}
+        .j-kanji-quote-jp{font-family:'Shippori Mincho','Noto Serif JP',serif;font-size:15px;color:#c9cbc8;letter-spacing:1px;margin-top:-4px}
+        .j-kanji-quote-en{font-family:'DM Mono';font-size:7px;letter-spacing:1.6px;color:#6d726f;margin-top:4px;text-transform:uppercase}
         .j-ninja-divider{height:1px;background:linear-gradient(90deg,rgba(255,255,255,.3),transparent);opacity:.6}
         .j-lab{
           display:block;margin-bottom:6px;font-family:'DM Mono','Noto Sans Thai',sans-serif;
@@ -1402,6 +1412,9 @@ export default function JournalPage() {
         @media(max-width:680px){
           .j-root{padding-bottom:68px}
           .j-root::after{font-size:220px;right:-35px;bottom:20px}
+          .j-page-footer{margin-top:18px;padding-top:12px;gap:8px}
+          .j-page-footer span{font-size:6.5px;letter-spacing:1.4px}
+          .j-page-footer i{width:14px}
           .j-app-frame{display:block}
           .j-sidebar{
             position:sticky;top:0;height:57px;min-height:57px;width:100%;
@@ -1459,6 +1472,7 @@ export default function JournalPage() {
           .j-execution-title{font-size:7px;letter-spacing:1.8px}
           .j-execution-heading{font-size:30px;line-height:1.3;margin-top:3px}
           .j-execution-sub{font-size:10px;line-height:1.85}
+          .j-kanji-quote{display:none}
           .j-ninja-divider{margin:12px 0 14px!important}
           .j-lab{font-size:7px;letter-spacing:1.1px;margin-bottom:5px}
           .j-in{min-height:41px;font-size:12px!important;padding:9px 10px!important}
@@ -1761,7 +1775,20 @@ export default function JournalPage() {
               <button onClick={()=>setView("dashboard")} className="j-chip off" style={{fontSize:12}}>← Cancel</button>
               <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--j-soft)"}}>NEW EXECUTION</div>
             </div>
-            <Win title="忍  NEW EXECUTION · WYCKOFF" color="rgba(255,255,255,.035)"><div className="j-execution-title">YOKIMURA SHINOBI / TRADE RECORD</div><div className="j-execution-heading">บันทึกการฝึก</div><div className="j-execution-sub">บันทึกทุกการเทรด เพื่อพัฒนาตัวเองในวันพรุ่งนี้</div><div className="j-ninja-divider" style={{margin:"14px 0 16px"}}/>
+            <Win title="忍  NEW EXECUTION · WYCKOFF" color="rgba(255,255,255,.035)">
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:16,flexWrap:"wrap"}}>
+                <div style={{flex:"1 1 260px"}}>
+                  <div className="j-execution-title">YOKIMURA SHINOBI / TRADE RECORD</div>
+                  <div className="j-execution-heading">บันทึกการฝึก</div>
+                  <div className="j-execution-sub">บันทึกทุกการเทรด เพื่อพัฒนาตัวเองในวันพรุ่งนี้</div>
+                </div>
+                <div className="j-kanji-quote">
+                  <span className="j-kanji-quote-mark">"</span>
+                  <div className="j-kanji-quote-jp">継続は力なり</div>
+                  <div className="j-kanji-quote-en">CONSISTENCY IS POWER</div>
+                </div>
+              </div>
+              <div className="j-ninja-divider" style={{margin:"14px 0 16px"}}/>
               <div className="grid grid-cols-2 gap-2 mb-3">
                 <div><label className="j-lab">วันที่</label><input type="date" value={entryDate} onChange={e=>setEntryDate(e.target.value)} className="j-in"/></div>
                 <div><label className="j-lab">สินทรัพย์</label><select value={asset} onChange={e=>setAsset(e.target.value)} className="j-in"><option value="XAUUSD">XAUUSD</option><option value="BTCUSD">BTCUSD</option><option value="EURUSD">EURUSD</option><option value="GBPUSD">GBPUSD</option><option value="NAS100">NAS100</option><option value="US30">US30</option><option value="OTHER">อื่นๆ</option></select></div>
@@ -2081,6 +2108,11 @@ export default function JournalPage() {
             </div>
           );
         })()}
+        <div className="j-page-footer">
+          <span>YOKIMURA SHINOBI</span>
+          <i/>
+          <span>PLAN&nbsp;&nbsp;|&nbsp;&nbsp;EXECUTE&nbsp;&nbsp;|&nbsp;&nbsp;REVIEW&nbsp;&nbsp;|&nbsp;&nbsp;REPEAT</span>
+        </div>
       </section>
       </div>
       {/* Mobile bottom navigation */}
