@@ -1510,31 +1510,31 @@ export default function JournalPage() {
               <circle cx="177" cy="99" r="8" fill="#777" opacity=".09"/>
               <circle cx="161" cy="50" r="3" fill="#777" opacity=".12"/>
 
-              <!-- distant mountains / ink wash -->
+              {/* distant mountains / ink wash */}
               <path d="M0 191 C35 161 56 166 84 181 C111 196 132 171 155 176 C190 183 205 153 233 164 C262 176 278 154 300 148 L300 250 L0 250Z"
                     fill="url(#inkFade)" opacity=".92"/>
               <path d="M0 209 C43 187 68 198 101 207 C130 216 157 191 183 200 C216 211 242 184 300 176 L300 250 L0 250Z"
                     fill="#020303" opacity=".94"/>
               <path d="M0 201 Q45 181 92 203 T183 201 T300 190" fill="none" stroke="#fff" strokeOpacity=".045" strokeWidth="5" filter="url(#softInk)"/>
 
-              <!-- ninja body -->
+              {/* ninja body */}
               <path d="M128 177 C129 151 137 136 151 132 C168 136 176 151 178 177
                        L190 214 L111 214 Z" fill="#030404"/>
               <path d="M142 133 L151 112 L164 134 L160 155 L143 153Z" fill="#020303"/>
               <path d="M144 130 L150 119 L157 130 L152 137Z" fill="#d21f2b"/>
-              <!-- face slit -->
+              {/* face slit */}
               <path d="M144 136 Q152 132 160 136 L158 143 Q152 140 146 143Z" fill="#c9c9c3" opacity=".48"/>
-              <!-- scarf -->
+              {/* scarf */}
               <path d="M139 148 C128 154 117 162 107 179 C120 169 132 165 145 162Z" fill="#060707"/>
               <path d="M161 149 C176 154 188 165 199 180 C184 169 173 165 158 162Z" fill="#060707"/>
-              <!-- sword -->
+              {/* sword */}
               <path d="M162 143 L224 111 L227 114 L166 149Z" fill="#efefea" opacity=".74"/>
               <path d="M157 146 L165 151" stroke="#d21f2b" strokeWidth="3"/>
-              <!-- cloak folds -->
+              {/* cloak folds */}
               <path d="M122 174 L105 219 L128 198 L143 221 L151 181Z" fill="#080909"/>
               <path d="M174 173 L195 219 L173 199 L161 222 L151 181Z" fill="#080909"/>
 
-              <!-- foreground ink splashes -->
+              {/* foreground ink splashes */}
               <path d="M0 231 C30 215 58 220 77 231 C98 243 118 238 136 231 C112 247 91 250 63 247 C37 244 19 247 0 250Z" fill="#010202"/>
               <path d="M300 216 C272 208 252 219 235 231 C256 222 278 224 300 235Z" fill="#010202"/>
               <path d="M30 181 L86 158 L91 163 L35 190Z" fill="#fff" opacity=".045"/>
