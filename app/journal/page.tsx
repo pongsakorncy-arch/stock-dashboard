@@ -1367,7 +1367,7 @@ export default function JournalPage() {
           color:var(--j-ink);
           background:
             linear-gradient(rgba(3,4,4,.78),rgba(3,4,4,.92)),
-            url("/images/ninja-mobile-bg.webp") center top / cover fixed no-repeat,
+            url("/images/ninja-desktop-bg.webp") center top / cover fixed no-repeat,
             radial-gradient(ellipse at 82% 15%,rgba(255,255,255,.055),transparent 24%),
             radial-gradient(ellipse at 72% 100%,rgba(210,31,43,.035),transparent 28%),
             linear-gradient(120deg,#030404 0%,#090b0b 52%,#050606 100%);
@@ -1717,6 +1717,48 @@ export default function JournalPage() {
           .j-side-icon{font-size:19px}
           .j-app-main .j-header-wrap{padding:12px 16px 0!important}
           .j-page-shell{padding:15px 16px 30px!important}
+        }
+
+
+        /* ---------- Desktop Shinobi Hero ---------- */
+        @media(min-width:681px){
+          .j-app-main .j-shinobi-header{
+            position:relative;
+            display:block!important;
+            min-height:124px;
+            padding:23px 28px!important;
+          }
+          .j-app-main .j-shinobi-header > div:first-child{
+            width:100%;
+            text-align:center;
+          }
+          .j-app-main .j-shinobi-header .j-brand{
+            justify-content:center;
+            align-items:center;
+          }
+          .j-app-main .j-shinobi-header .j-brand-kicker{
+            text-align:center;
+          }
+          .j-app-main .j-shinobi-header .j-brand-sub{
+            text-align:center;
+          }
+          .j-app-main .j-shinobi-header > div:nth-child(2){
+            position:absolute;
+            right:28px;
+            top:50%;
+            transform:translateY(-50%);
+            width:auto;
+            z-index:3;
+          }
+          .j-app-main .j-shinobi-header > div:nth-child(2) > div:first-child{
+            justify-content:flex-end;
+          }
+          .j-app-main .j-shinobi-header .j-mantra{
+            text-align:right;
+          }
+          .j-brand-logo-img{
+            height:clamp(42px,4vw,58px);
+          }
         }
 
         @media(max-width:680px){
