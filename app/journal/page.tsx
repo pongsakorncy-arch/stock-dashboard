@@ -1185,8 +1185,8 @@ export default function JournalPage() {
           line-height:1.45;color:#fff
         }
         .j-sidebar-brand-mark{
-          width:28px;height:28px;margin-top:11px;display:flex;align-items:center;justify-content:center;
-          background:var(--j-red);color:#fff;font-family:serif;font-size:18px;font-weight:700
+          width:28px;height:28px;margin-top:11px;display:block;border-radius:50%;
+          object-fit:cover;border:1px solid rgba(255,255,255,.2)
         }
         .j-sidebar-code{
           position:relative;z-index:2;margin:18px 8px 0;color:#656a68;
@@ -1217,7 +1217,7 @@ export default function JournalPage() {
           overflow:hidden
         }
         .j-sidebar-hero-img{
-          width:100%;height:100%;object-fit:cover;object-position:62% 20%;
+          width:100%;height:100%;object-fit:cover;object-position:40% 28%;
           display:block;filter:grayscale(.1) contrast(1.08) brightness(.92);
           -webkit-mask-image:linear-gradient(180deg,transparent,#000 14%,#000 82%,transparent);
           mask-image:linear-gradient(180deg,transparent,#000 14%,#000 82%,transparent);
@@ -1246,9 +1246,8 @@ export default function JournalPage() {
         .j-brand-kicker{font-family:'DM Mono';font-size:8px;letter-spacing:3px;color:#777c79;margin-bottom:8px}
         .j-brand{display:flex;align-items:center;gap:13px}
         .j-brand-mark{
-          width:51px;height:51px;display:flex;align-items:center;justify-content:center;
-          border:1px solid rgba(255,255,255,.26);background:#090a0a;
-          color:#fff;font-family:serif;font-size:31px;flex:0 0 auto
+          width:51px;height:51px;display:block;border-radius:50%;object-fit:cover;
+          border:1px solid rgba(255,255,255,.26);flex:0 0 auto
         }
         .j-brand-name{
           font-family:'Montserrat','Noto Sans Thai',sans-serif;font-size:clamp(28px,3.3vw,44px);font-weight:800;
@@ -1427,7 +1426,7 @@ export default function JournalPage() {
           .j-sidebar-brand-top{font-size:13px!important;letter-spacing:3px!important;line-height:1!important}
           .j-sidebar-brand-top:after{display:none}
           .j-sidebar-brand-mark{
-            display:flex;width:25px;height:25px;margin:0 0 0 8px;font-size:16px
+            display:block;width:25px;height:25px;margin:0 0 0 8px
           }
           .j-sidebar-code,.j-sidebar-footer,.j-sidebar-hero{display:none}
           .j-side-nav{
@@ -1449,7 +1448,7 @@ export default function JournalPage() {
             display:block;min-height:auto;padding:17px 15px!important
           }
           .j-brand{gap:9px}
-          .j-brand-mark{width:39px;height:39px;font-size:24px}
+          .j-brand-mark{width:39px;height:39px}
           .j-brand-logo-img{height:34px}
           .j-brand-sub{font-size:6px;letter-spacing:1px;margin-top:5px;white-space:nowrap}
           .j-brand-kicker{font-size:6px;letter-spacing:1.8px;margin-bottom:7px}
@@ -1542,7 +1541,7 @@ export default function JournalPage() {
           <div className="j-sidebar-brand">
             <div>
               <div className="j-sidebar-brand-top">TRADING<br/>JOURNAL</div>
-              <div className="j-sidebar-brand-mark">忍</div>
+              <img src="/images/badge.webp" alt="忍" className="j-sidebar-brand-mark"/>
             </div>
           </div>
 
@@ -1608,7 +1607,7 @@ export default function JournalPage() {
             <div>
               <div className="j-brand-kicker">TRADER JOURNAL · 01 / DISCIPLINE SYSTEM</div>
               <div className="j-brand">
-                <div className="j-brand-mark">忍</div>
+                <img src="/images/badge.webp" alt="忍" className="j-brand-mark"/>
                 <div>
                   <img src="/images/yokimura-logo.webp" alt="YOKIMURA SHINOBI" className="j-brand-logo-img"/>
                   <div className="j-brand-sub">PRACTICE · PATIENCE · DISCIPLINE · FOR THE FAMILY.</div>
@@ -1625,7 +1624,7 @@ export default function JournalPage() {
                   🔔
                   <span style={{position:"absolute",top:2,right:2,width:6,height:6,borderRadius:"50%",background:"var(--j-red)"}}/>
                 </div>
-                <div style={{width:34,height:34,borderRadius:"50%",background:"#111",border:"1px solid rgba(255,255,255,.28)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>忍</div>
+                <img src="/images/badge.webp" alt="忍" style={{width:34,height:34,borderRadius:"50%",border:"1px solid rgba(255,255,255,.28)",objectFit:"cover"}}/>
               </div>
               <div className="j-mantra">
                 <strong>"SMALL DISCIPLINES MAKE A BIG DIFFERENCE."</strong>
