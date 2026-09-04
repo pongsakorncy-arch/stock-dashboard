@@ -268,57 +268,159 @@ function countHardStopDaysThisWeek(trades: Trade[], todayStr: string): number {
 function PLChart({trades}:{trades:Trade[]}) {
   const [tab,setTab]=useState<"equity"|"dd">("equity");
   const closed=[...trades].filter(t=>t.status==="CLOSED").sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
-  if(closed.length<2) return <p style={{color:"var(--j-soft)",fontFamily:"'DM Mono',monospace",fontSize:12,textAlign:"center",padding:"24px 0"}}>need at least 2 closed sessions</p>;
+  if(closed.length<2) return (
+    <div style={{
+      color:"var(--j-soft)",fontFamily:"'DM Mono',monospace",fontSize:11,
+      textAlign:"center",padding:"34px 0",letterSpacing:".08em",
+      background:"linear-gradient(180deg,#080909,#050606)",
+      border:"1px solid rgba(255,255,255,.10)",borderRadius:6
+    }}>
+      NEED AT LEAST 2 CLOSED SESSIONS
+    </div>
+  );
+
   let cum=0;
   const pts=closed.map(t=>{cum+=t.totalPL;return cum;});
-  const W=300,H=88,pL=6,pR=6,pT=8,pB=8,iW=W-pL-pR,iH=H-pT-pB;
-  const mn=Math.min(0,...pts),mx=Math.max(...pts),rng=mx-mn||1;
+
+  // Ninja chart palette — charcoal / iron / crimson.
+  const W=300,H=112,pL=8,pR=8,pT=10,pB=12,iW=W-pL-pR,iH=H-pT-pB;
+  const mn=Math.min(0,...pts),mx=Math.max(0,...pts),rng=mx-mn||1;
   const X=(i:number)=>pL+(pts.length===1?iW/2:(i/(pts.length-1))*iW);
   const Y=(v:number)=>pT+iH-((v-mn)/rng)*iH;
-  const up=pts[pts.length-1]>=0,col=up?"#3f9b73":"#d4685f",fc=up?"#bfe3d0":"#f3c4cb";
+
+  const up=pts[pts.length-1]>=0;
+  const col=up?"#d92332":"#e15b63";
+  const fill=up?"rgba(217,35,50,.18)":"rgba(225,91,99,.16)";
+
   let d=`M ${X(0)} ${Y(pts[0])}`;
-  for(let i=1;i<pts.length;i++) d+=` L ${X(i)} ${Y(pts[i-1])} L ${X(i)} ${Y(pts[i])}`;
+  for(let i=1;i<pts.length;i++){
+    d+=` L ${X(i)} ${Y(pts[i-1])} L ${X(i)} ${Y(pts[i])}`;
+  }
   const area=`${d} L ${X(pts.length-1)} ${pT+iH} L ${X(0)} ${pT+iH} Z`;
+
   const {dd,maxDD:mxDD,ddPct,maxDDPct}=calcDD(trades);
   let pk3=0;
   const dds=pts.map(v=>{if(v>pk3)pk3=v;return pk3-v;});
   const ddm=Math.max(...dds)||1;
   const Yd=(v:number)=>pT+iH*(v/ddm);
+
   let dp=`M ${X(0)} ${Yd(dds[0])}`;
-  for(let i=1;i<dds.length;i++) dp+=` L ${X(i)} ${Yd(dds[i-1])} L ${X(i)} ${Yd(dds[i])}`;
+  for(let i=1;i<dds.length;i++){
+    dp+=` L ${X(i)} ${Yd(dds[i-1])} L ${X(i)} ${Yd(dds[i])}`;
+  }
   const da=`${dp} L ${X(dds.length-1)} ${pT+iH} L ${X(0)} ${pT+iH} Z`;
-  const TB=(t:"equity"|"dd",label:string,bg:string)=>(
-    <button onClick={()=>setTab(t)} style={{fontFamily:"'DM Mono',monospace",fontSize:10,padding:"3px 10px",cursor:"pointer",border:"1.5px solid var(--j-ink)",borderRadius:"5px 5px 0 0",background:tab===t?bg:"var(--j-win)",color:"var(--j-ink)",fontWeight:tab===t?600:400,borderBottom:tab===t?`1.5px solid ${bg}`:"1.5px solid var(--j-ink)",marginBottom:tab===t?-1.5:0}}>{label}</button>
+
+  const TB=(t:"equity"|"dd",label:string)=>(
+    <button
+      onClick={()=>setTab(t)}
+      style={{
+        fontFamily:"'DM Mono',monospace",fontSize:9,letterSpacing:".08em",
+        padding:"7px 12px",cursor:"pointer",
+        border:"1px solid rgba(255,255,255,.14)",
+        borderBottom:tab===t?"1px solid #090a0a":"1px solid rgba(255,255,255,.14)",
+        borderRadius:"5px 5px 0 0",
+        background:tab===t?"#0d0e0e":"#060707",
+        color:tab===t?"#f1f1ef":"#777b7b",
+        fontWeight:700,marginBottom:tab===t?-1:0,
+        textTransform:"uppercase"
+      }}
+    >
+      {label}
+    </button>
   );
+
+  const gridColor="rgba(255,255,255,.055)";
+  const axisColor="rgba(255,255,255,.16)";
+
   return (
-    <div>
-      <div style={{display:"flex",gap:4,position:"relative",zIndex:1}}>{TB("equity","📈 Equity","var(--j-sky)")}{TB("dd","📉 Drawdown","var(--j-coral)")}</div>
-      <div style={{border:"2px solid var(--j-ink)",borderRadius:"0 7px 7px 7px",background:"#fbf6ea",padding:4}}>
+    <div style={{
+      background:"linear-gradient(145deg,#0a0b0b 0%,#050606 100%)",
+      border:"1px solid rgba(255,255,255,.10)",
+      borderRadius:7,
+      padding:"10px 10px 11px",
+      boxShadow:"inset 0 1px 0 rgba(255,255,255,.025)"
+    }}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+        <div style={{display:"flex",gap:3}}>{TB("equity","EQUITY")}{TB("dd","DRAWDOWN")}</div>
+        <span style={{
+          fontFamily:"'DM Mono',monospace",fontSize:9,letterSpacing:".08em",
+          color:up?"#d92332":"#e15b63"
+        }}>
+          {up?"▲ PROFIT":"▼ LOSS"}
+        </span>
+      </div>
+
+      <div style={{
+        border:"1px solid rgba(255,255,255,.10)",
+        borderRadius:4,
+        background:"#070808",
+        padding:"7px 6px 4px",
+        overflow:"hidden"
+      }}>
         {tab==="equity"?(
-          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" shapeRendering="crispEdges">
-            {pts.map((_,i)=><line key={i} x1={X(i)} y1={pT} x2={X(i)} y2={pT+iH} stroke="#e3d9c4" strokeWidth="1"/>)}
-            <line x1={pL} y1={Y(0)} x2={W-pR} y2={Y(0)} stroke="#b0a290" strokeWidth="1.5" strokeDasharray="3 2"/>
-            <path d={area} fill={fc} fillOpacity="0.55"/><path d={d} fill="none" stroke={col} strokeWidth="3"/>
-            {pts.map((v,i)=><rect key={i} x={X(i)-2.5} y={Y(v)-2.5} width="5" height="5" fill={fc} stroke="var(--j-ink)" strokeWidth="1.5"/>)}
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none">
+            {/* vertical session grid */}
+            {pts.map((_,i)=>(
+              <line key={i} x1={X(i)} y1={pT} x2={X(i)} y2={pT+iH}
+                stroke={gridColor} strokeWidth="1"/>
+            ))}
+            {/* horizontal grid */}
+            {[0,.25,.5,.75,1].map((r,i)=>(
+              <line key={`h${i}`} x1={pL} y1={pT+iH*r} x2={W-pR} y2={pT+iH*r}
+                stroke={gridColor} strokeWidth="1"/>
+            ))}
+            <line x1={pL} y1={Y(0)} x2={W-pR} y2={Y(0)}
+              stroke={axisColor} strokeWidth="1" strokeDasharray="4 4"/>
+            <path d={area} fill={fill}/>
+            <path d={d} fill="none" stroke={col} strokeWidth="2.4"
+              strokeLinecap="square" strokeLinejoin="miter"/>
+            {pts.map((v,i)=>(
+              <rect key={i}
+                x={X(i)-2.2} y={Y(v)-2.2} width="4.4" height="4.4"
+                fill={i===pts.length-1?col:"#0b0c0c"}
+                stroke={col} strokeWidth="1"
+              />
+            ))}
           </svg>
         ):(
-          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none" shapeRendering="crispEdges">
-            <line x1={pL} y1={Yd(ddm*0.2)} x2={W-pR} y2={Yd(ddm*0.2)} stroke="#d4685f" strokeWidth="1" strokeDasharray="3 2"/>
-            <path d={da} fill="#f3c4cb" fillOpacity="0.55"/><path d={dp} fill="none" stroke="#d4685f" strokeWidth="3"/>
-            {dds.map((v,i)=><rect key={i} x={X(i)-2.5} y={Yd(v)-2.5} width="5" height="5" fill="#f3c4cb" stroke="var(--j-ink)" strokeWidth="1.5"/>)}
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none">
+            {dds.map((_,i)=>(
+              <line key={i} x1={X(i)} y1={pT} x2={X(i)} y2={pT+iH}
+                stroke={gridColor} strokeWidth="1"/>
+            ))}
+            {[0,.25,.5,.75,1].map((r,i)=>(
+              <line key={`h${i}`} x1={pL} y1={pT+iH*r} x2={W-pR} y2={pT+iH*r}
+                stroke={gridColor} strokeWidth="1"/>
+            ))}
+            <path d={da} fill="rgba(217,35,50,.16)"/>
+            <path d={dp} fill="none" stroke="#d92332" strokeWidth="2.4"
+              strokeLinecap="square" strokeLinejoin="miter"/>
+            {dds.map((v,i)=>(
+              <rect key={i}
+                x={X(i)-2.2} y={Yd(v)-2.2} width="4.4" height="4.4"
+                fill={i===dds.length-1?"#d92332":"#0b0c0c"}
+                stroke="#d92332" strokeWidth="1"
+              />
+            ))}
           </svg>
         )}
       </div>
+
       {tab==="dd"&&(
-        <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}}>
-          {[{l:"Current DD",v:dd>0?`-$${dd.toFixed(2)}`:"+$0.00",c:dd>0?"#d4685f":"#5fae89",sub:ddPct>0?`-${ddPct.toFixed(1)}% from peak`:""},
-            {l:"Max DD",v:mxDD>0?`-$${mxDD.toFixed(2)}`:"+$0.00",c:"#d4685f",sub:maxDDPct>0?`-${maxDDPct.toFixed(1)}% worst`:""},
-            {l:"Status",v:maxDDPct<=10?"✓ SAFE":maxDDPct<=20?"⚠ WATCH":"✕ DANGER",c:maxDDPct>20?"#d4685f":maxDDPct>10?"#d4a65f":"#5fae89",sub:"limit 20%"}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:5,marginTop:7}}>
+          {[
+            {l:"CURRENT DD",v:dd>0?`-$${dd.toFixed(2)}`:"+$0.00",c:dd>0?"#d92332":"#6caa89",sub:ddPct>0?`-${ddPct.toFixed(1)}%`:"0%"},
+            {l:"MAX DD",v:mxDD>0?`-$${mxDD.toFixed(2)}`:"+$0.00",c:"#d92332",sub:maxDDPct>0?`-${maxDDPct.toFixed(1)}%`:"0%"},
+            {l:"STATUS",v:maxDDPct<=10?"SAFE":maxDDPct<=20?"WATCH":"DANGER",c:maxDDPct>20?"#d92332":maxDDPct>10?"#c6a45b":"#6caa89",sub:"LIMIT 20%"}
           ].map(s=>(
-            <div key={s.l} style={{flex:1,background:"#f3c4cb55",border:"1.5px solid var(--j-ink)",borderRadius:7,padding:"6px 10px",minWidth:90}}>
-              <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",textTransform:"uppercase",marginBottom:2}}>{s.l}</div>
-              <div style={{fontFamily:"'VT323',monospace",fontSize:20,color:s.c,lineHeight:1}}>{s.v}</div>
-              <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"#d4685f"}}>{s.sub}</div>
+            <div key={s.l} style={{
+              background:"#0a0b0b",
+              border:"1px solid rgba(255,255,255,.09)",
+              borderRadius:4,padding:"7px 8px",minWidth:0
+            }}>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:7.5,color:"#666b6b",letterSpacing:".08em",marginBottom:3}}>{s.l}</div>
+              <div style={{fontFamily:"'VT323',monospace",fontSize:19,color:s.c,lineHeight:1}}>{s.v}</div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:7.5,color:"#777b7b",marginTop:2}}>{s.sub}</div>
             </div>
           ))}
         </div>
@@ -327,6 +429,7 @@ function PLChart({trades}:{trades:Trade[]}) {
   );
 }
 // ─── DailyStatusBar ───────────────────────────────────────────────────────────
+ ───────────────────────────────────────────────────────────
 function DailyStatusBar({status,cooldownRemainingMs,isHardLockToday,isForcedLockToday}:{status:ReturnType<typeof calcDailyStatus>;cooldownRemainingMs:number;isHardLockToday:boolean;isForcedLockToday:boolean}) {
   const {totalToday,lossStreak,isHardStop,isWarnBreak,isDayDone,todayWins,todayLosses,todayBE,todayPL} = status;
   const barBg=isForcedLockToday?"#c98a8a":isHardLockToday?"var(--j-coral)":cooldownRemainingMs>0?"var(--j-butter)":isWarnBreak?"var(--j-butter)":"var(--j-mint)";
@@ -685,8 +788,7 @@ export default function JournalPage() {
   const [showAlert,setShowAlert] = useState(false);
   const [uploading,setUploading] = useState(false);
   const [mounted,setMounted] = useState(false);
-  const [theme,setTheme] = useState<JournalTheme>("ninja");
-  // ── Discipline lock states (ใหม่) ──────────────────────────────────────────
+// ── Discipline lock states (ใหม่) ──────────────────────────────────────────
   const [cooldownUntil,setCooldownUntil]   = useState(0);
   const [nowTick,setNowTick]               = useState(Date.now());
   const [hardlock,setHardlock]             = useState<HardlockState|null>(null);
@@ -1196,7 +1298,20 @@ export default function JournalPage() {
   }
   return (
     <main className={`j-root theme-${theme}`}>
-      <style>{`
+      
+<style id="hide-theme-control">
+  .j-theme-select,
+  .j-theme-label,
+  .j-theme-control,
+  [class*="theme-select"],
+  [class*="theme-control"] {
+    display:none!important;
+    visibility:hidden!important;
+    pointer-events:none!important;
+  }
+</style>
+
+<style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@500;600;700;800&family=Noto+Sans+Thai:wght@400;500;600;700;800&family=Noto+Serif+JP:wght@400;500;600;700;800&family=Shippori+Mincho:wght@400;500;600;700;800&display=swap');
 
         /* ================================================================
