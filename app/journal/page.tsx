@@ -144,7 +144,7 @@ function migrateOldTrades(rawTrades: any[]): Trade[] {
   return (rawTrades || []).map((t: any) => ({
     id: t.id || uid(),
     status: t.status || "CLOSED",
-    mode: (["WYCKOFF","SMC","SW_RANGE","SW_BREAKOUT","PULLBACK","M5_REVERSAL"].includes(String(t.mode || t.entry_model)) ? String(t.mode || t.entry_model) : "SMC") as TradeMode,
+    mode: (["SMC","SW_RANGE","SW_BREAKOUT","PULLBACK","M5_REVERSAL"].includes(String(t.mode || t.entry_model)) ? String(t.mode || t.entry_model) : "SMC") as TradeMode,
     date: t.date || new Date().toISOString().split("T")[0],
     time: t.time || "00:00",
     session: (t.session || "Tokyo") as Session,
@@ -778,146 +778,38 @@ export default function JournalPage() {
     };
     setTimeout(next,100);
   },[]);
-  // ── Load trades / cross-device sync ───────────────────────────────────────
+  // ── Load trades ───────────────────────────────────────────────────────────
   useEffect(()=>{
-    let alive = true;
-
-    const mapSupabaseTrades = (rows:any[]): Trade[] => migrateOldTrades(rows.map((r:any) => ({
-      id: r.id,
-      status: "CLOSED" as TradeStatus,
-      mode: (r.entry_model as TradeMode) || "SMC",
-      date: r.date,
-      time: r.time,
-      session: r.session,
-      direction: r.direction,
-      asset: r.symbol || "XAUUSD",
-      timeframe: r.tf || "M5",
-      entryPrice: Number(r.entry_price ?? 0),
-      slPrice: Number(r.sl_price ?? 0),
-      lotPerOrder: Number(r.lot_per_order ?? 0),
-      lotInput: String(r.lot_per_order ?? ""),
-      riskAmount: Number(r.risk_amount) || 5,
-      emotion: "😌 Calm" as Emotion,
-      checklistJson: "{}",
-      exitPrices: r.exit_prices || [],
-      avgExit: Number(r.avg_exit ?? 0),
-      orderCount: Number(r.order_count ?? 0),
-      totalLot: Number(r.total_lot ?? 0),
-      totalPL: Number(r.total_pl ?? 0),
-      rr: Number(r.rr ?? 0),
-      result: r.result || "BE",
-      exitReason: "" as ExitReason|"",
-      notes: r.notes || "",
-      screenshotUrl: r.screenshot_url || "",
-      createdAt: r.created_at || new Date().toISOString(),
-    })));
-
-    const syncFromCloud = async () => {
+    const loadData = async () => {
+      // โหลด localStorage ก่อน (เร็ว + migrate v3→v4 อัตโนมัติ)
       const local = load();
-      if (alive && local.length) setTrades(local);
-
+      if (local.length > 0) { setTrades(local); }
+      // ถ้า login ให้ดึงจาก Supabase ด้วย
       try {
-        const { data:{user}, error:userError } = await supabase.auth.getUser();
-
-        // สำคัญ: localStorage เป็นข้อมูล "ต่อเครื่อง" เท่านั้น
-        // ข้อมูลที่จะข้าม PC ↔ มือถือได้ ต้องมาจาก Supabase และต้องเป็น user เดียวกัน
-        if (userError) {
-          console.error("Supabase auth error:", userError);
-          return;
-        }
-        if (!user) {
-          console.warn("Journal sync: no Supabase session on this device. Using localStorage only.");
-          return;
-        }
-
-        const { data, error } = await supabase
-          .from("journal_trades")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at",{ascending:false});
-
-        if (error) {
-          console.error("Journal cloud load error:", error);
-          return;
-        }
-
-        const cloud = mapSupabaseTrades(data || []);
-
-        // Merge cloud + local by id. Cloud wins for the same id,
-        // while local-only records are retained instead of disappearing.
-        const byId = new Map<string,Trade>();
-        for (const t of local) byId.set(t.id,t);
-        for (const t of cloud) byId.set(t.id,t);
-        const merged = Array.from(byId.values()).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
-
-        if (!alive) return;
-        setTrades(merged);
-        save(merged);
-
-        // ถ้ามี local-only records และ user login อยู่ ให้ push ขึ้น cloud
-        // เพื่อให้ trade ที่สร้างตอน offline ปรากฏบนมือถือ/เครื่องอื่นด้วย
-        const cloudIds = new Set(cloud.map(t=>t.id));
-        const pending = local.filter(t=>!cloudIds.has(t.id));
-        if (pending.length) {
-          for (const t of pending) {
-            const { error:pushError } = await supabase.from("journal_trades").upsert({
-              id:t.id,
-              user_id:user.id,
-              date:t.date,
-              time:t.time,
-              symbol:t.asset||"XAUUSD",
-              direction:t.direction,
-              session:t.session,
-              entry_price:t.entryPrice||null,
-              exit_prices:t.exitPrices||[],
-              avg_exit:t.avgExit||null,
-              lot_per_order:t.lotPerOrder||null,
-              order_count:t.orderCount||0,
-              total_lot:t.totalLot||0,
-              total_pl:t.totalPL||0,
-              sl_price:t.slPrice||null,
-              tp_price:0,
-              rr:t.rr||0,
-              result:t.result,
-              smc_concept:[],
-              htf_bias:"Neutral",
-              entry_model:t.mode,
-              tf:t.timeframe||"M5",
-              notes:t.mode==="WYCKOFF"
-                ? packWyckoffNotes(t.notes,{asset:t.asset||"XAUUSD",timeframe:t.timeframe||"15s",grade:t.grade||"A+",before:t.screenshotBeforeUrl||"",after:t.screenshotAfterUrl||""})
-                : t.notes,
-              screenshot_url:t.screenshotUrl||null,
-              created_at:t.createdAt,
-            },{onConflict:"id"});
-            if (pushError) console.error("Journal cloud push error:", pushError);
-          }
-        }
-      } catch(e) {
-        console.error("Journal sync error:",e);
-      }
+        const { data:{user} } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data, error } = await supabase.from("journal_trades")
+          .select("*").eq("user_id", user.id).order("created_at",{ascending:false});
+        if (error || !data?.length) return;
+        const mapped: Trade[] = migrateOldTrades(data.map((r:any) => ({
+          id: r.id, status: "CLOSED" as TradeStatus,
+          mode: (r.entry_model as TradeMode) || "SMC",
+          date: r.date, time: r.time, session: r.session,
+          direction: r.direction, entryPrice: Number(r.entry_price),
+          slPrice: Number(r.sl_price), lotPerOrder: Number(r.lot_per_order),
+          lotInput: String(r.lot_per_order), riskAmount: Number(r.risk_amount)||5,
+          emotion: "😌 Calm" as Emotion, checklistJson: "{}",
+          exitPrices: r.exit_prices||[], avgExit: Number(r.avg_exit),
+          orderCount: Number(r.order_count), totalLot: Number(r.total_lot),
+          totalPL: Number(r.total_pl), rr: Number(r.rr), result: r.result,
+          exitReason: "" as ExitReason|"", notes: r.notes||"",
+          screenshotUrl: r.screenshot_url||"", createdAt: r.created_at,
+        })));
+        setTrades(mapped); save(mapped);
+      } catch(e) { console.error("Supabase load error:", e); }
     };
-
-    syncFromCloud();
-
-    // If auth becomes available after the first render (e.g. mobile session
-    // restoration), sync again instead of leaving the page empty.
-    const { data:authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.user) {
-        setTimeout(()=>{ if (alive) syncFromCloud(); },0);
-      }
-    });
-
+    loadData();
     const op=loadOpen(); setOpenTrade(op);
-    // ── โหลดสถานะ lock ที่ค้างไว้จาก localStorage ──
-    setCooldownUntil(loadCooldownUntil());
-    setHardlock(loadHardlock());
-    setForcedLockDates(loadForcedLockDates());
-
-    return ()=>{
-      alive=false;
-      authListener.subscription.unsubscribe();
-    };
-  },[]);
     // ── โหลดสถานะ lock ที่ค้างไว้จาก localStorage ──
     setCooldownUntil(loadCooldownUntil());
     setHardlock(loadHardlock());
@@ -1321,7 +1213,7 @@ export default function JournalPage() {
         .j-sidebar-footer-sub{font-family:'DM Mono';font-size:7px;letter-spacing:2px;color:#525654;margin-top:7px}
         .j-sidebar-line{width:25px;height:1px;background:#fff;margin-top:10px;opacity:.6}
         .j-sidebar-hero{
-          position:absolute;left:-25px;right:-25px;bottom:0;height:400px;z-index:1;pointer-events:none;
+          position:absolute;left:-45px;right:-45px;bottom:0;height:520px;z-index:1;pointer-events:none;
           overflow:hidden
         }
         .j-sidebar-hero-img{
@@ -1343,27 +1235,42 @@ export default function JournalPage() {
             repeating-linear-gradient(95deg,transparent 0 85px,rgba(255,255,255,.012) 85px 87px);
         }
         .j-header-wrap,.j-page-shell{position:relative;z-index:2}
-        .j-header-wrap{padding:15px 24px 0!important}
-        .j-page-shell{max-width:min(1500px,93vw)!important;margin:0 auto;padding:18px 24px 36px!important}
-        .j-app-main .j-header-wrap > .j-win{max-width:min(1500px,93vw)!important;margin:0 auto}
-        .j-app-main .j-tabs-wrap{max-width:min(1500px,93vw)!important;margin:15px auto 0!important;padding:0!important}
-        .j-app-main .j-shinobi-header{min-height:124px;padding:23px 28px!important}
+        .j-header-wrap{padding:15px 0 0!important}
+        .j-page-shell{
+          width:min(1180px,calc(100% - 48px))!important;
+          max-width:1180px!important;
+          margin:0 auto!important;
+          padding:18px 0 36px!important;
+        }
+        .j-app-main .j-header-wrap > .j-win{
+          width:min(1180px,calc(100% - 48px))!important;
+          max-width:1180px!important;
+          margin:0 auto!important;
+        }
+        .j-app-main .j-tabs-wrap{
+          width:min(1180px,calc(100% - 48px))!important;
+          max-width:1180px!important;
+          margin:15px auto 0!important;
+          padding:0!important;
+        }
+        .j-app-main .j-shinobi-header{min-height:156px;padding:28px 34px!important}
 
         /* ---------- Brand ---------- */
         .j-shinobi-header{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:24px;align-items:center}
         .j-brand-kicker{font-family:'DM Mono';font-size:8px;letter-spacing:3px;color:#777c79;margin-bottom:8px}
         .j-brand{display:flex;align-items:center;gap:13px}
         .j-brand-mark{
-          width:51px;height:51px;display:block;border-radius:50%;object-fit:cover;
-          border:1px solid rgba(255,255,255,.26);flex:0 0 auto
+          width:76px;height:76px;display:block;border-radius:50%;object-fit:cover;
+          border:1px solid rgba(255,255,255,.26);flex:0 0 auto;
+          filter:drop-shadow(0 5px 16px rgba(0,0,0,.45));
         }
         .j-brand-name{
           font-family:'Montserrat','Noto Sans Thai',sans-serif;font-size:clamp(28px,3.3vw,44px);font-weight:800;
           letter-spacing:5px;line-height:1;color:#fff
         }
         .j-brand-logo-img{
-          display:block;height:clamp(30px,4vw,52px);width:auto;max-width:100%;object-fit:contain;
-          filter:drop-shadow(0 2px 6px rgba(0,0,0,.5));
+          display:block;height:clamp(48px,5vw,76px);width:auto;max-width:100%;object-fit:contain;
+          filter:drop-shadow(0 3px 10px rgba(0,0,0,.6));
         }
         .j-brand-sub{
           margin-top:7px;font-family:'DM Mono';font-size:8px;letter-spacing:2px;color:#777c79
@@ -1551,11 +1458,30 @@ export default function JournalPage() {
         .j-mobile-nav{display:none}
         .j-mobile-brand{display:none}
 
+        /* ---------- Final balanced composition ---------- */
+        .j-execution-form{
+          width:100%!important;
+          max-width:1000px!important;
+          margin:0 auto!important;
+        }
+        .j-execution-form > .j-win{
+          width:100%!important;
+          max-width:1000px!important;
+          margin:0 auto!important;
+          border-color:rgba(255,255,255,.24)!important;
+          box-shadow:0 18px 55px rgba(0,0,0,.34);
+        }
+        .j-execution-form > .j-win > .j-body{padding:24px 28px 22px}
+        .j-execution-form .j-execution-heading{font-size:48px}
+        .j-execution-form .j-execution-sub{font-size:12px}
+        .j-execution-form .j-upload-box{min-height:180px}
+        .j-execution-form .j-save-primary{min-height:50px}
+
         /* ---------- Wide desktop scale-up (large monitors) ---------- */
         @media(min-width:1400px){
           .j-app-main .j-shinobi-header{min-height:150px;padding:32px 40px!important}
-          .j-brand-mark{width:64px;height:64px}
-          .j-brand-logo-img{height:62px}
+          .j-brand-mark{width:82px;height:82px}
+          .j-brand-logo-img{height:78px}
           .j-brand-sub{font-size:9px;letter-spacing:2.4px}
           .j-brand-kicker{font-size:9px;margin-bottom:10px}
           .j-mantra{max-width:420px;font-size:9px}
@@ -1566,7 +1492,7 @@ export default function JournalPage() {
           .j-kanji-quote-en{font-size:8px}
           .j-execution-heading{font-size:52px}
           .j-execution-sub{font-size:13px}
-          .j-sidebar-hero{height:460px}
+          .j-sidebar-hero{height:560px}
           .j-theme-select{min-width:190px;padding:10px 32px 10px 12px;font-size:10px}
         }
 
@@ -1582,7 +1508,23 @@ export default function JournalPage() {
           .j-side-btn span:last-child{display:none}
           .j-side-icon{font-size:19px}
           .j-app-main .j-header-wrap{padding:12px 16px 0!important}
-          .j-page-shell{padding:15px 16px 30px!important}
+          .j-page-shell{
+            width:calc(100% - 32px)!important;
+            max-width:none!important;
+            margin:0 auto!important;
+            padding:15px 0 30px!important;
+          }
+          .j-app-main .j-header-wrap > .j-win{
+            width:calc(100% - 32px)!important;
+            max-width:none!important;
+          }
+          .j-app-main .j-tabs-wrap{
+            width:calc(100% - 32px)!important;
+            max-width:none!important;
+          }
+          .j-execution-form{max-width:760px!important;margin:0 auto!important}
+          .j-execution-form > .j-win{max-width:760px!important}
+          .j-app-main .j-shinobi-header{min-height:128px;padding:23px 24px!important}
         }
 
         @media(max-width:680px){
@@ -1619,14 +1561,34 @@ export default function JournalPage() {
           .j-side-btn.active{box-shadow:none;background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.34)}
           .j-app-main{width:100%}
           .j-app-main .j-header-wrap{padding:9px 8px 0!important}
-          .j-app-main .j-page-shell{padding:9px 8px 20px!important}
-          .j-app-main .j-header-wrap > .j-win{width:100%!important}
+          .j-app-main .j-page-shell{
+            width:calc(100% - 16px)!important;
+            max-width:none!important;
+            margin:0 auto!important;
+            padding:9px 0 20px!important;
+          }
+          .j-app-main .j-header-wrap > .j-win{
+            width:calc(100% - 16px)!important;
+            max-width:none!important;
+          }
+          .j-execution-form{
+            width:100%!important;
+            max-width:none!important;
+            margin:0 auto!important;
+          }
+          .j-execution-form > .j-win{
+            width:100%!important;
+            max-width:none!important;
+          }
+          .j-execution-form > .j-win > .j-body{padding:14px!important}
+          .j-execution-form .j-execution-heading{font-size:31px}
+          .j-execution-form .j-upload-box{min-height:132px}
           .j-app-main .j-shinobi-header{
             display:block;min-height:auto;padding:17px 15px!important
           }
           .j-brand{gap:9px}
-          .j-brand-mark{width:39px;height:39px}
-          .j-brand-logo-img{height:34px}
+          .j-brand-mark{width:50px;height:50px}
+          .j-brand-logo-img{height:44px}
           .j-brand-sub{font-size:6px;letter-spacing:1px;margin-top:5px;white-space:nowrap}
           .j-brand-kicker{font-size:6px;letter-spacing:1.8px;margin-bottom:7px}
           .j-mantra{
@@ -1693,7 +1655,7 @@ export default function JournalPage() {
           .j-sidebar-brand-top{font-size:11px!important;letter-spacing:2px!important}
           .j-side-nav{right:4px}
           .j-side-btn{width:32px}
-          .j-brand-logo-img{height:26px}
+          .j-brand-logo-img{height:34px}
           .j-brand-sub{font-size:5.5px}
           .j-mantra{padding-left:43px}
           .j-theme-box{padding-left:43px}
@@ -1946,7 +1908,7 @@ export default function JournalPage() {
         )}
         {/* ── WYCKOFF JOURNAL ── */}
         {view==="checklist"&&(
-          <div className="space-y-4 j-tabcontent" style={{maxWidth:780,margin:"0 auto"}}>
+          <div className="space-y-4 j-tabcontent j-execution-form">
             <div className="flex items-center gap-3">
               <button onClick={()=>setView("dashboard")} className="j-chip off" style={{fontSize:12}}>← Cancel</button>
               <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--j-soft)"}}>NEW EXECUTION</div>
