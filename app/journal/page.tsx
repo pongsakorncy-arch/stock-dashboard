@@ -1213,18 +1213,18 @@ export default function JournalPage() {
         .j-sidebar-footer-sub{font-family:'DM Mono';font-size:7px;letter-spacing:2px;color:#525654;margin-top:7px}
         .j-sidebar-line{width:25px;height:1px;background:#fff;margin-top:10px;opacity:.6}
         .j-sidebar-hero{
-          position:absolute;left:-25px;right:-25px;bottom:24px;height:270px;z-index:1;pointer-events:none;
+          position:absolute;left:-25px;right:-25px;bottom:0;height:400px;z-index:1;pointer-events:none;
           overflow:hidden
         }
         .j-sidebar-hero-img{
-          width:100%;height:100%;object-fit:cover;object-position:40% 28%;
-          display:block;filter:grayscale(.1) contrast(1.08) brightness(.92);
-          -webkit-mask-image:linear-gradient(180deg,transparent,#000 14%,#000 82%,transparent);
-          mask-image:linear-gradient(180deg,transparent,#000 14%,#000 82%,transparent);
+          width:100%;height:100%;object-fit:cover;object-position:42% 12%;
+          display:block;filter:contrast(1.12) brightness(1.04) saturate(1.05);
+          -webkit-mask-image:linear-gradient(180deg,transparent,#000 6%,#000 78%,transparent);
+          mask-image:linear-gradient(180deg,transparent,#000 6%,#000 78%,transparent);
         }
         .j-sidebar-hero-fade{
           position:absolute;inset:0;pointer-events:none;
-          background:linear-gradient(180deg,rgba(3,4,4,.15) 0%,transparent 30%,transparent 55%,rgba(3,4,4,.9) 100%);
+          background:linear-gradient(180deg,rgba(3,4,4,.05) 0%,transparent 22%,transparent 62%,rgba(3,4,4,.94) 100%);
         }
 
         .j-app-main{position:relative;min-width:0}
@@ -1236,9 +1236,9 @@ export default function JournalPage() {
         }
         .j-header-wrap,.j-page-shell{position:relative;z-index:2}
         .j-header-wrap{padding:15px 24px 0!important}
-        .j-page-shell{max-width:1180px!important;margin:0 auto;padding:18px 24px 36px!important}
-        .j-app-main .j-header-wrap > .j-win{max-width:1180px!important;margin:0 auto}
-        .j-app-main .j-tabs-wrap{max-width:1180px!important;margin:15px auto 0!important;padding:0!important}
+        .j-page-shell{max-width:min(1500px,93vw)!important;margin:0 auto;padding:18px 24px 36px!important}
+        .j-app-main .j-header-wrap > .j-win{max-width:min(1500px,93vw)!important;margin:0 auto}
+        .j-app-main .j-tabs-wrap{max-width:min(1500px,93vw)!important;margin:15px auto 0!important;padding:0!important}
         .j-app-main .j-shinobi-header{min-height:124px;padding:23px 28px!important}
 
         /* ---------- Brand ---------- */
