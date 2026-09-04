@@ -1213,14 +1213,19 @@ export default function JournalPage() {
         .j-sidebar-footer-sub{font-family:'DM Mono';font-size:7px;letter-spacing:2px;color:#525654;margin-top:7px}
         .j-sidebar-line{width:25px;height:1px;background:#fff;margin-top:10px;opacity:.6}
         .j-sidebar-hero{
-          position:absolute;left:-25px;right:-25px;bottom:24px;height:220px;z-index:1;opacity:.9;pointer-events:none
+          position:absolute;left:-25px;right:-25px;bottom:24px;height:270px;z-index:1;pointer-events:none;
+          overflow:hidden
         }
-        .j-sidebar-hero svg{width:100%;height:100%;display:block}
-        .j-sidebar-hero .moon{fill:#d7d7d2;opacity:.84}
-        .j-sidebar-hero .ink{fill:#040505}
-        .j-sidebar-hero .mist{fill:#fff;opacity:.05}
-        .j-sidebar-hero .blade{fill:#fff;opacity:.78}
-        .j-sidebar-hero .red{fill:var(--j-red)}
+        .j-sidebar-hero-img{
+          width:100%;height:100%;object-fit:cover;object-position:62% 20%;
+          display:block;filter:grayscale(.1) contrast(1.08) brightness(.92);
+          -webkit-mask-image:linear-gradient(180deg,transparent,#000 14%,#000 82%,transparent);
+          mask-image:linear-gradient(180deg,transparent,#000 14%,#000 82%,transparent);
+        }
+        .j-sidebar-hero-fade{
+          position:absolute;inset:0;pointer-events:none;
+          background:linear-gradient(180deg,rgba(3,4,4,.15) 0%,transparent 30%,transparent 55%,rgba(3,4,4,.9) 100%);
+        }
 
         .j-app-main{position:relative;min-width:0}
         .j-app-main:before{
@@ -1248,6 +1253,10 @@ export default function JournalPage() {
         .j-brand-name{
           font-family:'Montserrat','Noto Sans Thai',sans-serif;font-size:clamp(28px,3.3vw,44px);font-weight:800;
           letter-spacing:5px;line-height:1;color:#fff
+        }
+        .j-brand-logo-img{
+          display:block;height:clamp(30px,4vw,52px);width:auto;max-width:100%;object-fit:contain;
+          filter:drop-shadow(0 2px 6px rgba(0,0,0,.5));
         }
         .j-brand-sub{
           margin-top:7px;font-family:'DM Mono';font-size:8px;letter-spacing:2px;color:#777c79
@@ -1428,7 +1437,7 @@ export default function JournalPage() {
           }
           .j-brand{gap:9px}
           .j-brand-mark{width:39px;height:39px;font-size:24px}
-          .j-brand-name{font-size:21px;letter-spacing:2.2px;line-height:1.05}
+          .j-brand-logo-img{height:34px}
           .j-brand-sub{font-size:6px;letter-spacing:1px;margin-top:5px;white-space:nowrap}
           .j-brand-kicker{font-size:6px;letter-spacing:1.8px;margin-bottom:7px}
           .j-mantra{
@@ -1494,7 +1503,7 @@ export default function JournalPage() {
           .j-sidebar-brand-top{font-size:11px!important;letter-spacing:2px!important}
           .j-side-nav{right:4px}
           .j-side-btn{width:32px}
-          .j-brand-name{font-size:18px}
+          .j-brand-logo-img{height:26px}
           .j-brand-sub{font-size:5.5px}
           .j-mantra{padding-left:43px}
           .j-theme-box{padding-left:43px}
@@ -1558,56 +1567,8 @@ export default function JournalPage() {
           </nav>
 
           <div className="j-sidebar-hero" aria-hidden="true">
-            <svg viewBox="0 0 300 250" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-              <defs>
-                <radialGradient id="moonGlow" cx="50%" cy="50%" r="50%">
-                  <stop offset="0%" stopColor="#f4f4ef" stopOpacity=".98"/>
-                  <stop offset="72%" stopColor="#d8d8d2" stopOpacity=".9"/>
-                  <stop offset="100%" stopColor="#aaa" stopOpacity=".18"/>
-                </radialGradient>
-                <linearGradient id="inkFade" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#020303"/>
-                  <stop offset="100%" stopColor="#191b1a"/>
-                </linearGradient>
-                <filter id="softInk">
-                  <feGaussianBlur stdDeviation="1.8"/>
-                </filter>
-              </defs>
-              <circle cx="153" cy="83" r="67" fill="url(#moonGlow)"/>
-              <circle cx="131" cy="66" r="5" fill="#777" opacity=".12"/>
-              <circle cx="177" cy="99" r="8" fill="#777" opacity=".09"/>
-              <circle cx="161" cy="50" r="3" fill="#777" opacity=".12"/>
-
-              {/* distant mountains / ink wash */}
-              <path d="M0 191 C35 161 56 166 84 181 C111 196 132 171 155 176 C190 183 205 153 233 164 C262 176 278 154 300 148 L300 250 L0 250Z"
-                    fill="url(#inkFade)" opacity=".92"/>
-              <path d="M0 209 C43 187 68 198 101 207 C130 216 157 191 183 200 C216 211 242 184 300 176 L300 250 L0 250Z"
-                    fill="#020303" opacity=".94"/>
-              <path d="M0 201 Q45 181 92 203 T183 201 T300 190" fill="none" stroke="#fff" strokeOpacity=".045" strokeWidth="5" filter="url(#softInk)"/>
-
-              {/* ninja body */}
-              <path d="M128 177 C129 151 137 136 151 132 C168 136 176 151 178 177
-                       L190 214 L111 214 Z" fill="#030404"/>
-              <path d="M142 133 L151 112 L164 134 L160 155 L143 153Z" fill="#020303"/>
-              <path d="M144 130 L150 119 L157 130 L152 137Z" fill="#d21f2b"/>
-              {/* face slit */}
-              <path d="M144 136 Q152 132 160 136 L158 143 Q152 140 146 143Z" fill="#c9c9c3" opacity=".48"/>
-              {/* scarf */}
-              <path d="M139 148 C128 154 117 162 107 179 C120 169 132 165 145 162Z" fill="#060707"/>
-              <path d="M161 149 C176 154 188 165 199 180 C184 169 173 165 158 162Z" fill="#060707"/>
-              {/* sword */}
-              <path d="M162 143 L224 111 L227 114 L166 149Z" fill="#efefea" opacity=".74"/>
-              <path d="M157 146 L165 151" stroke="#d21f2b" strokeWidth="3"/>
-              {/* cloak folds */}
-              <path d="M122 174 L105 219 L128 198 L143 221 L151 181Z" fill="#080909"/>
-              <path d="M174 173 L195 219 L173 199 L161 222 L151 181Z" fill="#080909"/>
-
-              {/* foreground ink splashes */}
-              <path d="M0 231 C30 215 58 220 77 231 C98 243 118 238 136 231 C112 247 91 250 63 247 C37 244 19 247 0 250Z" fill="#010202"/>
-              <path d="M300 216 C272 208 252 219 235 231 C256 222 278 224 300 235Z" fill="#010202"/>
-              <path d="M30 181 L86 158 L91 163 L35 190Z" fill="#fff" opacity=".045"/>
-              <path d="M215 190 L282 163 L286 168 L220 199Z" fill="#fff" opacity=".035"/>
-            </svg>
+            <img src="/images/ninja-hero.webp" alt="" className="j-sidebar-hero-img"/>
+            <div className="j-sidebar-hero-fade"/>
           </div>
 
           <div className="j-sidebar-footer">
@@ -1635,7 +1596,7 @@ export default function JournalPage() {
               <div className="j-brand">
                 <div className="j-brand-mark">忍</div>
                 <div>
-                  <div className="j-brand-name">YOKIMURA SHINOBI</div>
+                  <img src="/images/yokimura-logo.webp" alt="YOKIMURA SHINOBI" className="j-brand-logo-img"/>
                   <div className="j-brand-sub">PRACTICE · PATIENCE · DISCIPLINE · FOR THE FAMILY.</div>
                 </div>
               </div>
