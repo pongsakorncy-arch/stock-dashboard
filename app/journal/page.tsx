@@ -7,6 +7,7 @@ type Direction   = "LONG"|"SHORT";
 type Result      = "WIN"|"LOSS"|"BE";
 type Session     = "Tokyo"|"London"|"New York"|"Overlap";
 type AccountType = "cent"|"standard";
+type JournalTheme = "ninja"|"minimal"|"classic"|"cyber"|"sakura";
 type TradeMode    = "WYCKOFF"|"SMC"|"SW_RANGE"|"SW_BREAKOUT"|"PULLBACK"|"M5_REVERSAL";
 type Emotion     = "😌 Calm"|"😎 Confident"|"😤 FOMO"|"😰 Fearful"|"😡 Revenge";
 type ExitReason  = "TP Hit"|"SL Hit"|"Manual"|"Rejection"|"MSS Failed"|"Other";
@@ -636,6 +637,7 @@ export default function JournalPage() {
   const [showAlert,setShowAlert] = useState(false);
   const [uploading,setUploading] = useState(false);
   const [mounted,setMounted] = useState(false);
+  const [theme,setTheme] = useState<JournalTheme>("ninja");
   // ── Discipline lock states (ใหม่) ──────────────────────────────────────────
   const [cooldownUntil,setCooldownUntil]   = useState(0);
   const [nowTick,setNowTick]               = useState(Date.now());
@@ -705,7 +707,17 @@ export default function JournalPage() {
     setSession(autoSessionFromTime(t));
     setSessionManual(false);
   };
-  useEffect(()=>{ setMounted(true); },[]);
+  useEffect(()=>{
+    setMounted(true);
+    try {
+      const saved = localStorage.getItem("yok_journal_theme") as JournalTheme | null;
+      if (saved && ["ninja","minimal","classic","cyber","sakura"].includes(saved)) setTheme(saved);
+    } catch {}
+  },[]);
+  useEffect(()=>{
+    if (!mounted) return;
+    try { localStorage.setItem("yok_journal_theme", theme); } catch {}
+  },[theme,mounted]);
   // ── Boot ──────────────────────────────────────────────────────────────────
   useEffect(()=>{
     const lines=["JOURNAL.EXE","LOADING... 🥇"];
@@ -1011,180 +1023,420 @@ export default function JournalPage() {
     return <main style={{minHeight:"100vh",background:"#f1e9da"}} />;
   }
   return (
-    <main className="j-root">
+    <main className={`j-root theme-${theme}`}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fredoka:wght@500;600;700&family=VT323&display=swap');
-        .j-root{--j-paper:#f1e9da;--j-win:#fffdf8;--j-ink:#5a4d42;--j-soft:#9a8d80;--j-pink:#f6cdd5;--j-mint:#c0e6d4;--j-butter:#f6e6ac;--j-lav:#ddccf0;--j-sky:#c6def0;--j-peach:#f8d6ba;--j-coral:#f3b0a8;min-height:100vh;color:var(--j-ink);font-family:'Fredoka',sans-serif;background-color:var(--j-paper);background-image:radial-gradient(var(--j-ink) 0.5px,transparent 0.6px);background-size:14px 14px;background-position:-7px -7px;padding-bottom:40px;}
-        .j-root::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:999;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(90,77,66,.03) 2px,rgba(90,77,66,.03) 4px);animation:scanmove 8s linear infinite;}
-        @keyframes scanmove{from{background-position:0 0}to{background-position:0 40px}}
-        @keyframes bootfade{from{opacity:1}to{opacity:0;transform:scale(1.04)}}
-        .j-boot{position:fixed;inset:0;z-index:9999;background:#2a1f14;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;}
-        .j-boot.done{animation:bootfade .5s ease forwards;}
-        .j-boot-logo{font-family:'VT323',monospace;font-size:52px;color:#f6e6ac;letter-spacing:3px;text-shadow:0 0 20px #f6e6ac88;animation:blink 1s step-end infinite;}
-        @keyframes blink{50%{opacity:.7}}
-        .j-boot-cursor{display:inline-block;width:9px;height:15px;background:#c0e6d4;animation:cur .7s step-end infinite;vertical-align:middle;}
-        @keyframes cur{50%{opacity:0}}
-        .j-boot-bar{width:280px;height:22px;border:2px solid #c0e6d4;border-radius:4px;overflow:hidden;position:relative;}
-        .j-boot-fill{height:100%;background:linear-gradient(90deg,#c0e6d4,#8fd3b4);animation:barfill 1.2s ease forwards;}
-        @keyframes barfill{from{width:0%}to{width:100%}}
-        @keyframes winpop{0%{opacity:0;transform:scale(.92) translate(0,6px)}60%{transform:scale(1.03) translate(0,-2px)}80%{transform:scale(.98)}100%{opacity:1;transform:scale(1)}}
-        .j-win{animation:winpop .18s steps(3,end) both;background:var(--j-win);border:2.5px solid var(--j-ink);border-radius:9px;box-shadow:4px 4px 0 var(--j-ink);overflow:hidden;}
-        .j-bar{display:flex;align-items:center;gap:7px;padding:7px 10px;border-bottom:2.5px solid var(--j-ink);}
-        .j-t{font-family:'DM Mono',monospace;font-size:12px;font-weight:500;letter-spacing:.5px;flex:1;display:flex;align-items:center;gap:6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
-        .j-ctrl{display:flex;gap:4px;flex-shrink:0;}
-        .j-ctrl span{width:15px;height:15px;border:2px solid var(--j-ink);border-radius:3px;background:var(--j-win);font-size:9px;line-height:11px;text-align:center;font-family:'DM Mono';}
-        .j-body{padding:13px;}
-        .j-lab{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--j-soft);margin-bottom:6px;display:block;}
-        .j-chip{font-size:13px;font-weight:500;padding:6px 12px;border:2px solid var(--j-ink);border-radius:7px;background:var(--j-win);color:var(--j-ink);cursor:pointer;box-shadow:2px 2px 0 var(--j-ink);transition:.1s;font-family:'Fredoka';}
-        .j-chip:active{transform:translate(2px,2px);box-shadow:0 0 0 var(--j-ink);}
-        .j-chip.off{box-shadow:none;border-style:dashed;color:var(--j-soft);background:transparent;}
-        .j-in{width:100%;background:#fbf6ea;border:2px solid var(--j-ink);border-radius:7px;padding:9px 11px;font-family:'DM Mono',monospace;font-size:14px;color:var(--j-ink);outline:none;box-shadow:inset 1px 1px 0 rgba(90,77,66,.08);}
-        .j-in:focus{box-shadow:2px 2px 0 var(--j-ink);}
-        .j-in::placeholder{color:#c3b8a8;}
-        .j-btn{border:2.5px solid var(--j-ink);border-radius:9px;cursor:pointer;font-family:'Fredoka';font-weight:700;box-shadow:3px 3px 0 var(--j-ink);transition:.1s;color:var(--j-ink);}
-        .j-btn:active{transform:translate(3px,3px);box-shadow:0 0 0 var(--j-ink);}
-        .j-btn:disabled{opacity:.45;cursor:not-allowed;}
-        .j-stat{background:var(--j-win);border:2.5px solid var(--j-ink);border-radius:9px;box-shadow:3px 3px 0 var(--j-ink);padding:10px;text-align:center;}
-        .j-num{font-family:'VT323',monospace;font-size:30px;line-height:.9;}
-        .j-statlab{font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1px;color:var(--j-soft);text-transform:uppercase;margin-top:2px;}
-        .j-mini{font-size:11px;font-weight:500;padding:3px 9px;border:1.5px solid var(--j-ink);border-radius:6px;}
-        .j-tab{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.5px;padding:9px 12px;cursor:pointer;border:2px solid transparent;border-radius:7px 7px 0 0;background:transparent;color:var(--j-soft);font-weight:500;}
-        .j-tab.on{background:var(--j-lav);border-color:var(--j-ink);color:var(--j-ink);font-weight:700;}
-        @keyframes savepulse{0%,100%{box-shadow:3px 3px 0 var(--j-ink)}50%{box-shadow:0 0 0 var(--j-ink),0 0 14px var(--j-mint)}}
-        .j-saving{animation:savepulse .2s steps(2,end) 4;}
-        @keyframes tabslide{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-        .j-tabcontent{animation:tabslide .15s steps(2,end) both;}
-        .j-pixel{position:absolute;width:8px;height:8px;border:1.5px solid var(--j-ink);pointer-events:none;animation:pixelfly .7s steps(4,end) forwards;}
-        @keyframes pixelfly{0%{opacity:1;transform:translate(0,0) scale(1)}50%{opacity:1;transform:translate(var(--px),var(--py)) scale(1.2)}100%{opacity:0;transform:translate(var(--px),calc(var(--py) + 20px)) scale(0)}}
-        .j-cal-nav{width:24px;height:24px;border:2px solid var(--j-ink);border-radius:5px;background:var(--j-win);color:var(--j-ink);font-family:'DM Mono',monospace;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:1px 1px 0 var(--j-ink);}
-        .j-cal-nav:active{transform:translate(1px,1px);box-shadow:none;}
-        .j-cal-weekdays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;margin-bottom:8px;text-align:center;font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);letter-spacing:1px;}
-        .j-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;}
-        .j-cal-cell{position:relative;min-height:86px;border:2px solid var(--j-ink);border-radius:8px;background:#fbf6ea;color:var(--j-ink);padding:8px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;cursor:pointer;text-align:left;font-family:'Fredoka','Noto Sans Thai',sans-serif;box-shadow:2px 2px 0 var(--j-ink);overflow:hidden;}
-        .j-cal-cell.empty{visibility:hidden;box-shadow:none;cursor:default;}
-        .j-cal-cell.has.win{background:var(--j-mint);}
-        .j-cal-cell.has.loss{background:var(--j-pink);}
-        .j-cal-cell.has.be{background:var(--j-lav);}
-        .j-cal-cell.selected{outline:3px solid var(--j-butter);transform:translate(1px,1px);box-shadow:1px 1px 0 var(--j-ink);}
-        .j-cal-day{position:absolute;top:6px;right:8px;font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--j-ink);line-height:1;}
-        .j-cal-content{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding-top:8px;}
-        .j-cal-pl{font-family:'DM Mono',monospace;font-size:15px;line-height:1;white-space:nowrap;color:var(--j-ink);}
-        .j-cal-count{font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);white-space:nowrap;}
-        .j-cal-mini{display:flex;gap:4px;flex-wrap:wrap;justify-content:center;font-family:'DM Mono',monospace;font-size:8px;color:var(--j-soft);}
-        .j-cal-mini span{border:1px solid var(--j-ink);border-radius:4px;background:rgba(255,253,248,.55);padding:1px 4px;}
-        .j-cal-legend{display:flex;gap:14px;justify-content:center;align-items:center;margin-top:12px;flex-wrap:wrap;font-size:10px;font-family:'DM Mono',monospace;color:var(--j-soft);}
-        .j-cal-legend i{display:inline-block;width:9px;height:9px;border-radius:50%;border:1px solid var(--j-ink);margin-right:5px;vertical-align:-1px;}
-        .j-cal-trade-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1.5px dashed #e3d9c4;}
-        .j-cal-trade-row:last-child{border-bottom:none;}
-        .j-cal-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;}
-        .j-cal-summary-card{background:#fbf6ea;border:2px solid var(--j-ink);border-radius:8px;padding:9px 8px;box-shadow:2px 2px 0 var(--j-ink);text-align:center;}
-        .j-cal-summary-card span{display:block;font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1px;color:var(--j-soft);text-transform:uppercase;margin-bottom:3px;}
-        .j-cal-summary-card b{display:block;font-family:'VT323',monospace;font-size:24px;line-height:1;color:var(--j-ink);}
-        .j-cal-summary-card.win b{color:#3f9b73}.j-cal-summary-card.loss b{color:#d4685f}
-        .j-cal-cell.today:after{content:'TODAY';position:absolute;left:6px;top:6px;font-family:'DM Mono',monospace;font-size:7px;font-weight:800;color:#d4a65f;background:var(--j-butter);border:1px solid var(--j-ink);border-radius:4px;padding:1px 4px;}
-        .j-cal-cell.today .j-cal-day{color:#d4a65f;}
-        .j-cal-empty-note{background:#fbf6ea;border:1.5px dashed var(--j-ink);border-radius:8px;padding:10px;text-align:center;font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);}
-        .j-open-edit-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
-        .j-open-edit-grid.two{grid-template-columns:repeat(2,1fr);}
-        .j-open-edit-note{margin-top:10px;background:#fbf6ea;border:1.5px dashed var(--j-ink);border-radius:8px;padding:8px 10px;font-family:'DM Mono',monospace;font-size:10px;color:var(--j-soft);line-height:1.5;}
-        @media(max-width:720px){.j-cal-grid{gap:5px}.j-cal-weekdays{gap:5px}.j-cal-cell{min-height:70px;padding:6px}.j-cal-pl{font-size:12px}.j-cal-count,.j-cal-mini{display:none}.j-cal-day{font-size:11px;top:5px;right:6px}.j-cal-trade-row{align-items:flex-start;flex-wrap:wrap}.j-cal-trade-row b{margin-left:auto}.j-cal-summary-grid,.j-open-edit-grid,.j-open-edit-grid.two{grid-template-columns:1fr 1fr}}
-        /* ─── Mobile First Polish ───────────────────────────────────────── */
-        .j-page-shell{max-width:780px;margin:0 auto;padding:16px 12px 0;}
-        .j-tabs-wrap{max-width:780px;margin:14px auto 0;display:flex;gap:8px;padding:0 12px 4px;overflow-x:auto;-webkit-overflow-scrolling:touch;border-bottom:none;} .j-tabs-wrap::-webkit-scrollbar{display:none;}
-        .j-mobile-grid{min-width:0;}
-        .j-input-pair{min-width:0;}
-        input, textarea, button, select{max-width:100%;}
-        img{max-width:100%;}
-        @media(max-width:640px){
-          .j-root{background-size:12px 12px;overflow-x:hidden;}
-          .j-header-wrap{padding:8px 8px 0!important;}
-          .j-page-shell{padding:10px 8px 0!important;max-width:100%!important;}
-          .j-win{border-width:2px;border-radius:12px;box-shadow:2px 2px 0 var(--j-ink);margin-bottom:10px;}
-          .j-bar{padding:8px 9px;border-bottom-width:2px;}
-          .j-t{font-size:10px;letter-spacing:.1px;white-space:normal;line-height:1.25;}
-          .j-ctrl span{width:13px;height:13px;line-height:9px;font-size:8px;border-width:1.5px;}
-          .j-body{padding:10px!important;}
-          .j-lab,.j-tool-label{font-size:9px!important;letter-spacing:.7px;}
-          .j-chip{font-size:11px!important;padding:8px 9px!important;min-height:36px;border-width:1.8px;border-radius:9px;box-shadow:1.5px 1.5px 0 var(--j-ink);}
-          .j-btn{min-height:40px;border-width:2px;border-radius:10px;box-shadow:2px 2px 0 var(--j-ink);}
-          .j-in{font-size:13px;padding:10px 10px;}
-          .j-num{font-size:26px;}
-          .j-stat{padding:8px 6px;border-width:2px;box-shadow:2px 2px 0 var(--j-ink);}
-          .j-statlab{font-size:7px;}
-          .j-header-wrap > .j-win{max-width:100%!important;margin:0!important;}
-          .j-header-wrap .j-body{align-items:flex-start!important;gap:10px!important;}
-          .j-header-wrap .j-body > div:first-child{width:100%;}
-          .j-header-wrap .j-body > div:first-child div:first-child{font-size:28px!important;line-height:.9!important;}
-          .j-header-wrap .j-body > div:last-child{width:100%;display:flex!important;flex-wrap:wrap!important;gap:8px!important;}
-          .j-header-wrap .j-body > div:last-child button{width:100%;}
-          .j-tabs-wrap{position:relative!important;left:auto;right:auto;bottom:auto;z-index:10;max-width:780px!important;margin:12px auto 0!important;padding:0 12px 4px!important;display:flex!important;gap:8px!important;overflow-x:auto!important;white-space:nowrap!important;border-top:none!important;border-bottom:none!important;background:transparent!important;box-shadow:none;-webkit-overflow-scrolling:touch;}
-          .j-tabs-wrap::-webkit-scrollbar{display:none;}
-          .j-tab{flex:0 0 auto!important;border:2px solid var(--j-ink)!important;border-radius:20px!important;background:var(--j-win)!important;padding:9px 16px!important;font-size:12px!important;line-height:1.25!important;text-align:center!important;box-shadow:2px 2px 0 var(--j-ink);white-space:nowrap!important;display:flex!important;align-items:center!important;gap:5px!important;}
-          .j-tab.on{background:var(--j-lav)!important;border-bottom-color:var(--j-ink)!important;color:var(--j-ink)!important;}
-          .j-mobile-grid,.j-upload-grid,.j-open-edit-grid,.j-open-edit-grid.two{grid-template-columns:1fr!important;}
-          .j-input-pair{grid-template-columns:1fr 1fr!important;}
-          .j-cal-weekdays{gap:4px;font-size:8px;}
-          .j-cal-grid{gap:4px;}
-          .j-cal-cell{min-height:54px;padding:5px;border-width:1.5px;border-radius:7px;box-shadow:1px 1px 0 var(--j-ink);}
-          .j-cal-day{font-size:10px;top:4px;right:5px;}
-          .j-cal-pl{font-size:10px;}
-          .j-cal-count,.j-cal-mini{font-size:7px;}
-          .j-cal-cell.today:after{display:none;}
-          .grid{min-width:0;}
-          .grid.grid-cols-2{gap:8px!important;}
-          .space-y-4 > * + *{margin-top:10px!important;}
-          .space-y-3 > * + *{margin-top:8px!important;}
-          [style*="maxWidth:560"],[style*="max-width:560px"]{max-width:100%!important;}
-          [style*="gridTemplateColumns"]{min-width:0;}
-          textarea{min-height:76px!important;}
+        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@500;600;700;800&family=Noto+Sans+Thai:wght@400;500;600;700&family=VT323&display=swap');
+
+        /* ================================================================
+           YOKIMURA SHINOBI — THEME SYSTEM
+           ================================================================ */
+        .j-root{
+          --j-paper:#080909;
+          --j-win:#0e1010;
+          --j-field:#0a0b0b;
+          --j-ink:#f2f2ef;
+          --j-soft:#8b8f8e;
+          --j-pink:#171919;
+          --j-mint:#e8e8e3;
+          --j-butter:#bdbdb6;
+          --j-lav:#252726;
+          --j-sky:#1b1d1d;
+          --j-peach:#303230;
+          --j-coral:#c9232c;
+          --j-red:#c9232c;
+          min-height:100vh;
+          color:var(--j-ink);
+          font-family:'Inter','Noto Sans Thai',sans-serif;
+          background:
+            radial-gradient(circle at 78% 12%,rgba(255,255,255,.055),transparent 24%),
+            radial-gradient(circle at 8% 88%,rgba(201,35,44,.045),transparent 22%),
+            linear-gradient(135deg,#050606 0%,#0b0c0c 48%,#070808 100%);
+          position:relative;
+          overflow-x:hidden;
+          padding-bottom:54px;
         }
-        .open-badge{animation:blink .8s step-end infinite;}
+
+        /* Theme variants */
+        .j-root.theme-minimal{
+          --j-paper:#f4f4f1;--j-win:#ffffff;--j-field:#fafafa;--j-ink:#171918;--j-soft:#707572;
+          --j-pink:#ededeb;--j-mint:#e4e7e3;--j-butter:#d7d9d6;--j-lav:#e7e8e5;--j-sky:#e8ebeb;--j-peach:#e7e5e1;--j-coral:#cfcfc9;
+          background:linear-gradient(180deg,#f8f8f5,#eeeeeb);
+        }
+        .j-root.theme-classic{
+          --j-paper:#211f1c;--j-win:#2b2925;--j-field:#23221f;--j-ink:#eee8dc;--j-soft:#a9a195;
+          --j-pink:#403b35;--j-mint:#52675b;--j-butter:#6b6049;--j-lav:#554b62;--j-sky:#414e55;--j-peach:#5f4c3e;--j-coral:#9b5049;
+          background:radial-gradient(circle at 50% 0,#37322c,#1d1b19 65%);
+        }
+        .j-root.theme-cyber{
+          --j-paper:#05070a;--j-win:#0b1015;--j-field:#070c11;--j-ink:#e8f7ff;--j-soft:#6d8490;
+          --j-pink:#14202a;--j-mint:#102f31;--j-butter:#283021;--j-lav:#171a32;--j-sky:#10232e;--j-peach:#18211f;--j-coral:#e43155;
+          background:radial-gradient(circle at 80% 10%,#0c2632,transparent 28%),#05070a;
+        }
+        .j-root.theme-sakura{
+          --j-paper:#151012;--j-win:#21181b;--j-field:#171114;--j-ink:#f7ecef;--j-soft:#b99da5;
+          --j-pink:#4b2732;--j-mint:#263a34;--j-butter:#4b3b2d;--j-lav:#3b2944;--j-sky:#293740;--j-peach:#49342e;--j-coral:#bd5268;
+          background:radial-gradient(circle at 85% 12%,#41232e,transparent 28%),#120e10;
+        }
+
+        .j-root::before{
+          content:'';
+          position:fixed;inset:0;pointer-events:none;z-index:999;
+          background:
+            repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(255,255,255,.018) 3px,rgba(255,255,255,.018) 4px),
+            linear-gradient(90deg,transparent 0 72%,rgba(255,255,255,.015) 72% 72.2%,transparent 72.2%);
+          mix-blend-mode:screen;
+          opacity:.65;
+        }
+        .j-root::after{
+          content:'忍';
+          position:fixed;
+          right:-30px;
+          bottom:-70px;
+          font-family:serif;
+          font-size:330px;
+          font-weight:700;
+          color:rgba(255,255,255,.018);
+          line-height:1;
+          pointer-events:none;
+          z-index:0;
+          transform:rotate(-7deg);
+        }
+
+        @keyframes scanmove{from{background-position:0 0}to{background-position:0 44px}}
+        @keyframes bootfade{from{opacity:1}to{opacity:0;transform:scale(1.04)}}
+        .j-boot{
+          position:fixed;inset:0;z-index:9999;background:#050606;
+          display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
+          color:#fff;
+        }
+        .j-boot.done{animation:bootfade .5s ease forwards}
+        .j-boot-logo{
+          font-family:'Montserrat',sans-serif;font-size:clamp(32px,7vw,58px);font-weight:800;
+          letter-spacing:10px;color:#fff;text-shadow:0 0 28px rgba(255,255,255,.16);
+        }
+        .j-boot-logo::after{content:'  忍';color:#c9232c;font-family:serif}
+        @keyframes blink{50%{opacity:.65}}
+        .j-boot-cursor{display:inline-block;width:8px;height:15px;background:#fff;animation:cur .7s step-end infinite;vertical-align:middle}
+        @keyframes cur{50%{opacity:0}}
+        .j-boot-bar{width:min(320px,72vw);height:8px;border:1px solid #444;border-radius:2px;overflow:hidden;position:relative;background:#0c0d0d}
+        .j-boot-fill{height:100%;background:#fff;animation:barfill 1.2s ease forwards}
+        @keyframes barfill{from{width:0}to{width:100%}}
+
+        @keyframes winpop{0%{opacity:0;transform:translateY(5px)}100%{opacity:1;transform:none}}
+        .j-win{
+          animation:winpop .18s ease both;
+          background:var(--j-win);
+          border:1px solid rgba(255,255,255,.14);
+          border-radius:2px;
+          box-shadow:0 14px 40px rgba(0,0,0,.24);
+          overflow:hidden;
+          position:relative;
+          z-index:1;
+        }
+        .j-bar{
+          display:flex;align-items:center;gap:9px;padding:10px 13px;
+          border-bottom:1px solid rgba(255,255,255,.10);
+          background:linear-gradient(90deg,rgba(255,255,255,.045),transparent);
+        }
+        .j-t{
+          font-family:'DM Mono',monospace;font-size:10px;font-weight:600;letter-spacing:1.8px;
+          flex:1;display:flex;align-items:center;gap:7px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+        }
+        .j-ctrl{display:flex;gap:4px;flex-shrink:0}
+        .j-ctrl span{
+          width:14px;height:14px;border:1px solid rgba(255,255,255,.28);border-radius:1px;
+          background:transparent;color:var(--j-ink);font-size:8px;line-height:12px;text-align:center;font-family:'DM Mono';
+        }
+        .j-body{padding:16px}
+        .j-lab{
+          font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1.8px;text-transform:uppercase;
+          color:var(--j-soft);margin-bottom:7px;display:block
+        }
+        .j-chip{
+          font-size:11px;font-weight:600;padding:7px 12px;border:1px solid rgba(255,255,255,.22);
+          border-radius:2px;background:var(--j-field);color:var(--j-ink);cursor:pointer;
+          box-shadow:none;transition:.15s;font-family:'Inter','Noto Sans Thai',sans-serif
+        }
+        .j-chip:hover{border-color:rgba(255,255,255,.55);background:rgba(255,255,255,.06)}
+        .j-chip:active{transform:translateY(1px)}
+        .j-chip.off{border-style:solid;color:var(--j-soft);background:transparent}
+        .j-in{
+          width:100%;background:var(--j-field)!important;border:1px solid rgba(255,255,255,.18);
+          border-radius:2px;padding:10px 11px;font-family:'DM Mono',monospace;font-size:12px;
+          color:var(--j-ink);outline:none;box-shadow:none
+        }
+        .j-in:focus{border-color:var(--j-ink);box-shadow:0 0 0 1px rgba(255,255,255,.08)}
+        .j-in::placeholder{color:var(--j-soft)}
+        .j-btn{
+          border:1px solid rgba(255,255,255,.28);border-radius:2px;cursor:pointer;
+          font-family:'Inter','Noto Sans Thai',sans-serif;font-weight:700;
+          box-shadow:none;transition:.15s;color:var(--j-ink)
+        }
+        .j-btn:hover{filter:brightness(1.08);transform:translateY(-1px)}
+        .j-btn:active{transform:translateY(0)}
+        .j-btn:disabled{opacity:.4;cursor:not-allowed}
+        .j-stat{
+          background:var(--j-win);border:1px solid rgba(255,255,255,.14);border-radius:2px;
+          box-shadow:none;padding:13px;text-align:center
+        }
+        .j-num{font-family:'VT323',monospace;font-size:34px;line-height:.9}
+        .j-statlab{font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1.5px;color:var(--j-soft);text-transform:uppercase;margin-top:5px}
+        .j-mini{font-size:9px;font-weight:600;padding:3px 8px;border:1px solid rgba(255,255,255,.2);border-radius:2px}
+        .j-tab{
+          font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;padding:10px 14px;cursor:pointer;
+          border:1px solid transparent;border-radius:2px 2px 0 0;background:transparent;color:var(--j-soft);font-weight:500
+        }
+        .j-tab.on{
+          background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.18);color:var(--j-ink);font-weight:700
+        }
+        @keyframes savepulse{0%,100%{box-shadow:none}50%{box-shadow:0 0 22px rgba(255,255,255,.14)}}
+        .j-saving{animation:savepulse .2s steps(2,end) 4}
+        @keyframes tabslide{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+        .j-tabcontent{animation:tabslide .18s ease both}
+        .j-pixel{position:absolute;width:5px;height:5px;border:1px solid var(--j-ink);pointer-events:none;animation:pixelfly .7s steps(4,end) forwards}
+        @keyframes pixelfly{0%{opacity:1;transform:translate(0,0)}100%{opacity:0;transform:translate(var(--px),var(--py))}}
+
+        /* Calendar / legacy components */
+        .j-cal-nav{width:26px;height:26px;border:1px solid rgba(255,255,255,.24);border-radius:2px;background:var(--j-field);color:var(--j-ink);font-family:'DM Mono';font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer}
+        .j-cal-weekdays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-bottom:7px;text-align:center;font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);letter-spacing:1px}
+        .j-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+        .j-cal-cell{position:relative;min-height:82px;border:1px solid rgba(255,255,255,.15);border-radius:2px;background:var(--j-field)!important;color:var(--j-ink);padding:8px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;cursor:pointer;text-align:left;font-family:'Inter','Noto Sans Thai',sans-serif;box-shadow:none;overflow:hidden}
+        .j-cal-cell.empty{visibility:hidden;cursor:default}
+        .j-cal-cell.has.win{background:rgba(230,230,225,.14)!important}
+        .j-cal-cell.has.loss{background:rgba(201,35,44,.18)!important}
+        .j-cal-cell.has.be{background:rgba(255,255,255,.07)!important}
+        .j-cal-cell.selected{outline:1px solid var(--j-ink);transform:none}
+        .j-cal-day{position:absolute;top:6px;right:8px;font-family:'DM Mono';font-size:11px;font-weight:700;color:var(--j-ink)}
+        .j-cal-content{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding-top:8px}
+        .j-cal-pl{font-family:'DM Mono';font-size:13px;line-height:1;white-space:nowrap;color:var(--j-ink)}
+        .j-cal-count,.j-cal-mini{font-family:'DM Mono';font-size:8px;color:var(--j-soft)}
+        .j-cal-mini{display:flex;gap:4px;flex-wrap:wrap;justify-content:center}
+        .j-cal-mini span{border:1px solid rgba(255,255,255,.16);border-radius:2px;background:rgba(255,255,255,.04);padding:1px 4px}
+        .j-cal-legend{display:flex;gap:14px;justify-content:center;align-items:center;margin-top:12px;flex-wrap:wrap;font-size:9px;font-family:'DM Mono';color:var(--j-soft)}
+        .j-cal-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;border:1px solid rgba(255,255,255,.4);margin-right:5px}
+        .j-cal-trade-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px dashed rgba(255,255,255,.12)}
+        .j-cal-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:12px}
+        .j-cal-summary-card{background:var(--j-field)!important;border:1px solid rgba(255,255,255,.15);border-radius:2px;padding:9px 8px;box-shadow:none;text-align:center}
+        .j-cal-summary-card span{display:block;font-family:'DM Mono';font-size:8px;letter-spacing:1px;color:var(--j-soft);text-transform:uppercase;margin-bottom:3px}
+        .j-cal-summary-card b{display:block;font-family:'VT323';font-size:24px;line-height:1;color:var(--j-ink)}
+        .j-cal-summary-card.win b{color:#e8e8e3}.j-cal-summary-card.loss b{color:#c9232c}
+        .j-cal-cell.today:after{content:'TODAY';position:absolute;left:6px;top:6px;font-family:'DM Mono';font-size:6px;font-weight:800;color:#fff;background:#c9232c;border:1px solid #c9232c;border-radius:1px;padding:1px 4px}
+        .j-cal-cell.today .j-cal-day{color:#fff}
+        .j-cal-empty-note{background:var(--j-field)!important;border:1px dashed rgba(255,255,255,.2);border-radius:2px;padding:10px;text-align:center;font-family:'DM Mono';font-size:9px;color:var(--j-soft)}
+        .j-open-edit-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+        .j-open-edit-grid.two{grid-template-columns:repeat(2,1fr)}
+        .j-open-edit-note{margin-top:10px;background:var(--j-field)!important;border:1px dashed rgba(255,255,255,.2);border-radius:2px;padding:8px 10px;font-family:'DM Mono';font-size:9px;color:var(--j-soft);line-height:1.5}
+
+        /* Shinobi brand/header */
+        .j-shinobi-header{
+          display:grid;grid-template-columns:minmax(0,1fr) auto;gap:22px;align-items:center;
+          min-height:112px;padding:20px 22px!important;
+          background:
+            linear-gradient(90deg,rgba(255,255,255,.045),transparent 42%),
+            linear-gradient(180deg,rgba(0,0,0,.1),transparent);
+        }
+        .j-brand-kicker{font-family:'DM Mono';font-size:9px;letter-spacing:4px;color:var(--j-soft);margin-bottom:8px}
+        .j-brand{
+          display:flex;align-items:center;gap:13px
+        }
+        .j-brand-mark{
+          width:48px;height:48px;display:flex;align-items:center;justify-content:center;
+          border:1px solid rgba(255,255,255,.24);font-family:serif;font-size:30px;
+          background:#090a0a;color:#fff;box-shadow:inset 0 0 20px rgba(255,255,255,.03)
+        }
+        .j-brand-name{
+          font-family:'Montserrat',sans-serif;font-weight:800;font-size:clamp(23px,4vw,38px);
+          letter-spacing:5px;line-height:1;color:#fff
+        }
+        .j-brand-sub{font-family:'DM Mono';font-size:8px;letter-spacing:3px;color:var(--j-soft);margin-top:7px}
+        .j-mantra{
+          max-width:360px;text-align:right;font-family:'DM Mono';font-size:9px;line-height:1.8;
+          letter-spacing:1.4px;color:var(--j-soft);text-transform:uppercase
+        }
+        .j-mantra strong{display:block;color:var(--j-ink);font-size:10px;letter-spacing:2px}
+        .j-theme-box{display:flex;align-items:center;gap:7px;margin-top:10px;justify-content:flex-end}
+        .j-theme-label{font-family:'DM Mono';font-size:8px;letter-spacing:1.4px;color:var(--j-soft);text-transform:uppercase}
+        .j-theme-select{
+          appearance:none;background:var(--j-field);color:var(--j-ink);border:1px solid rgba(255,255,255,.24);
+          border-radius:2px;padding:7px 28px 7px 9px;font-family:'DM Mono';font-size:9px;cursor:pointer;
+          background-image:linear-gradient(45deg,transparent 50%,#aaa 50%),linear-gradient(135deg,#aaa 50%,transparent 50%);
+          background-position:calc(100% - 12px) 11px,calc(100% - 8px) 11px;background-size:4px 4px,4px 4px;background-repeat:no-repeat;
+        }
+        .j-theme-select option{background:#101111;color:#fff}
+        .j-ninja-divider{height:1px;background:linear-gradient(90deg,transparent,var(--j-ink),transparent);opacity:.28;margin:0 8px}
+        .j-quote-strip{
+          max-width:780px;margin:12px auto 0;padding:0 12px;
+          display:flex;align-items:center;gap:12px;color:var(--j-soft)
+        }
+        .j-quote-strip i{width:34px;height:1px;background:var(--j-red);display:block;flex:0 0 auto}
+        .j-quote-strip span{font-family:'DM Mono';font-size:8px;letter-spacing:2px}
+        .j-quote-strip b{font-family:'Montserrat';font-size:9px;letter-spacing:2px;color:var(--j-ink);font-weight:600}
+
+        /* Wyckoff execution page */
+        .j-execution-card{border-color:rgba(255,255,255,.18)!important}
+        .j-execution-title{
+          font-family:'Montserrat';font-size:11px;letter-spacing:3px;font-weight:700;
+          color:var(--j-ink);text-transform:uppercase
+        }
+        .j-execution-heading{
+          font-family:'Montserrat';font-size:clamp(24px,5vw,38px);font-weight:800;letter-spacing:1px;
+          margin:2px 0 3px;color:#fff
+        }
+        .j-execution-sub{font-family:'Noto Sans Thai';font-size:10px;color:var(--j-soft);line-height:1.7}
+        .j-wy-badge{
+          display:inline-flex;align-items:center;gap:7px;padding:5px 9px;border:1px solid rgba(255,255,255,.18);
+          font-family:'DM Mono';font-size:9px;letter-spacing:1.5px;color:var(--j-soft);margin-bottom:13px
+        }
+        .j-result-row{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+        .j-result-btn{
+          border:1px solid rgba(255,255,255,.16);background:var(--j-field);color:var(--j-soft);
+          padding:11px 8px;font-family:'DM Mono';font-size:10px;cursor:pointer;border-radius:2px;transition:.15s
+        }
+        .j-result-btn:hover{border-color:rgba(255,255,255,.4);color:#fff}
+        .j-result-btn.active{background:#fff;color:#050606;border-color:#fff;font-weight:700}
+        .j-result-btn.loss.active{background:#c9232c;color:#fff;border-color:#c9232c}
+        .j-result-btn.be.active{background:#686b68;color:#fff;border-color:#686b68}
+        .j-rr-fixed{
+          display:flex;align-items:center;justify-content:space-between;padding:11px 12px;
+          background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.12);border-radius:2px
+        }
+        .j-rr-fixed span{font-family:'DM Mono';font-size:8px;letter-spacing:1.5px;color:var(--j-soft)}
+        .j-rr-fixed b{font-family:'VT323';font-size:26px;line-height:1;color:#fff}
+        .j-upload-box{
+          border:1px dashed rgba(255,255,255,.22);background:rgba(255,255,255,.018);
+          min-height:145px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+          padding:14px;transition:.15s
+        }
+        .j-upload-box:hover{border-color:rgba(255,255,255,.55);background:rgba(255,255,255,.035)}
+        .j-upload-icon{font-size:28px;line-height:1;margin-bottom:8px;filter:grayscale(1)}
+        .j-upload-title{font-family:'Montserrat';font-size:11px;font-weight:700;letter-spacing:1px}
+        .j-upload-sub{font-family:'DM Mono';font-size:8px;color:var(--j-soft);margin-top:6px;text-align:center}
+        .j-save-primary{
+          background:#f1f1ed!important;color:#070808!important;border-color:#fff!important;
+          letter-spacing:.4px
+        }
+        .j-save-primary:hover{background:#fff!important;box-shadow:0 0 24px rgba(255,255,255,.12)}
+
+        /* Mobile */
+        .j-page-shell{max-width:780px;margin:0 auto;padding:16px 12px 0;position:relative;z-index:1}
+        .j-tabs-wrap{max-width:780px;margin:14px auto 0;display:flex;gap:7px;padding:0 12px 4px;overflow-x:auto;-webkit-overflow-scrolling:touch;border-bottom:1px solid rgba(255,255,255,.14);position:relative;z-index:2}
+        .j-tabs-wrap::-webkit-scrollbar{display:none}
+        .j-mobile-grid,.j-input-pair{min-width:0}
+        input,textarea,button,select{max-width:100%}
+        img{max-width:100%}
+        .j-header-wrap{position:relative;z-index:3}
+        @media(max-width:720px){
+          .j-shinobi-header{grid-template-columns:1fr;gap:14px;min-height:auto}
+          .j-mantra{text-align:left;max-width:none}
+          .j-theme-box{justify-content:flex-start}
+          .j-cal-grid{gap:4px}.j-cal-weekdays{gap:4px}.j-cal-cell{min-height:68px;padding:6px}
+          .j-cal-pl{font-size:11px}.j-cal-count,.j-cal-mini{display:none}
+          .j-cal-day{font-size:10px}
+          .j-cal-summary-grid,.j-open-edit-grid,.j-open-edit-grid.two{grid-template-columns:1fr 1fr}
+        }
+        @media(max-width:640px){
+          .j-root{overflow-x:hidden}
+          .j-header-wrap{padding:8px 8px 0!important}
+          .j-page-shell{padding:10px 8px 0!important;max-width:100%!important}
+          .j-win{border-radius:2px;margin-bottom:10px}
+          .j-bar{padding:9px 10px}
+          .j-t{font-size:9px;letter-spacing:1px;white-space:normal;line-height:1.3}
+          .j-body{padding:11px!important}
+          .j-lab{font-size:8px!important;letter-spacing:1.2px}
+          .j-chip{font-size:10px!important;padding:8px 9px!important;min-height:34px}
+          .j-btn{min-height:40px}
+          .j-in{font-size:12px;padding:10px}
+          .j-num{font-size:27px}
+          .j-stat{padding:10px 6px}
+          .j-statlab{font-size:7px}
+          .j-header-wrap > .j-win{max-width:100%!important;margin:0!important}
+          .j-tabs-wrap{margin:10px auto 0!important;padding:0 8px 4px!important;border-bottom:1px solid rgba(255,255,255,.14)!important}
+          .j-tab{flex:0 0 auto!important;border:1px solid rgba(255,255,255,.16)!important;border-radius:2px!important;background:var(--j-win)!important;padding:8px 12px!important;font-size:9px!important;box-shadow:none}
+          .j-tab.on{background:rgba(255,255,255,.08)!important;color:var(--j-ink)!important}
+          .j-mobile-grid,.j-upload-grid,.j-open-edit-grid,.j-open-edit-grid.two{grid-template-columns:1fr!important}
+          .j-input-pair{grid-template-columns:1fr 1fr!important}
+          .j-cal-weekdays{font-size:7px}.j-cal-grid{gap:3px}
+          .j-cal-cell{min-height:52px;padding:4px}
+          .j-cal-pl{font-size:9px}
+          .j-cal-count,.j-cal-mini{font-size:6px}
+          .grid{min-width:0}
+          .space-y-4 > * + *{margin-top:10px!important}
+          .space-y-3 > * + *{margin-top:8px!important}
+          textarea{min-height:76px!important}
+          .j-brand-name{font-size:22px;letter-spacing:3px}
+          .j-brand-mark{width:42px;height:42px;font-size:26px}
+          .j-brand-sub{font-size:7px;letter-spacing:2px}
+          .j-mantra{font-size:8px}
+          .j-theme-select{font-size:8px}
+          .j-execution-heading{font-size:27px}
+        }
+        .open-badge{animation:blink .8s step-end infinite}
       `}</style>
       {/* Boot */}
-      {booting&&(<div className={`j-boot ${bootDone?"done":""}`}><div className="j-boot-logo">JOURNAL.EXE</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:13,color:"#c0e6d4",minHeight:40,whiteSpace:"pre"}}>{bootText}<span className="j-boot-cursor"/></div><div className="j-boot-bar"><div className="j-boot-fill"/></div><div style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#c0e6d4",opacity:.6,letterSpacing:2}}>WYCKOFF · TRUST YOUR OWN</div></div>)}
-      {/* Header */}
+      {booting&&(<div className={`j-boot ${bootDone?"done":""}`}><div className="j-boot-logo">JOURNAL.EXE</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:13,color:"#c0e6d4",minHeight:40,whiteSpace:"pre"}}>{bootText}<span className="j-boot-cursor"/></div><div className="j-boot-bar"><div className="j-boot-fill"/></div><div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"#8b8f8e",opacity:.8,letterSpacing:2}}>YOKIMURA SHINOBI · WYCKOFF · TRUST YOUR PROCESS</div></div>)}
+      {/* Header — Yokimura Shinobi */}
       <div className="j-header-wrap" style={{padding:"14px 12px 0"}}>
         <div className="j-win" style={{maxWidth:780,margin:"0 auto"}}>
-          <div className="j-bar" style={{background:"var(--j-pink)"}}>
-            <span className="j-t">★ JOURNAL.EXE — TRADING JOURNAL</span>
-            <span className="j-ctrl"><span>_</span><span>▢</span><Link href="/" style={{textDecoration:"none",color:"var(--j-ink)"}}><span>✕</span></Link></span>
+          <div className="j-bar" style={{background:"rgba(255,255,255,.025)"}}>
+            <span className="j-t">忍 YOKIMURA SHINOBI — TRADING JOURNAL / WYCKOFF</span>
+            <span className="j-ctrl">
+              <span>_</span><span>▢</span>
+              <Link href="/" style={{textDecoration:"none",color:"var(--j-ink)"}}><span>✕</span></Link>
+            </span>
           </div>
-          <div className="j-body" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+
+          <div className="j-body j-shinobi-header">
             <div>
-              <div style={{fontFamily:"'VT323',monospace",fontSize:34,lineHeight:.8}}>TRADING JOURNAL</div>
-              <div style={{fontFamily:"'DM Mono',monospace",fontSize:10,letterSpacing:2,color:"var(--j-soft)",marginTop:4}}>✦ WYCKOFF TRADING JOURNAL ✦</div>
+              <div className="j-brand-kicker">TRADER JOURNAL · 01 / DISCIPLINE SYSTEM</div>
+              <div className="j-brand">
+                <div className="j-brand-mark">忍</div>
+                <div>
+                  <div className="j-brand-name">YOKIMURA SHINOBI</div>
+                  <div className="j-brand-sub">PRACTICE · PATIENCE · DISCIPLINE · FOR THE FAMILY.</div>
+                </div>
+              </div>
             </div>
-            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-              <button onClick={()=>setAccountType(accountType==="cent"?"standard":"cent")} className="j-chip" style={{fontSize:11,background:accountType==="cent"?"var(--j-butter)":"var(--j-lav)"}}>{accountType==="cent"?"Cent":"Std"}</button>
-              <button onClick={()=>setShowResetConfirm(true)} className="j-chip" style={{fontSize:11,background:"var(--j-pink)"}} title="ลบข้อมูลทั้งหมด เริ่มใหม่">🗑️ Reset</button>
-              {/* ── Discipline Lock priority: Forced > HardLock > Cooldown > Open Trade > New Trade ── */}
-              {isForcedLockToday ? (
-                <ForcedLockBanner/>
-              ) : isHardLockToday ? (
-                <HardLockBanner onWriteReflection={()=>setShowReflection(true)} submitted={hardlock?.date===todayStr && hardlock?.submitted}/>
-              ) : cooldownRemainingMs > 0 ? (
-                <CooldownBanner remainingMs={cooldownRemainingMs}/>
-              ) : openTrade ? (
-                <button onClick={()=>setView("exit")} className="j-btn open-badge" style={{padding:"9px 14px",background:"var(--j-butter)",fontSize:12}}>
-                  🟡 ไม้ค้างอยู่! → กรอกจุดออก
-                </button>
-              ) : (
-                <button onClick={()=>{setEntryDate(new Date().toISOString().split("T")[0]);setEntryTime(nowTime24());setSession(autoSessionFromTime(nowTime24()));setAsset("XAUUSD");setTimeframe("15s");setGrade("A+");setWyResult("WIN");setWyRR("1");setWyNotes("");setBeforeScreenshotUrl("");setAfterScreenshotUrl("");setEditingWyckoffId(null);setOpenTrade(null);setView("checklist");}} className="j-btn" style={{padding:"9px 14px",background:"var(--j-mint)",fontSize:13}}>
-                  ✎ New Trade
-                </button>
-              )}
+
+            <div>
+              <div className="j-mantra">
+                <strong>忍 — SHINOBI CODE</strong>
+                PRACTICE. PATIENCE. DISCIPLINE.<br/>
+                <span>FOR THE FAMILY.</span>
+              </div>
+              <div className="j-theme-box">
+                <span className="j-theme-label">Theme</span>
+                <select
+                  value={theme}
+                  onChange={e=>setTheme(e.target.value as JournalTheme)}
+                  className="j-theme-select"
+                  aria-label="Journal theme"
+                >
+                  <option value="ninja">🥷 Ninja / Black</option>
+                  <option value="minimal">◻ Minimal / White</option>
+                  <option value="classic">◼ Classic / Dark</option>
+                  <option value="cyber">⚡ Cyber / Blue</option>
+                  <option value="sakura">🌸 Sakura / Night</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>
+
+        <div className="j-quote-strip">
+          <i/>
+          <span>YOKIMURA SHINOBI</span>
+          <b>PRACTICE · PATIENCE · DISCIPLINE · FOR THE FAMILY.</b>
+        </div>
+
         {/* Tabs */}
-        <div className="j-tabs-wrap" style={{maxWidth:780,margin:"14px auto 0",display:"flex",gap:6,borderBottom:"2.5px solid var(--j-ink)"}}>
-          {([["dashboard","📊 Dashboard"],["list","📋 Sessions"]] as const).map(([v,label])=>(
+        <div className="j-tabs-wrap">
+          {([["dashboard","◫ Dashboard"],["list","▤ Sessions"]] as const).map(([v,label])=>(
             <button key={v} onClick={()=>setView(v)} className={`j-tab ${view===v?"on":""}`}>{label}</button>
           ))}
-          <button onClick={()=>setView("calendar" as any)} className={`j-tab ${view==="calendar"?"on":""}`}>📅 Calendar</button>
+          <button onClick={()=>setView("calendar" as any)} className={`j-tab ${view==="calendar"?"on":""}`}>▦ Calendar</button>
           {openTrade&&!isLockedFromTrading&&(
-            <button onClick={()=>setView("exit")} className={`j-tab ${view==="exit"?"on":""}`} style={{color:"#d4a65f",fontWeight:600}}>
-              🟡 OPEN TRADE
+            <button onClick={()=>setView("exit")} className={`j-tab ${view==="exit"?"on":""}`} style={{color:"#c9232c",fontWeight:700}}>
+              ● OPEN TRADE
             </button>
           )}
         </div>
@@ -1289,7 +1541,7 @@ export default function JournalPage() {
               <button onClick={()=>setView("dashboard")} className="j-chip off" style={{fontSize:12}}>← Cancel</button>
               <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--j-soft)"}}>NEW EXECUTION</div>
             </div>
-            <Win title="บันทึกการฝึก" color="var(--j-lav)">
+            <Win title="忍  NEW EXECUTION · WYCKOFF" color="rgba(255,255,255,.035)"><div className="j-execution-title">YOKIMURA SHINOBI / TRADE RECORD</div><div className="j-execution-heading">บันทึกการฝึก</div><div className="j-execution-sub">Record the process. Respect the setup. Let the statistics speak.</div><div className="j-ninja-divider" style={{margin:"14px 0 16px"}}/>
               <div className="grid grid-cols-2 gap-2 mb-3">
                 <div><label className="j-lab">วันที่</label><input type="date" value={entryDate} onChange={e=>setEntryDate(e.target.value)} className="j-in"/></div>
                 <div><label className="j-lab">สินทรัพย์</label><select value={asset} onChange={e=>setAsset(e.target.value)} className="j-in"><option value="XAUUSD">XAUUSD</option><option value="BTCUSD">BTCUSD</option><option value="EURUSD">EURUSD</option><option value="GBPUSD">GBPUSD</option><option value="NAS100">NAS100</option><option value="US30">US30</option><option value="OTHER">อื่นๆ</option></select></div>
@@ -1300,7 +1552,21 @@ export default function JournalPage() {
               </div>
               <div className="grid grid-cols-2 gap-2 mb-3">
                 <div><label className="j-lab">Setup</label><select value="WYCKOFF" disabled className="j-in"><option value="WYCKOFF">Wyckoff</option></select></div>
-                <div><label className="j-lab">ผลลัพธ์</label><select value={wyResult} onChange={e=>{const r=e.target.value as Result;setWyResult(r);setWyRR(r==="WIN"?"1":r==="LOSS"?"-1":"0");}} className="j-in"><option value="WIN">Win</option><option value="LOSS">Loss</option><option value="BE">BE</option></select></div>
+                <div>
+  <label className="j-lab">ผลลัพธ์</label>
+  <div className="j-result-row">
+    {(["WIN","LOSS","BE"] as const).map(r=>(
+      <button
+        key={r}
+        type="button"
+        onClick={()=>{setWyResult(r);setWyRR(r==="WIN"?"1":r==="LOSS"?"-1":"0");}}
+        className={`j-result-btn ${r==="LOSS"?"loss":r==="BE"?"be":""} ${wyResult===r?"active":""}`}
+      >
+        {r==="WIN"?"✓ WIN":r==="LOSS"?"✕ LOSS":"= BE"}
+      </button>
+    ))}
+  </div>
+</div>
               </div>
               <div className="grid grid-cols-2 gap-2 mb-3">
                 <div><label className="j-lab">RR</label><input value={wyRR+"R"} readOnly className="j-in" style={{fontWeight:700,color:wyResult==="WIN"?"#5fae89":wyResult==="LOSS"?"#d4685f":"var(--j-soft)"}}/><div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",marginTop:4}}>ระบบ 1:1 · Win = +1R · Loss = -1R · BE = 0R</div></div>
@@ -1310,15 +1576,15 @@ export default function JournalPage() {
               <textarea value={wyNotes} onChange={e=>setWyNotes(e.target.value)} rows={3} placeholder="เห็นอะไร เข้าเพราะอะไร สิ่งที่ทำได้ดี / สิ่งที่ต้องแก้..." className="j-in mb-3" style={{resize:"none",fontSize:13,fontFamily:"'Fredoka'"}}/>
               <div className="grid grid-cols-2 gap-3 mb-3">
                 {[{key:"before",label:"ภาพก่อนเข้า",url:beforeScreenshotUrl,set:setBeforeScreenshotUrl},{key:"after",label:"ภาพหลังจบ",url:afterScreenshotUrl,set:setAfterScreenshotUrl}].map(item=>(
-                  <div key={item.key} style={{border:"1.5px dashed var(--j-ink)",borderRadius:8,padding:10,background:"#fbf6ea",minHeight:120}}>
+                  <div key={item.key} className="j-upload-box">
                     <label className="j-lab" style={{textAlign:"center",display:"block"}}>{item.key==="before"?"ก่อน":"หลัง"}</label>
                     <div style={{fontFamily:"'Fredoka',sans-serif",fontSize:13,fontWeight:600,textAlign:"center",marginBottom:6}}>{item.label}</div>
                     {item.url ? <div><img src={item.url} alt={item.label} onClick={()=>setLightbox(item.url)} style={{width:"100%",height:150,objectFit:"cover",border:"2px solid var(--j-ink)",borderRadius:7,cursor:"zoom-in"}}/><button onClick={()=>item.set("")} className="j-chip mt-2" style={{fontSize:10,background:"var(--j-coral)",width:"100%"}}>🗑 ลบรูป</button></div> : <label className="j-btn" style={{display:"flex",alignItems:"center",justifyContent:"center",gap:7,padding:12,background:item.key==="before"?"var(--j-sky)":"var(--j-mint)",fontSize:12,cursor:uploading?"wait":"pointer",marginTop:12}}>{uploading?"⌛ Uploading...":"📎 อัพรูป"}<input type="file" accept="image/*" disabled={uploading} style={{display:"none"}} onChange={e=>{const f=e.target.files?.[0];if(f)uploadJournalImage(f,item.key as "before"|"after");}}/></label>}
                   </div>
                 ))}
               </div>
-              <div style={{background:"var(--j-lav)",border:"2px solid var(--j-ink)",borderRadius:7,padding:"8px 12px",marginBottom:12,fontFamily:"'DM Mono',monospace",fontSize:10,textAlign:"center"}}>Wyckoff · {asset} · {timeframe} · {session} · {wyResult} · {wyRR}R · {grade}</div>
-              <button onClick={saveWyckoffTrade} disabled={isLockedFromTrading||saving||!entryDate||!asset||!wyResult} className={`j-btn w-full ${saving?"j-saving":""}`} style={{padding:14,background:"var(--j-coral)",fontSize:15}}>{saving?"💾 SAVING...":"💾 บันทึกการฝึก"}</button>
+              <div style={{background:"rgba(255,255,255,.035)",border:"1px solid rgba(255,255,255,.14)",borderRadius:2,padding:"9px 12px",marginBottom:12,fontFamily:"'DM Mono',monospace",fontSize:9,textAlign:"center",letterSpacing:1}}>Wyckoff · {asset} · {timeframe} · {session} · {wyResult} · {wyRR}R · {grade}</div>
+              <button onClick={saveWyckoffTrade} disabled={isLockedFromTrading||saving||!entryDate||!asset||!wyResult} className={`j-btn j-save-primary w-full ${saving?"j-saving":""}`} style={{padding:14,background:"var(--j-coral)",fontSize:15}}>{saving?"💾 SAVING...":"💾 บันทึกการฝึก"}</button>
             </Win>
           </div>
         )}
