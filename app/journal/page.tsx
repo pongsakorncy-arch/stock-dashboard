@@ -7,7 +7,6 @@ type Direction   = "LONG"|"SHORT";
 type Result      = "WIN"|"LOSS"|"BE";
 type Session     = "Tokyo"|"London"|"New York"|"Overlap";
 type AccountType = "cent"|"standard";
-type JournalTheme = "ninja"|"minimal"|"classic"|"cyber"|"sakura";
 type TradeMode    = "WYCKOFF"|"SMC"|"SW_RANGE"|"SW_BREAKOUT"|"PULLBACK"|"M5_REVERSAL";
 type Emotion     = "😌 Calm"|"😎 Confident"|"😤 FOMO"|"😰 Fearful"|"😡 Revenge";
 type ExitReason  = "TP Hit"|"SL Hit"|"Manual"|"Rejection"|"MSS Failed"|"Other";
@@ -485,7 +484,7 @@ function DailyStatusBar({status,cooldownRemainingMs,isHardLockToday,isForcedLock
 function Win({title,color,children,controls=true}:{title:string;color:string;children:any;controls?:boolean}) {
   return (
     <div className="j-win">
-      <div className="j-bar" style={{background:color}}>
+      <div className="j-bar" style={{background:"linear-gradient(90deg,#b51221 0%,#7e0d17 45%,#0b0c0c 100%)",borderBottom:"1px solid rgba(217,35,50,.35)"}}>
         <span className="j-t">{title}</span>
         {controls&&<span className="j-ctrl"><span>_</span><span>▢</span><span>✕</span></span>}
       </div>
@@ -788,7 +787,7 @@ export default function JournalPage() {
   const [showAlert,setShowAlert] = useState(false);
   const [uploading,setUploading] = useState(false);
   const [mounted,setMounted] = useState(false);
-// ── Discipline lock states (ใหม่) ──────────────────────────────────────────
+  // ── Discipline lock states (ใหม่) ──────────────────────────────────────────
   const [cooldownUntil,setCooldownUntil]   = useState(0);
   const [nowTick,setNowTick]               = useState(Date.now());
   const [hardlock,setHardlock]             = useState<HardlockState|null>(null);
@@ -857,18 +856,8 @@ export default function JournalPage() {
     setSession(autoSessionFromTime(t));
     setSessionManual(false);
   };
-  useEffect(()=>{
-    document.title = "YOKIMURA SHINOBI — TRADING JOURNAL";
-    setMounted(true);
-    try {
-      const saved = localStorage.getItem("yok_journal_theme") as JournalTheme | null;
-      if (saved && ["ninja","minimal","classic","cyber","sakura"].includes(saved)) setTheme(saved);
-    } catch {}
-  },[]);
-  useEffect(()=>{
-    if (!mounted) return;
-    try { localStorage.setItem("yok_journal_theme", theme); } catch {}
-  },[theme,mounted]);
+
+  useEffect(()=>{ document.title="YOKIMURA SHINOBI — TRADING JOURNAL"; setMounted(true); },[]);
   // ── Boot ──────────────────────────────────────────────────────────────────
   useEffect(()=>{
     const lines=["JOURNAL.EXE","LOADING... 🥇"];
@@ -1297,17 +1286,46 @@ export default function JournalPage() {
     return <main style={{minHeight:"100vh",background:"#f1e9da"}} />;
   }
   return (
-    <main className={`j-root theme-${theme}`}>
+    <main className="j-root theme-ninja">
       
-<style id="hide-theme-control">
-  .j-theme-select,
-  .j-theme-label,
-  .j-theme-control,
-  [class*="theme-select"],
-  [class*="theme-control"] {
-    display:none!important;
-    visibility:hidden!important;
-    pointer-events:none!important;
+<style id="yokimura-dashboard-theme">
+  .j-dashboard .j-stat{
+    background:linear-gradient(145deg,#101212 0%,#070808 100%)!important;
+    border:1px solid rgba(255,255,255,.11)!important;
+    border-radius:6px!important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.025),0 8px 24px rgba(0,0,0,.18)!important;
+    color:#eee!important;
+    position:relative;
+    overflow:hidden;
+  }
+  .j-dashboard .j-stat::before{
+    content:"";
+    position:absolute;
+    left:0;top:0;bottom:0;width:3px;
+    background:#d92332;
+    opacity:.9;
+  }
+  .j-dashboard .j-num{color:#f1f1ef!important}
+  .j-dashboard .j-statlab{color:#747978!important}
+  .j-dashboard .j-win,
+  .j-dashboard .j-win .j-body{
+    background:linear-gradient(145deg,#0a0b0b 0%,#050606 100%)!important;
+    border-color:rgba(255,255,255,.10)!important;
+  }
+  .j-dashboard .j-bar{
+    color:#f1f1ef!important;
+  }
+  .j-dashboard .j-bar .j-t{
+    letter-spacing:.12em!important;
+    text-shadow:0 1px 10px rgba(217,35,50,.18);
+  }
+  .j-dashboard .j-body{
+    padding:10px!important;
+  }
+  @media(max-width:680px){
+    .j-dashboard{gap:10px!important}
+    .j-dashboard .j-stat{min-height:78px!important}
+    .j-dashboard .j-num{font-size:27px!important}
   }
 </style>
 
@@ -1482,17 +1500,6 @@ export default function JournalPage() {
         }
         .j-mantra{max-width:365px;text-align:right;font-family:'DM Mono';font-size:8px;line-height:1.85;letter-spacing:1.5px;color:#7f8481;text-transform:uppercase}
         .j-mantra strong{display:block;color:#eee;font-size:9px;letter-spacing:1.8px}
-        .j-theme-box{display:flex;justify-content:flex-end;align-items:center;gap:7px;margin-top:10px}
-        .j-theme-label{font-family:'DM Mono';font-size:7px;letter-spacing:1.5px;color:#6d726f;text-transform:uppercase}
-        .j-theme-select{
-          min-width:168px;appearance:none;background:#0a0c0c;color:#eee;
-          border:1px solid rgba(255,255,255,.25);border-radius:2px;padding:8px 30px 8px 10px;
-          font-family:'DM Mono';font-size:9px;cursor:pointer;
-          background-image:linear-gradient(45deg,transparent 50%,#aaa 50%),linear-gradient(135deg,#aaa 50%,transparent 50%);
-          background-position:calc(100% - 13px) 12px,calc(100% - 9px) 12px;
-          background-size:4px 4px,4px 4px;background-repeat:no-repeat
-        }
-        .j-theme-select option{background:#111;color:#fff}
         .j-quote-strip{
           max-width:1180px;margin:12px auto 0;padding:0 4px;
           display:flex;align-items:center;gap:12px;color:#777c79
@@ -1679,8 +1686,6 @@ export default function JournalPage() {
           .j-execution-heading{font-size:52px}
           .j-execution-sub{font-size:13px}
           .j-sidebar-hero{height:460px}
-          .j-theme-select{min-width:190px;padding:10px 32px 10px 12px;font-size:10px}
-        }
 
         @media(max-width:980px){
           .j-app-frame{grid-template-columns:78px minmax(0,1fr)}
@@ -1746,40 +1751,6 @@ export default function JournalPage() {
             letter-spacing:1px;padding-left:48px
           }
           .j-mantra strong{font-size:8px}
-          .j-theme-box{justify-content:flex-start;margin-top:10px;padding-left:48px}
-          .j-theme-select{min-width:155px;max-width:100%;font-size:8px;padding:7px 26px 7px 8px}
-          .j-quote-strip{margin-top:9px;padding:0 2px;gap:7px}
-          .j-quote-strip i{width:18px}
-          .j-quote-strip span{display:none}
-          .j-quote-strip b{font-size:6px;letter-spacing:.8px}
-          .j-tabs-wrap{display:none!important}
-          .j-win{border-radius:2px}
-          .j-body{padding:13px!important}
-          .j-bar{padding:7px 9px}
-          .j-t{font-size:7px;letter-spacing:.8px}
-          .j-execution-title{font-size:7px;letter-spacing:1.8px}
-          .j-execution-heading{font-size:30px;line-height:1.3;margin-top:3px}
-          .j-execution-sub{font-size:10px;line-height:1.85}
-          .j-kanji-quote{display:none}
-          .j-ninja-divider{margin:12px 0 14px!important}
-          .j-lab{font-size:7px;letter-spacing:1.1px;margin-bottom:5px}
-          .j-in{min-height:41px;font-size:12px!important;padding:9px 10px!important}
-          .j-result-row{gap:5px}
-          .j-result-btn{min-height:41px;font-size:9px}
-          .j-rr-fixed{min-height:41px}
-          .j-rr-fixed b{font-size:24px}
-          textarea.j-in{min-height:92px!important}
-          .j-upload-box{min-height:126px;padding:11px}
-          .j-upload-icon{font-size:25px}
-          .j-upload-title{font-size:11px}
-          .j-upload-sub{font-size:6.5px}
-          .j-save-primary{min-height:47px!important;font-size:12px!important}
-          .j-mobile-nav{
-            position:fixed;left:0;right:0;bottom:0;height:62px;z-index:110;
-            display:flex;align-items:stretch;justify-content:space-around;
-            background:rgba(5,6,6,.96);border-top:1px solid rgba(255,255,255,.16);
-            backdrop-filter:blur(14px);padding-bottom:env(safe-area-inset-bottom)
-          }
           .j-mobile-nav button{
             flex:1;border:0;background:transparent;color:#6d726f;display:flex;flex-direction:column;
             align-items:center;justify-content:center;gap:3px;font-family:'Noto Sans Thai';font-size:7px;cursor:pointer
@@ -1867,12 +1838,6 @@ export default function JournalPage() {
           }
           .j-app-main .j-shinobi-header > div:nth-child(2) > div:first-child,
           .j-mantra,.j-theme-label{display:none!important}
-          .j-theme-box{display:block!important;margin:0!important;padding:0!important}
-          .j-theme-select{
-            min-width:132px!important;width:132px!important;height:34px!important;
-            padding:5px 25px 5px 9px!important;font-size:8px!important;
-            background-color:rgba(5,6,6,.82)!important;backdrop-filter:blur(10px);
-          }
 
           .j-quote-strip,.j-tabs-wrap{display:none!important}
 
@@ -1952,10 +1917,6 @@ export default function JournalPage() {
           .j-brand-logo-img{height:51px!important;max-width:calc(100vw - 108px)!important}
           .j-brand-mark{width:48px!important;height:48px!important}
           .j-brand-sub{font-size:6.3px!important;letter-spacing:1.15px!important}
-          .j-theme-select{min-width:122px!important;width:122px!important;font-size:7px!important}
-          .j-execution-heading{font-size:30px!important}
-          .j-page-shell .j-body{padding:14px!important}
-        }
 
         /* Small utility animation */
         @keyframes blink{50%{opacity:.65}}
@@ -1999,16 +1960,6 @@ export default function JournalPage() {
             <button onClick={()=>setView("dashboard")} className="j-side-btn">
               <span className="j-side-icon">♜</span><span>เป้าหมาย</span>
             </button>
-            <button
-              onClick={()=>{
-                const el=document.querySelector(".j-theme-select") as HTMLSelectElement|null;
-                el?.focus();
-                el?.scrollIntoView({behavior:"smooth",block:"center"});
-              }}
-              className="j-side-btn"
-            >
-              <span className="j-side-icon">⚙</span><span>การตั้งค่า</span>
-            </button>
           </nav>
 
           <div className="j-sidebar-hero" aria-hidden="true">
@@ -2049,9 +2000,6 @@ export default function JournalPage() {
 
             <div>
               <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:10,marginBottom:12}}>
-                <div style={{display:"flex",alignItems:"center",gap:6,border:"1px solid rgba(255,255,255,.22)",borderRadius:20,padding:"5px 12px",fontFamily:"'DM Mono',monospace",fontSize:9,color:"#ddd"}}>
-                  <span>🥷</span><span>{theme==="ninja"?"Ninja / Dark":theme}</span>
-                </div>
                 <div style={{position:"relative",width:30,height:30,borderRadius:"50%",border:"1px solid rgba(255,255,255,.22)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>
                   🔔
                   <span style={{position:"absolute",top:2,right:2,width:6,height:6,borderRadius:"50%",background:"var(--j-red)"}}/>
@@ -2062,21 +2010,6 @@ export default function JournalPage() {
                 <strong>"SMALL DISCIPLINES MAKE A BIG DIFFERENCE."</strong>
                 PRACTICE. PATIENCE. DISCIPLINE.<br/>
                 <span>FOR THE FAMILY.</span>
-              </div>
-              <div className="j-theme-box">
-                <span className="j-theme-label">Theme</span>
-                <select
-                  value={theme}
-                  onChange={e=>setTheme(e.target.value as JournalTheme)}
-                  className="j-theme-select"
-                  aria-label="Journal theme"
-                >
-                  <option value="ninja">🥷 Ninja / Black</option>
-                  <option value="minimal">◻ Minimal / White</option>
-                  <option value="classic">◼ Classic / Dark</option>
-                  <option value="cyber">⚡ Cyber / Blue</option>
-                  <option value="sakura">🌸 Sakura / Night</option>
-                </select>
               </div>
             </div>
           </div>
@@ -2108,7 +2041,7 @@ export default function JournalPage() {
       <div className="j-page-shell" style={{maxWidth:780,margin:"0 auto",padding:"16px 12px 0"}}>
         {/* ── DASHBOARD ── */}
         {view==="dashboard"&&(
-          <div className="space-y-4 j-tabcontent">
+          <div className="space-y-4 j-tabcontent j-dashboard">
             <DailyStatusBar status={dailyStatus} cooldownRemainingMs={cooldownRemainingMs} isHardLockToday={isHardLockToday} isForcedLockToday={isForcedLockToday}/>
             {needsReflection && !showReflection && (
               <button onClick={()=>setShowReflection(true)} className="j-btn w-full" style={{padding:12,background:"var(--j-coral)",fontSize:13}}>
@@ -2116,19 +2049,19 @@ export default function JournalPage() {
               </button>
             )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="j-stat" style={{background:"var(--j-mint)"}}><div className="j-num">{stats.winRate.toFixed(0)}%</div><div className="j-statlab">Win Rate</div></div>
-              <div className="j-stat" style={{background:stats.totalPL>=0?"var(--j-sky)":"var(--j-coral)"}}><div className="j-num">{money(stats.totalPL)}</div><div className="j-statlab">Total P/L</div></div>
-              <div className="j-stat" style={{background:"var(--j-butter)"}}><div className="j-num">{stats.total}</div><div className="j-statlab">Sessions</div></div>
-              <div className="j-stat" style={{background:"var(--j-lav)"}}><div className="j-num">{stats.avgRR.toFixed(1)}R</div><div className="j-statlab">Avg R:R</div></div>
+              <div className="j-stat"><div className="j-num">{stats.winRate.toFixed(0)}%</div><div className="j-statlab">Win Rate</div></div>
+              <div className="j-stat"><div className="j-num">{money(stats.totalPL)}</div><div className="j-statlab">Total P/L</div></div>
+              <div className="j-stat"><div className="j-num">{stats.total}</div><div className="j-statlab">Sessions</div></div>
+              <div className="j-stat"><div className="j-num">{stats.avgRR.toFixed(1)}R</div><div className="j-statlab">Avg R:R</div></div>
             </div>
-            <Win title="📈 EQUITY + DRAWDOWN" color="var(--j-sky)"><PLChart trades={trades}/></Win>
+            <Win title="📈 EQUITY + DRAWDOWN" color="var(--j-red)"><PLChart trades={trades}/></Win>
             {/* Roadmap mini */}
             {(()=>{
               const eq=Math.max(0,STARTING_CAPITAL+stats.totalPL);
               const ph=PHASES.find(p=>eq<p.to)||PHASES[PHASES.length-1];
               const pct=Math.min(100,Math.max(0,((eq-ph.from)/(ph.to-ph.from))*100));
               return (
-                <Win title="🎯 ROADMAP" color="var(--j-lav)" controls={false}>
+                <Win title="🎯 ROADMAP" color="var(--j-red)" controls={false}>
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
                     <span style={{fontFamily:"'VT323',monospace",fontSize:28}}>${eq.toFixed(2)}</span>
                     <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"var(--j-soft)",alignSelf:"flex-end"}}>{ph.label} · {pct.toFixed(0)}%</span>
@@ -2559,13 +2492,6 @@ export default function JournalPage() {
         </button>
         <button onClick={()=>setView("list")} className={view==="list"?"active":""}>
           <b>◔</b><span>สถิติ</span>
-        </button>
-        <button onClick={()=>{
-          const el=document.querySelector(".j-theme-select") as HTMLSelectElement|null;
-          el?.focus();
-          el?.scrollIntoView({behavior:"smooth",block:"center"});
-        }}>
-          <b>⚙</b><span>ตั้งค่า</span>
         </button>
       </nav>
       {/* Alert Popup */}
