@@ -788,7 +788,7 @@ export default function JournalPage() {
       try {
         const { data:{user} } = await supabase.auth.getUser();
         if (!user) return;
-        const { data, error } = await supabase.from("journal_trades")
+        const { data, error } = await supabase.from("wyckoff_trades")
           .select("*").eq("user_id", user.id).order("created_at",{ascending:false});
         if (error || !data?.length) return;
         const mapped: Trade[] = migrateOldTrades(data.map((r:any) => ({
@@ -923,7 +923,7 @@ export default function JournalPage() {
     try{
       const {data:{user}}=await supabase.auth.getUser();
       if(user){
-        await supabase.from("journal_trades").upsert({
+        await supabase.from("wyckoff_trades").upsert({
           id:trade.id,user_id:user.id,date:trade.date,time:trade.time,
           symbol:trade.asset||"XAUUSD",direction:trade.direction,session:trade.session,
           entry_price:null,exit_prices:[],avg_exit:null,lot_per_order:null,
@@ -977,7 +977,7 @@ export default function JournalPage() {
     const updated=[closed,...trades.filter(t=>t.id!==closed.id)]; setTrades(updated); save(updated); setOpenTrade(null); saveOpen(null);
     const newStatus=calcDailyStatus(updated,closed.date);
     if(closed.date===todayStr){ if(newStatus.isHardStop){saveCooldownUntil(0);setCooldownUntil(0);const hl:HardlockState={date:todayStr,submitted:false,reflectionText:"",submittedAt:""};saveHardlock(hl);setHardlock(hl);} else if(newStatus.lossStreak===2){const until=Date.now()+COOLDOWN_MS;saveCooldownUntil(until);setCooldownUntil(until);setNowTick(Date.now());} else {saveCooldownUntil(0);setCooldownUntil(0);} }
-    try{const {data:{user}}=await supabase.auth.getUser();if(user){await supabase.from("journal_trades").upsert({id:closed.id,user_id:user.id,date:closed.date,time:closed.time,symbol:closed.asset||"XAUUSD",direction:closed.direction,session:closed.session,entry_price:closed.entryPrice,exit_prices:closed.exitPrices,avg_exit:closed.avgExit,lot_per_order:closed.lotPerOrder,order_count:closed.orderCount,total_lot:closed.totalLot,total_pl:closed.totalPL,sl_price:closed.slPrice,tp_price:0,rr:closed.rr,result:closed.result,smc_concept:[],htf_bias:"Neutral",entry_model:closed.mode,tf:closed.timeframe||"M5",notes:closed.notes,screenshot_url:closed.screenshotUrl||null,created_at:closed.createdAt},{onConflict:"id"});}}catch(e){console.error(e);}
+    try{const {data:{user}}=await supabase.auth.getUser();if(user){await supabase.from("wyckoff_trades").upsert({id:closed.id,user_id:user.id,date:closed.date,time:closed.time,symbol:closed.asset||"XAUUSD",direction:closed.direction,session:closed.session,entry_price:closed.entryPrice,exit_prices:closed.exitPrices,avg_exit:closed.avgExit,lot_per_order:closed.lotPerOrder,order_count:closed.orderCount,total_lot:closed.totalLot,total_pl:closed.totalPL,sl_price:closed.slPrice,tp_price:0,rr:closed.rr,result:closed.result,smc_concept:[],htf_bias:"Neutral",entry_model:closed.mode,tf:closed.timeframe||"M5",notes:closed.notes,screenshot_url:closed.screenshotUrl||null,created_at:closed.createdAt},{onConflict:"id"});}}catch(e){console.error(e);}
     setExitPrices([]);setExitInput("");setPasteInput("");setExitReason("");setExitNotes("");setScreenshotUrl("");sparkle();setSaving(true);setTimeout(()=>setSaving(false),900);setView("dashboard");
   };
   const submitReflection = (text: string) => {
@@ -1001,7 +1001,7 @@ export default function JournalPage() {
     try {
       const { data:{user} } = await supabase.auth.getUser();
       if (user) {
-        await supabase.from("journal_trades").delete().eq("user_id", user.id);
+        await supabase.from("wyckoff_trades").delete().eq("user_id", user.id);
       }
     } catch(e) { console.error("Supabase reset error:", e); }
     // เคลียร์ state ในแอปทั้งหมด
@@ -1075,7 +1075,7 @@ export default function JournalPage() {
     try{
       const {data:{user}} = await supabase.auth.getUser();
       if(user){
-        await supabase.from("journal_trades").delete().eq("id",t.id).eq("user_id",user.id);
+        await supabase.from("wyckoff_trades").delete().eq("id",t.id).eq("user_id",user.id);
       }
     }catch(e){
       console.error("Supabase delete error:",e);
