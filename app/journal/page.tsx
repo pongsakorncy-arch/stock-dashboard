@@ -1389,6 +1389,56 @@ export default function JournalPage() {
         .j-cal-mini span{background:rgba(255,255,255,.04)!important;border-color:rgba(255,255,255,.13)!important}
         .j-cal-nav{background:#090b0b!important;color:#eee!important;border-color:rgba(255,255,255,.2)!important;border-radius:2px!important}
 
+        /* ---------- Base layout for stat tiles / calendar / open-edit grids (previously missing) ---------- */
+        .j-stat,.j-cal-summary-card{
+          border:1px solid var(--j-line);border-radius:2px;padding:12px 14px;
+          display:flex;flex-direction:column;gap:4px
+        }
+        .j-stat .j-num,.j-cal-summary-card b{font-size:26px;line-height:1;font-weight:400}
+        .j-statlab,.j-cal-summary-card span{font-size:9px;letter-spacing:1.2px;color:var(--j-soft);text-transform:uppercase}
+        .j-cal-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+        .j-cal-summary-card.win b{color:var(--j-green)}
+        .j-cal-summary-card.loss b{color:#e08a82}
+
+        .j-cal-weekdays{
+          display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:8px;
+          font-family:'DM Mono';font-size:9px;letter-spacing:1px;color:var(--j-soft);
+          text-transform:uppercase;text-align:center
+        }
+        .j-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:14px}
+        .j-cal-cell{
+          min-height:80px;border:1px solid var(--j-line);border-radius:2px;padding:8px;
+          display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;
+          cursor:pointer;text-align:left;position:relative;overflow:hidden;transition:.15s;width:100%
+        }
+        .j-cal-cell:hover{border-color:rgba(255,255,255,.4)}
+        .j-cal-cell.empty{border-color:transparent!important;background:transparent!important;cursor:default;pointer-events:none}
+        .j-cal-cell.today{outline:1px dashed rgba(255,255,255,.45);outline-offset:-1px}
+        .j-cal-day{font-family:'DM Mono';font-size:11px;font-weight:600}
+        .j-cal-content{display:flex;flex-direction:column;gap:3px;margin-top:auto;width:100%}
+        .j-cal-pl{font-family:'DM Mono';font-size:10px;font-weight:700}
+        .j-cal-count{font-family:'DM Mono';font-size:8px;color:var(--j-soft)}
+        .j-cal-mini{display:flex;gap:4px;flex-wrap:wrap}
+        .j-cal-mini span{
+          font-family:'DM Mono';font-size:7px;padding:1px 4px;border:1px solid rgba(255,255,255,.13);border-radius:2px
+        }
+        .j-cal-legend{display:flex;gap:16px;margin-top:4px;flex-wrap:wrap}
+        .j-cal-legend span{display:flex;align-items:center;gap:6px;font-size:9px;letter-spacing:1px;text-transform:uppercase}
+        .j-cal-legend i{width:10px;height:10px;border-radius:2px;display:block}
+        .j-cal-nav{
+          width:26px;height:26px;display:flex;align-items:center;justify-content:center;
+          border:1px solid rgba(255,255,255,.2);cursor:pointer;font-family:'DM Mono';font-size:11px
+        }
+        .j-cal-trade-row{
+          display:flex;align-items:center;gap:10px;padding:9px 11px;
+          border:1px solid var(--j-line);border-radius:2px;flex-wrap:wrap
+        }
+        .j-cal-empty-note,.j-open-edit-note{
+          border:1px dashed rgba(255,255,255,.18);border-radius:2px;padding:10px 12px;
+          font-family:'DM Mono';font-size:10px;color:var(--j-soft);text-align:center;line-height:1.8
+        }
+        .j-open-edit-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+
         /* ---------- Mobile bottom navigation ---------- */
         .j-mobile-nav{display:none}
         .j-mobile-brand{display:none}
