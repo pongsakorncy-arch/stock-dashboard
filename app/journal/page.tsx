@@ -577,6 +577,54 @@ function RoadmapWidget({ trades }: { trades: Trade[] }) {
     </div>
   );
 }
+// ─── ReflectionModal — บังคับเขียนสรุป/บทเรียนก่อนปิดวัน ตอน Hard Lock ───────
+function ReflectionModal({initialText,onSubmit,onClose}:{initialText:string;onSubmit:(text:string)=>void;onClose:()=>void}) {
+  const [text,setText] = useState(initialText);
+  const [busy,setBusy] = useState(false);
+  const trimmed = text.trim();
+  const ok = trimmed.length >= 10;
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:9997,display:"flex",alignItems:"center",justifyContent:"center",padding:20,background:"rgba(4,5,5,.88)",backdropFilter:"blur(3px)"}}>
+      <div className="j-win" style={{maxWidth:420,width:"100%"}}>
+        <div className="j-bar" style={{background:"var(--j-red)"}}>
+          <span className="j-t" style={{color:"#fff"}}>🛑 สรุปวันนี้ ก่อนปิดแอป</span>
+        </div>
+        <div className="j-body">
+          <div style={{fontSize:40,textAlign:"center",marginBottom:8}}>🧘</div>
+          <div style={{fontFamily:"'Noto Sans Thai',sans-serif",fontSize:15,fontWeight:700,textAlign:"center",marginBottom:6,color:"var(--j-ink)"}}>
+            วันนี้ LOSS 3 ติด — หยุดเทรดแล้ว
+          </div>
+          <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--j-soft)",textAlign:"center",marginBottom:16,lineHeight:1.8}}>
+            เขียนสั้นๆ ว่าเกิดอะไรขึ้น อะไรที่ทำให้เสียการควบคุม<br/>
+            และพรุ่งนี้จะทำอะไรต่างไป — ต้องเขียนก่อนถึงจะปิดแอปได้
+          </div>
+          <label className="j-lab">บทเรียนวันนี้ (อย่างน้อย 10 ตัวอักษร)</label>
+          <textarea
+            value={text}
+            onChange={e=>setText(e.target.value)}
+            rows={4}
+            placeholder="เช่น: เข้าเร็วเกินไปโดยไม่รอ retest, อารมณ์ revenge หลัง loss ตัวที่ 2..."
+            className="j-in"
+            style={{resize:"none",marginBottom:6}}
+            autoFocus
+          />
+          <div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"var(--j-soft)",textAlign:"right",marginBottom:14}}>{trimmed.length} ตัวอักษร</div>
+          <button
+            onClick={async ()=>{ if(!ok||busy) return; setBusy(true); await onSubmit(trimmed); }}
+            disabled={!ok||busy}
+            className="j-btn j-save-primary w-full"
+            style={{padding:14,fontSize:14}}
+          >
+            {busy ? "⌛ กำลังบันทึก..." : ok ? "✓ บันทึกบทเรียน — ปิดวันนี้" : "พิมพ์อย่างน้อย 10 ตัวอักษร"}
+          </button>
+          <button onClick={onClose} disabled={busy} className="j-chip off" style={{width:"100%",marginTop:8,fontSize:11,textAlign:"center"}}>
+            ไว้เขียนทีหลัง (ระบบจะเตือนอีกครั้งก่อนปิดแท็บ)
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 // ─── ResetConfirmModal (ใหม่) — ยืนยันก่อนล้างข้อมูลทั้งหมด ───────────────────
 function ResetConfirmModal({onConfirm,onClose}:{onConfirm:()=>void;onClose:()=>void}) {
   const [text,setText] = useState("");
@@ -791,6 +839,10 @@ export default function JournalPage() {
     };
     window.addEventListener("beforeunload", handler);
     return ()=>window.removeEventListener("beforeunload", handler);
+  },[needsReflection]);
+  // ── เปิด ReflectionModal อัตโนมัติเมื่อโดน Hard Lock และยังไม่ได้เขียนสรุป ──────
+  useEffect(()=>{
+    if (needsReflection) setShowReflection(true);
   },[needsReflection]);
   // ── Loss alert ────────────────────────────────────────────────────────────
   // แจ้งเตือนวันละ 1 ครั้ง หลังผู้ใช้กดรับทราบแล้วจะไม่เด้งซ้ำ
@@ -1652,6 +1704,11 @@ export default function JournalPage() {
         {view==="dashboard"&&(
           <div className="space-y-4 j-tabcontent">
             <DailyStatusBar status={dailyStatus} cooldownRemainingMs={cooldownRemainingMs} isHardLockToday={isHardLockToday} isForcedLockToday={isForcedLockToday}/>
+            {needsReflection && !showReflection && (
+              <button onClick={()=>setShowReflection(true)} className="j-btn w-full" style={{padding:12,background:"var(--j-coral)",fontSize:13}}>
+                ✎ ยังไม่ได้เขียนบทเรียนวันนี้ — กดเพื่อเขียน
+              </button>
+            )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="j-stat" style={{background:"var(--j-mint)"}}><div className="j-num">{stats.winRate.toFixed(0)}%</div><div className="j-statlab">Win Rate</div></div>
               <div className="j-stat" style={{background:stats.totalPL>=0?"var(--j-sky)":"var(--j-coral)"}}><div className="j-num">{money(stats.totalPL)}</div><div className="j-statlab">Total P/L</div></div>
@@ -2118,6 +2175,14 @@ export default function JournalPage() {
             </div>
           </div>
         </div>
+      )}
+      {/* Reflection Modal — บังคับกรอกก่อนปิดแอปตอน Hard Lock */}
+      {showReflection && needsReflection && (
+        <ReflectionModal
+          initialText={hardlock?.reflectionText || ""}
+          onSubmit={submitReflection}
+          onClose={()=>setShowReflection(false)}
+        />
       )}
       {/* Reset Confirm Modal — ยืนยันก่อนล้างข้อมูลทั้งหมด (ใหม่) */}
       {showResetConfirm && (
