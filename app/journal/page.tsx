@@ -1026,501 +1026,394 @@ export default function JournalPage() {
   return (
     <main className={`j-root theme-${theme}`}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@500;600;700;800&family=Noto+Sans+Thai:wght@400;500;600;700&family=VT323&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@500;600;700;800&family=Noto+Sans+Thai:wght@400;500;600;700;800&display=swap');
 
         /* ================================================================
-           YOKIMURA SHINOBI — THEME SYSTEM
+           YOKIMURA SHINOBI — DESKTOP + MOBILE SYSTEM
            ================================================================ */
         .j-root{
-          --j-paper:#080909;
-          --j-win:#0e1010;
-          --j-field:#0a0b0b;
-          --j-ink:#f2f2ef;
-          --j-soft:#8b8f8e;
-          --j-pink:#171919;
-          --j-mint:#e8e8e3;
-          --j-butter:#bdbdb6;
-          --j-lav:#252726;
-          --j-sky:#1b1d1d;
-          --j-peach:#303230;
-          --j-coral:#c9232c;
-          --j-red:#c9232c;
+          --j-paper:#050606;
+          --j-win:#0b0d0d;
+          --j-field:#080a0a;
+          --j-ink:#f3f3ef;
+          --j-soft:#969b98;
+          --j-line:rgba(255,255,255,.15);
+          --j-line-strong:rgba(255,255,255,.32);
+          --j-red:#d21f2b;
+          --j-red-soft:rgba(210,31,43,.16);
+          --j-green:#8de1b5;
           min-height:100vh;
           color:var(--j-ink);
-          font-family:'Inter','Noto Sans Thai',sans-serif;
           background:
-            radial-gradient(circle at 78% 12%,rgba(255,255,255,.055),transparent 24%),
-            radial-gradient(circle at 8% 88%,rgba(201,35,44,.045),transparent 22%),
-            linear-gradient(135deg,#050606 0%,#0b0c0c 48%,#070808 100%);
+            radial-gradient(ellipse at 82% 15%,rgba(255,255,255,.055),transparent 24%),
+            radial-gradient(ellipse at 72% 100%,rgba(210,31,43,.035),transparent 28%),
+            linear-gradient(120deg,#030404 0%,#090b0b 52%,#050606 100%);
+          font-family:'Inter','Noto Sans Thai',sans-serif;
           position:relative;
           overflow-x:hidden;
-          padding-bottom:54px;
+          -webkit-font-smoothing:antialiased;
+          text-rendering:optimizeLegibility;
         }
 
-        /* Theme variants */
-        .j-root.theme-minimal{
-          --j-paper:#f4f4f1;--j-win:#ffffff;--j-field:#fafafa;--j-ink:#171918;--j-soft:#707572;
-          --j-pink:#ededeb;--j-mint:#e4e7e3;--j-butter:#d7d9d6;--j-lav:#e7e8e5;--j-sky:#e8ebeb;--j-peach:#e7e5e1;--j-coral:#cfcfc9;
-          background:linear-gradient(180deg,#f8f8f5,#eeeeeb);
-        }
-        .j-root.theme-classic{
-          --j-paper:#211f1c;--j-win:#2b2925;--j-field:#23221f;--j-ink:#eee8dc;--j-soft:#a9a195;
-          --j-pink:#403b35;--j-mint:#52675b;--j-butter:#6b6049;--j-lav:#554b62;--j-sky:#414e55;--j-peach:#5f4c3e;--j-coral:#9b5049;
-          background:radial-gradient(circle at 50% 0,#37322c,#1d1b19 65%);
-        }
-        .j-root.theme-cyber{
-          --j-paper:#05070a;--j-win:#0b1015;--j-field:#070c11;--j-ink:#e8f7ff;--j-soft:#6d8490;
-          --j-pink:#14202a;--j-mint:#102f31;--j-butter:#283021;--j-lav:#171a32;--j-sky:#10232e;--j-peach:#18211f;--j-coral:#e43155;
-          background:radial-gradient(circle at 80% 10%,#0c2632,transparent 28%),#05070a;
-        }
-        .j-root.theme-sakura{
-          --j-paper:#151012;--j-win:#21181b;--j-field:#171114;--j-ink:#f7ecef;--j-soft:#b99da5;
-          --j-pink:#4b2732;--j-mint:#263a34;--j-butter:#4b3b2d;--j-lav:#3b2944;--j-sky:#293740;--j-peach:#49342e;--j-coral:#bd5268;
-          background:radial-gradient(circle at 85% 12%,#41232e,transparent 28%),#120e10;
-        }
-
+        .j-root *{box-sizing:border-box}
+        .j-root button,.j-root input,.j-root select,.j-root textarea{font:inherit}
         .j-root::before{
           content:'';
-          position:fixed;inset:0;pointer-events:none;z-index:999;
+          position:fixed;inset:0;z-index:0;pointer-events:none;
           background:
-            repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(255,255,255,.018) 3px,rgba(255,255,255,.018) 4px),
-            linear-gradient(90deg,transparent 0 72%,rgba(255,255,255,.015) 72% 72.2%,transparent 72.2%);
-          mix-blend-mode:screen;
-          opacity:.65;
+            repeating-linear-gradient(0deg,transparent 0 4px,rgba(255,255,255,.012) 4px 5px),
+            linear-gradient(125deg,transparent 0 74%,rgba(255,255,255,.025) 74% 74.2%,transparent 74.2%);
+          opacity:.55;
         }
         .j-root::after{
           content:'忍';
-          position:fixed;
-          right:-30px;
-          bottom:-70px;
-          font-family:serif;
-          font-size:330px;
-          font-weight:700;
-          color:rgba(255,255,255,.018);
-          line-height:1;
-          pointer-events:none;
-          z-index:0;
-          transform:rotate(-7deg);
+          position:fixed;right:-45px;bottom:-90px;z-index:0;pointer-events:none;
+          font-family:serif;font-size:360px;font-weight:700;line-height:1;
+          color:rgba(255,255,255,.018);transform:rotate(-7deg);
         }
 
-        @keyframes scanmove{from{background-position:0 0}to{background-position:0 44px}}
-        @keyframes bootfade{from{opacity:1}to{opacity:0;transform:scale(1.04)}}
-        .j-boot{
-          position:fixed;inset:0;z-index:9999;background:#050606;
-          display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
-          color:#fff;
+        /* ---------- App shell ---------- */
+        .j-app-frame{
+          min-height:100vh;display:grid;grid-template-columns:248px minmax(0,1fr);
+          position:relative;z-index:1;
         }
-        .j-boot.done{animation:bootfade .5s ease forwards}
-        .j-boot-logo{
-          font-family:'Montserrat',sans-serif;font-size:clamp(32px,7vw,58px);font-weight:800;
-          letter-spacing:10px;color:#fff;text-shadow:0 0 28px rgba(255,255,255,.16);
+        .j-sidebar{
+          position:sticky;top:0;height:100vh;overflow:hidden;
+          border-right:1px solid var(--j-line);
+          background:
+            linear-gradient(180deg,rgba(3,4,4,.98),rgba(7,8,8,.97)),
+            radial-gradient(circle at 50% 75%,rgba(255,255,255,.08),transparent 25%);
+          padding:27px 20px 18px;display:flex;flex-direction:column;
         }
-        .j-boot-logo::after{content:'  忍';color:#c9232c;font-family:serif}
-        @keyframes blink{50%{opacity:.65}}
-        .j-boot-cursor{display:inline-block;width:8px;height:15px;background:#fff;animation:cur .7s step-end infinite;vertical-align:middle}
-        @keyframes cur{50%{opacity:0}}
-        .j-boot-bar{width:min(320px,72vw);height:8px;border:1px solid #444;border-radius:2px;overflow:hidden;position:relative;background:#0c0d0d}
-        .j-boot-fill{height:100%;background:#fff;animation:barfill 1.2s ease forwards}
-        @keyframes barfill{from{width:0}to{width:100%}}
+        .j-sidebar-brand{padding:3px 8px 22px;border-bottom:1px solid rgba(255,255,255,.10);position:relative;z-index:2}
+        .j-sidebar-brand-top{
+          font-family:'Montserrat',sans-serif;font-size:18px;font-weight:600;letter-spacing:5px;
+          line-height:1.45;color:#fff
+        }
+        .j-sidebar-brand-mark{
+          width:28px;height:28px;margin-top:11px;display:flex;align-items:center;justify-content:center;
+          background:var(--j-red);color:#fff;font-family:serif;font-size:18px;font-weight:700
+        }
+        .j-sidebar-code{
+          position:relative;z-index:2;margin:18px 8px 0;color:#656a68;
+          font-family:'DM Mono',monospace;font-size:8px;letter-spacing:2.5px;line-height:2
+        }
+        .j-side-nav{position:relative;z-index:3;display:flex;flex-direction:column;gap:5px;margin-top:22px}
+        .j-side-btn{
+          width:100%;min-height:42px;border:1px solid transparent;border-radius:2px;
+          display:flex;align-items:center;gap:12px;padding:9px 10px;
+          background:transparent;color:#858a88;cursor:pointer;text-align:left;
+          font-family:'Noto Sans Thai','Inter',sans-serif;font-size:12px;font-weight:500;
+          transition:background .15s,border-color .15s,color .15s,transform .15s;
+        }
+        .j-side-btn:hover{background:rgba(255,255,255,.045);border-color:rgba(255,255,255,.12);color:#fff}
+        .j-side-btn.active{
+          background:linear-gradient(90deg,rgba(255,255,255,.10),rgba(255,255,255,.025));
+          border-color:rgba(255,255,255,.58);color:#fff;box-shadow:inset 2px 0 #fff
+        }
+        .j-side-icon{width:23px;flex:0 0 23px;text-align:center;color:#ddd;font-family:'DM Mono';font-size:17px;line-height:1}
+        .j-sidebar-footer{
+          position:relative;z-index:3;margin-top:auto;padding:15px 8px 2px;border-top:1px solid rgba(255,255,255,.10)
+        }
+        .j-sidebar-footer-main{font-family:'DM Mono';font-size:8px;letter-spacing:2.4px;line-height:1.9;color:#727775}
+        .j-sidebar-footer-sub{font-family:'DM Mono';font-size:7px;letter-spacing:2px;color:#525654;margin-top:7px}
+        .j-sidebar-line{width:25px;height:1px;background:#fff;margin-top:10px;opacity:.6}
+        .j-sidebar-hero{
+          position:absolute;left:-25px;right:-25px;bottom:24px;height:220px;z-index:1;opacity:.9;pointer-events:none
+        }
+        .j-sidebar-hero svg{width:100%;height:100%;display:block}
+        .j-sidebar-hero .moon{fill:#d7d7d2;opacity:.84}
+        .j-sidebar-hero .ink{fill:#040505}
+        .j-sidebar-hero .mist{fill:#fff;opacity:.05}
+        .j-sidebar-hero .blade{fill:#fff;opacity:.78}
+        .j-sidebar-hero .red{fill:var(--j-red)}
 
-        @keyframes winpop{0%{opacity:0;transform:translateY(5px)}100%{opacity:1;transform:none}}
+        .j-app-main{position:relative;min-width:0}
+        .j-app-main:before{
+          content:'';position:absolute;inset:0;pointer-events:none;
+          background:
+            radial-gradient(ellipse at 84% 18%,rgba(255,255,255,.045),transparent 22%),
+            repeating-linear-gradient(95deg,transparent 0 85px,rgba(255,255,255,.012) 85px 87px);
+        }
+        .j-header-wrap,.j-page-shell{position:relative;z-index:2}
+        .j-header-wrap{padding:15px 24px 0!important}
+        .j-page-shell{max-width:1180px!important;margin:0 auto;padding:18px 24px 36px!important}
+        .j-app-main .j-header-wrap > .j-win{max-width:1180px!important;margin:0 auto}
+        .j-app-main .j-tabs-wrap{max-width:1180px!important;margin:15px auto 0!important;padding:0!important}
+        .j-app-main .j-shinobi-header{min-height:124px;padding:23px 28px!important}
+
+        /* ---------- Brand ---------- */
+        .j-shinobi-header{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:24px;align-items:center}
+        .j-brand-kicker{font-family:'DM Mono';font-size:8px;letter-spacing:3px;color:#777c79;margin-bottom:8px}
+        .j-brand{display:flex;align-items:center;gap:13px}
+        .j-brand-mark{
+          width:51px;height:51px;display:flex;align-items:center;justify-content:center;
+          border:1px solid rgba(255,255,255,.26);background:#090a0a;
+          color:#fff;font-family:serif;font-size:31px;flex:0 0 auto
+        }
+        .j-brand-name{
+          font-family:'Montserrat',sans-serif;font-size:clamp(28px,3.3vw,44px);font-weight:800;
+          letter-spacing:5px;line-height:1;color:#fff
+        }
+        .j-brand-sub{
+          margin-top:7px;font-family:'DM Mono';font-size:8px;letter-spacing:2px;color:#777c79
+        }
+        .j-mantra{max-width:365px;text-align:right;font-family:'DM Mono';font-size:8px;line-height:1.85;letter-spacing:1.5px;color:#7f8481;text-transform:uppercase}
+        .j-mantra strong{display:block;color:#eee;font-size:9px;letter-spacing:1.8px}
+        .j-theme-box{display:flex;justify-content:flex-end;align-items:center;gap:7px;margin-top:10px}
+        .j-theme-label{font-family:'DM Mono';font-size:7px;letter-spacing:1.5px;color:#6d726f;text-transform:uppercase}
+        .j-theme-select{
+          min-width:168px;appearance:none;background:#0a0c0c;color:#eee;
+          border:1px solid rgba(255,255,255,.25);border-radius:2px;padding:8px 30px 8px 10px;
+          font-family:'DM Mono';font-size:9px;cursor:pointer;
+          background-image:linear-gradient(45deg,transparent 50%,#aaa 50%),linear-gradient(135deg,#aaa 50%,transparent 50%);
+          background-position:calc(100% - 13px) 12px,calc(100% - 9px) 12px;
+          background-size:4px 4px,4px 4px;background-repeat:no-repeat
+        }
+        .j-theme-select option{background:#111;color:#fff}
+        .j-quote-strip{
+          max-width:1180px;margin:12px auto 0;padding:0 4px;
+          display:flex;align-items:center;gap:12px;color:#777c79
+        }
+        .j-quote-strip i{width:30px;height:1px;background:var(--j-red);display:block;flex:0 0 auto}
+        .j-quote-strip span,.j-quote-strip b{font-family:'DM Mono';font-size:7px;letter-spacing:1.5px}
+        .j-quote-strip b{color:#bfc2bf;font-weight:500}
+
+        /* ---------- Windows / form ---------- */
         .j-win{
-          animation:winpop .18s ease both;
-          background:var(--j-win);
-          border:1px solid rgba(255,255,255,.14);
-          border-radius:2px;
-          box-shadow:0 14px 40px rgba(0,0,0,.24);
-          overflow:hidden;
-          position:relative;
-          z-index:1;
+          background:rgba(10,12,12,.86);border:1px solid var(--j-line);border-radius:2px;
+          box-shadow:0 20px 55px rgba(0,0,0,.30);overflow:hidden
         }
         .j-bar{
-          display:flex;align-items:center;gap:9px;padding:10px 13px;
-          border-bottom:1px solid rgba(255,255,255,.10);
-          background:linear-gradient(90deg,rgba(255,255,255,.045),transparent);
+          min-height:32px;display:flex;align-items:center;gap:9px;padding:7px 11px;
+          border-bottom:1px solid rgba(255,255,255,.09);
+          background:linear-gradient(90deg,rgba(255,255,255,.035),transparent)
         }
         .j-t{
-          font-family:'DM Mono',monospace;font-size:10px;font-weight:600;letter-spacing:1.8px;
-          flex:1;display:flex;align-items:center;gap:7px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+          flex:1;font-family:'DM Mono';font-size:8px;letter-spacing:1.1px;font-weight:600;
+          color:#d8dad7;overflow:hidden;white-space:nowrap;text-overflow:ellipsis
         }
         .j-ctrl{display:flex;gap:4px;flex-shrink:0}
         .j-ctrl span{
-          width:14px;height:14px;border:1px solid rgba(255,255,255,.28);border-radius:1px;
-          background:transparent;color:var(--j-ink);font-size:8px;line-height:12px;text-align:center;font-family:'DM Mono';
+          width:13px;height:13px;border:1px solid rgba(255,255,255,.24);border-radius:1px;
+          display:flex;align-items:center;justify-content:center;color:#bbb;font-family:'DM Mono';font-size:7px
         }
-        .j-body{padding:16px}
-        .j-lab{
-          font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1.8px;text-transform:uppercase;
-          color:var(--j-soft);margin-bottom:7px;display:block
-        }
-        .j-chip{
-          font-size:11px;font-weight:600;padding:7px 12px;border:1px solid rgba(255,255,255,.22);
-          border-radius:2px;background:var(--j-field);color:var(--j-ink);cursor:pointer;
-          box-shadow:none;transition:.15s;font-family:'Inter','Noto Sans Thai',sans-serif
-        }
-        .j-chip:hover{border-color:rgba(255,255,255,.55);background:rgba(255,255,255,.06)}
-        .j-chip:active{transform:translateY(1px)}
-        .j-chip.off{border-style:solid;color:var(--j-soft);background:transparent}
-        .j-in{
-          width:100%;background:var(--j-field)!important;border:1px solid rgba(255,255,255,.18);
-          border-radius:2px;padding:10px 11px;font-family:'DM Mono',monospace;font-size:12px;
-          color:var(--j-ink);outline:none;box-shadow:none
-        }
-        .j-in:focus{border-color:var(--j-ink);box-shadow:0 0 0 1px rgba(255,255,255,.08)}
-        .j-in::placeholder{color:var(--j-soft)}
-        .j-btn{
-          border:1px solid rgba(255,255,255,.28);border-radius:2px;cursor:pointer;
-          font-family:'Inter','Noto Sans Thai',sans-serif;font-weight:700;
-          box-shadow:none;transition:.15s;color:var(--j-ink)
-        }
-        .j-btn:hover{filter:brightness(1.08);transform:translateY(-1px)}
-        .j-btn:active{transform:translateY(0)}
-        .j-btn:disabled{opacity:.4;cursor:not-allowed}
-        .j-stat{
-          background:var(--j-win);border:1px solid rgba(255,255,255,.14);border-radius:2px;
-          box-shadow:none;padding:13px;text-align:center
-        }
-        .j-num{font-family:'VT323',monospace;font-size:34px;line-height:.9}
-        .j-statlab{font-family:'DM Mono',monospace;font-size:8px;letter-spacing:1.5px;color:var(--j-soft);text-transform:uppercase;margin-top:5px}
-        .j-mini{font-size:9px;font-weight:600;padding:3px 8px;border:1px solid rgba(255,255,255,.2);border-radius:2px}
-        .j-tab{
-          font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;padding:10px 14px;cursor:pointer;
-          border:1px solid transparent;border-radius:2px 2px 0 0;background:transparent;color:var(--j-soft);font-weight:500
-        }
-        .j-tab.on{
-          background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.18);color:var(--j-ink);font-weight:700
-        }
-        @keyframes savepulse{0%,100%{box-shadow:none}50%{box-shadow:0 0 22px rgba(255,255,255,.14)}}
-        .j-saving{animation:savepulse .2s steps(2,end) 4}
-        @keyframes tabslide{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-        .j-tabcontent{animation:tabslide .18s ease both}
-        .j-pixel{position:absolute;width:5px;height:5px;border:1px solid var(--j-ink);pointer-events:none;animation:pixelfly .7s steps(4,end) forwards}
-        @keyframes pixelfly{0%{opacity:1;transform:translate(0,0)}100%{opacity:0;transform:translate(var(--px),var(--py))}}
-
-        /* Calendar / legacy components */
-        .j-cal-nav{width:26px;height:26px;border:1px solid rgba(255,255,255,.24);border-radius:2px;background:var(--j-field);color:var(--j-ink);font-family:'DM Mono';font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer}
-        .j-cal-weekdays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-bottom:7px;text-align:center;font-family:'DM Mono',monospace;font-size:9px;color:var(--j-soft);letter-spacing:1px}
-        .j-cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
-        .j-cal-cell{position:relative;min-height:82px;border:1px solid rgba(255,255,255,.15);border-radius:2px;background:var(--j-field)!important;color:var(--j-ink);padding:8px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;cursor:pointer;text-align:left;font-family:'Inter','Noto Sans Thai',sans-serif;box-shadow:none;overflow:hidden}
-        .j-cal-cell.empty{visibility:hidden;cursor:default}
-        .j-cal-cell.has.win{background:rgba(230,230,225,.14)!important}
-        .j-cal-cell.has.loss{background:rgba(201,35,44,.18)!important}
-        .j-cal-cell.has.be{background:rgba(255,255,255,.07)!important}
-        .j-cal-cell.selected{outline:1px solid var(--j-ink);transform:none}
-        .j-cal-day{position:absolute;top:6px;right:8px;font-family:'DM Mono';font-size:11px;font-weight:700;color:var(--j-ink)}
-        .j-cal-content{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding-top:8px}
-        .j-cal-pl{font-family:'DM Mono';font-size:13px;line-height:1;white-space:nowrap;color:var(--j-ink)}
-        .j-cal-count,.j-cal-mini{font-family:'DM Mono';font-size:8px;color:var(--j-soft)}
-        .j-cal-mini{display:flex;gap:4px;flex-wrap:wrap;justify-content:center}
-        .j-cal-mini span{border:1px solid rgba(255,255,255,.16);border-radius:2px;background:rgba(255,255,255,.04);padding:1px 4px}
-        .j-cal-legend{display:flex;gap:14px;justify-content:center;align-items:center;margin-top:12px;flex-wrap:wrap;font-size:9px;font-family:'DM Mono';color:var(--j-soft)}
-        .j-cal-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;border:1px solid rgba(255,255,255,.4);margin-right:5px}
-        .j-cal-trade-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px dashed rgba(255,255,255,.12)}
-        .j-cal-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:12px}
-        .j-cal-summary-card{background:var(--j-field)!important;border:1px solid rgba(255,255,255,.15);border-radius:2px;padding:9px 8px;box-shadow:none;text-align:center}
-        .j-cal-summary-card span{display:block;font-family:'DM Mono';font-size:8px;letter-spacing:1px;color:var(--j-soft);text-transform:uppercase;margin-bottom:3px}
-        .j-cal-summary-card b{display:block;font-family:'VT323';font-size:24px;line-height:1;color:var(--j-ink)}
-        .j-cal-summary-card.win b{color:#e8e8e3}.j-cal-summary-card.loss b{color:#c9232c}
-        .j-cal-cell.today:after{content:'TODAY';position:absolute;left:6px;top:6px;font-family:'DM Mono';font-size:6px;font-weight:800;color:#fff;background:#c9232c;border:1px solid #c9232c;border-radius:1px;padding:1px 4px}
-        .j-cal-cell.today .j-cal-day{color:#fff}
-        .j-cal-empty-note{background:var(--j-field)!important;border:1px dashed rgba(255,255,255,.2);border-radius:2px;padding:10px;text-align:center;font-family:'DM Mono';font-size:9px;color:var(--j-soft)}
-        .j-open-edit-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-        .j-open-edit-grid.two{grid-template-columns:repeat(2,1fr)}
-        .j-open-edit-note{margin-top:10px;background:var(--j-field)!important;border:1px dashed rgba(255,255,255,.2);border-radius:2px;padding:8px 10px;font-family:'DM Mono';font-size:9px;color:var(--j-soft);line-height:1.5}
-
-        /* Shinobi brand/header */
-        .j-shinobi-header{
-          display:grid;grid-template-columns:minmax(0,1fr) auto;gap:22px;align-items:center;
-          min-height:112px;padding:20px 22px!important;
-          background:
-            linear-gradient(90deg,rgba(255,255,255,.045),transparent 42%),
-            linear-gradient(180deg,rgba(0,0,0,.1),transparent);
-        }
-        .j-brand-kicker{font-family:'DM Mono';font-size:9px;letter-spacing:4px;color:var(--j-soft);margin-bottom:8px}
-        .j-brand{
-          display:flex;align-items:center;gap:13px
-        }
-        .j-brand-mark{
-          width:48px;height:48px;display:flex;align-items:center;justify-content:center;
-          border:1px solid rgba(255,255,255,.24);font-family:serif;font-size:30px;
-          background:#090a0a;color:#fff;box-shadow:inset 0 0 20px rgba(255,255,255,.03)
-        }
-        .j-brand-name{
-          font-family:'Montserrat',sans-serif;font-weight:800;font-size:clamp(23px,4vw,38px);
-          letter-spacing:5px;line-height:1;color:#fff
-        }
-        .j-brand-sub{font-family:'DM Mono';font-size:8px;letter-spacing:3px;color:var(--j-soft);margin-top:7px}
-        .j-mantra{
-          max-width:360px;text-align:right;font-family:'DM Mono';font-size:9px;line-height:1.8;
-          letter-spacing:1.4px;color:var(--j-soft);text-transform:uppercase
-        }
-        .j-mantra strong{display:block;color:var(--j-ink);font-size:10px;letter-spacing:2px}
-        .j-theme-box{display:flex;align-items:center;gap:7px;margin-top:10px;justify-content:flex-end}
-        .j-theme-label{font-family:'DM Mono';font-size:8px;letter-spacing:1.4px;color:var(--j-soft);text-transform:uppercase}
-        .j-theme-select{
-          appearance:none;background:var(--j-field);color:var(--j-ink);border:1px solid rgba(255,255,255,.24);
-          border-radius:2px;padding:7px 28px 7px 9px;font-family:'DM Mono';font-size:9px;cursor:pointer;
-          background-image:linear-gradient(45deg,transparent 50%,#aaa 50%),linear-gradient(135deg,#aaa 50%,transparent 50%);
-          background-position:calc(100% - 12px) 11px,calc(100% - 8px) 11px;background-size:4px 4px,4px 4px;background-repeat:no-repeat;
-        }
-        .j-theme-select option{background:#101111;color:#fff}
-        .j-ninja-divider{height:1px;background:linear-gradient(90deg,transparent,var(--j-ink),transparent);opacity:.28;margin:0 8px}
-        .j-quote-strip{
-          max-width:780px;margin:12px auto 0;padding:0 12px;
-          display:flex;align-items:center;gap:12px;color:var(--j-soft)
-        }
-        .j-quote-strip i{width:34px;height:1px;background:var(--j-red);display:block;flex:0 0 auto}
-        .j-quote-strip span{font-family:'DM Mono';font-size:8px;letter-spacing:2px}
-        .j-quote-strip b{font-family:'Montserrat';font-size:9px;letter-spacing:2px;color:var(--j-ink);font-weight:600}
-
-        /* Wyckoff execution page */
-        .j-execution-card{border-color:rgba(255,255,255,.18)!important}
-        .j-execution-title{
-          font-family:'Montserrat';font-size:11px;letter-spacing:3px;font-weight:700;
-          color:var(--j-ink);text-transform:uppercase
-        }
+        .j-body{padding:18px}
+        .j-execution-card{border-color:rgba(255,255,255,.20)!important}
+        .j-execution-title{font-family:'Montserrat';font-size:9px;letter-spacing:2.5px;font-weight:700;color:#ddd;text-transform:uppercase}
         .j-execution-heading{
-          font-family:'Montserrat';font-size:clamp(24px,5vw,38px);font-weight:800;letter-spacing:1px;
-          margin:2px 0 3px;color:#fff
+          font-family:'Noto Sans Thai','Inter',sans-serif;font-size:clamp(30px,3.5vw,48px);
+          font-weight:800;letter-spacing:-.5px;line-height:1.25;color:#fff;margin:2px 0 3px
         }
-        .j-execution-sub{font-family:'Noto Sans Thai';font-size:10px;color:var(--j-soft);line-height:1.7}
-        .j-wy-badge{
-          display:inline-flex;align-items:center;gap:7px;padding:5px 9px;border:1px solid rgba(255,255,255,.18);
-          font-family:'DM Mono';font-size:9px;letter-spacing:1.5px;color:var(--j-soft);margin-bottom:13px
+        .j-execution-sub{font-family:'Noto Sans Thai','Inter',sans-serif;font-size:11px;font-weight:400;color:#8b908d;line-height:1.75}
+        .j-ninja-divider{height:1px;background:linear-gradient(90deg,rgba(255,255,255,.3),transparent);opacity:.6}
+        .j-lab{
+          display:block;margin-bottom:6px;font-family:'DM Mono','Noto Sans Thai',sans-serif;
+          font-size:8px;font-weight:500;letter-spacing:1.4px;color:#8d928f;text-transform:uppercase
         }
+        .j-in{
+          width:100%;min-height:39px;background:#080a0a!important;color:#eee!important;
+          border:1px solid rgba(255,255,255,.18)!important;border-radius:2px!important;
+          padding:9px 11px!important;font-family:'Noto Sans Thai','DM Mono',sans-serif!important;
+          font-size:12px!important;font-weight:500!important;outline:none
+        }
+        .j-in:focus{border-color:rgba(255,255,255,.62)!important;box-shadow:0 0 0 1px rgba(255,255,255,.06)!important}
+        .j-in::placeholder{color:#575c59}
+        .j-in option{background:#0c0e0e;color:#fff}
         .j-result-row{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
         .j-result-btn{
-          border:1px solid rgba(255,255,255,.16);background:var(--j-field);color:var(--j-soft);
-          padding:11px 8px;font-family:'DM Mono';font-size:10px;cursor:pointer;border-radius:2px;transition:.15s
+          min-height:39px;border:1px solid rgba(255,255,255,.16);border-radius:2px;
+          background:#080a0a;color:#888d8a;font-family:'DM Mono';font-size:10px;cursor:pointer;transition:.15s
         }
-        .j-result-btn:hover{border-color:rgba(255,255,255,.4);color:#fff}
-        .j-result-btn.active{background:#fff;color:#050606;border-color:#fff;font-weight:700}
-        .j-result-btn.loss.active{background:#c9232c;color:#fff;border-color:#c9232c}
-        .j-result-btn.be.active{background:#686b68;color:#fff;border-color:#686b68}
+        .j-result-btn:hover{border-color:rgba(255,255,255,.42);color:#fff}
+        .j-result-btn.active{background:#f1f1ed;color:#070808;border-color:#fff;font-weight:700}
+        .j-result-btn.loss.active{background:var(--j-red);color:#fff;border-color:var(--j-red)}
+        .j-result-btn.be.active{background:#666a67;color:#fff;border-color:#8d918e}
         .j-rr-fixed{
-          display:flex;align-items:center;justify-content:space-between;padding:11px 12px;
-          background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.12);border-radius:2px
+          min-height:39px;display:flex;align-items:center;justify-content:space-between;
+          padding:7px 11px;background:#080a0a;border:1px solid rgba(255,255,255,.18);border-radius:2px
         }
-        .j-rr-fixed span{font-family:'DM Mono';font-size:8px;letter-spacing:1.5px;color:var(--j-soft)}
-        .j-rr-fixed b{font-family:'VT323';font-size:26px;line-height:1;color:#fff}
+        .j-rr-fixed span{font-family:'DM Mono';font-size:7px;letter-spacing:1px;color:#686d6a}
+        .j-rr-fixed b{font-family:'VT323';font-size:25px;line-height:1;color:var(--j-green)}
+        textarea.j-in{min-height:78px!important;resize:vertical;line-height:1.7}
         .j-upload-box{
-          border:1px dashed rgba(255,255,255,.22);background:rgba(255,255,255,.018);
-          min-height:145px;display:flex;flex-direction:column;align-items:center;justify-content:center;
-          padding:14px;transition:.15s
+          min-height:154px;border:1px dashed rgba(255,255,255,.22);border-radius:2px;
+          background:rgba(255,255,255,.012);display:flex;flex-direction:column;align-items:center;
+          justify-content:center;padding:15px;transition:.15s
         }
-        .j-upload-box:hover{border-color:rgba(255,255,255,.55);background:rgba(255,255,255,.035)}
-        .j-upload-icon{font-size:28px;line-height:1;margin-bottom:8px;filter:grayscale(1)}
-        .j-upload-title{font-family:'Montserrat';font-size:11px;font-weight:700;letter-spacing:1px}
-        .j-upload-sub{font-family:'DM Mono';font-size:8px;color:var(--j-soft);margin-top:6px;text-align:center}
+        .j-upload-box:hover{border-color:rgba(255,255,255,.52);background:rgba(255,255,255,.028)}
+        .j-upload-icon{font-size:29px;line-height:1;margin-bottom:9px;filter:grayscale(1)}
+        .j-upload-title{font-family:'Noto Sans Thai',sans-serif;font-size:12px;font-weight:700;color:#eee}
+        .j-upload-sub{font-family:'DM Mono';font-size:7px;color:#6e7370;margin-top:6px;text-align:center;letter-spacing:.6px}
         .j-save-primary{
-          background:#f1f1ed!important;color:#070808!important;border-color:#fff!important;
-          letter-spacing:.4px
+          background:#f2f2ee!important;color:#080909!important;border-color:#fff!important;
+          min-height:45px!important;font-family:'Noto Sans Thai','Inter',sans-serif!important;font-size:12px!important;font-weight:800!important
         }
-        .j-save-primary:hover{background:#fff!important;box-shadow:0 0 24px rgba(255,255,255,.12)}
+        .j-save-primary:hover{background:#fff!important;box-shadow:0 0 28px rgba(255,255,255,.12)}
+        .j-btn{border-radius:2px!important;font-family:'Noto Sans Thai','Inter',sans-serif!important}
+        .j-chip{font-family:'Noto Sans Thai','Inter',sans-serif!important;border-radius:2px!important}
+        .j-tab{
+          border:1px solid transparent;border-radius:2px 2px 0 0;background:transparent;color:#6f7471;
+          font-family:'DM Mono';font-size:8px;letter-spacing:1px;padding:9px 13px;cursor:pointer
+        }
+        .j-tab.on{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.18);color:#fff}
+        .j-tab:hover{color:#fff}
 
-        /* Mobile */
-        .j-page-shell{max-width:780px;margin:0 auto;padding:16px 12px 0;position:relative;z-index:1}
-        .j-tabs-wrap{max-width:780px;margin:14px auto 0;display:flex;gap:7px;padding:0 12px 4px;overflow-x:auto;-webkit-overflow-scrolling:touch;border-bottom:1px solid rgba(255,255,255,.14);position:relative;z-index:2}
-        .j-tabs-wrap::-webkit-scrollbar{display:none}
-        .j-mobile-grid,.j-input-pair{min-width:0}
-        input,textarea,button,select{max-width:100%}
-        img{max-width:100%}
-        .j-header-wrap{position:relative;z-index:3}
-        @media(max-width:720px){
-          .j-shinobi-header{grid-template-columns:1fr;gap:14px;min-height:auto}
-          .j-mantra{text-align:left;max-width:none}
-          .j-theme-box{justify-content:flex-start}
-          .j-cal-grid{gap:4px}.j-cal-weekdays{gap:4px}.j-cal-cell{min-height:68px;padding:6px}
-          .j-cal-pl{font-size:11px}.j-cal-count,.j-cal-mini{display:none}
-          .j-cal-day{font-size:10px}
-          .j-cal-summary-grid,.j-open-edit-grid,.j-open-edit-grid.two{grid-template-columns:1fr 1fr}
+        /* ---------- Legacy screens inherit the same visual language ---------- */
+        .j-stat,.j-cal-summary-card,.j-cal-empty-note,.j-open-edit-note{
+          background:#0b0d0d!important;border-color:var(--j-line)!important;box-shadow:none!important
         }
-        @media(max-width:640px){
-          .j-root{overflow-x:hidden}
-          .j-header-wrap{padding:8px 8px 0!important}
-          .j-page-shell{padding:10px 8px 0!important;max-width:100%!important}
-          .j-win{border-radius:2px;margin-bottom:10px}
-          .j-bar{padding:9px 10px}
-          .j-t{font-size:9px;letter-spacing:1px;white-space:normal;line-height:1.3}
-          .j-body{padding:11px!important}
-          .j-lab{font-size:8px!important;letter-spacing:1.2px}
-          .j-chip{font-size:10px!important;padding:8px 9px!important;min-height:34px}
-          .j-btn{min-height:40px}
-          .j-in{font-size:12px;padding:10px}
-          .j-num{font-size:27px}
-          .j-stat{padding:10px 6px}
-          .j-statlab{font-size:7px}
-          .j-header-wrap > .j-win{max-width:100%!important;margin:0!important}
-          .j-tabs-wrap{margin:10px auto 0!important;padding:0 8px 4px!important;border-bottom:1px solid rgba(255,255,255,.14)!important}
-          .j-tab{flex:0 0 auto!important;border:1px solid rgba(255,255,255,.16)!important;border-radius:2px!important;background:var(--j-win)!important;padding:8px 12px!important;font-size:9px!important;box-shadow:none}
-          .j-tab.on{background:rgba(255,255,255,.08)!important;color:var(--j-ink)!important}
-          .j-mobile-grid,.j-upload-grid,.j-open-edit-grid,.j-open-edit-grid.two{grid-template-columns:1fr!important}
-          .j-input-pair{grid-template-columns:1fr 1fr!important}
-          .j-cal-weekdays{font-size:7px}.j-cal-grid{gap:3px}
-          .j-cal-cell{min-height:52px;padding:4px}
-          .j-cal-pl{font-size:9px}
-          .j-cal-count,.j-cal-mini{font-size:6px}
-          .grid{min-width:0}
-          .space-y-4 > * + *{margin-top:10px!important}
-          .space-y-3 > * + *{margin-top:8px!important}
-          textarea{min-height:76px!important}
-          .j-brand-name{font-size:22px;letter-spacing:3px}
-          .j-brand-mark{width:42px;height:42px;font-size:26px}
-          .j-brand-sub{font-size:7px;letter-spacing:2px}
-          .j-mantra{font-size:8px}
-          .j-theme-select{font-size:8px}
-          .j-execution-heading{font-size:27px}
+        .j-statlab,.j-cal-count,.j-cal-mini,.j-cal-legend{font-family:'DM Mono','Noto Sans Thai',sans-serif!important}
+        .j-num{font-family:'VT323',monospace}
+        .j-cal-cell{
+          background:#080a0a!important;border-color:rgba(255,255,255,.13)!important;
+          color:#eee!important;box-shadow:none!important;border-radius:2px!important
         }
-        .open-badge{animation:blink .8s step-end infinite}
+        .j-cal-cell.has.win{background:rgba(141,225,181,.08)!important}
+        .j-cal-cell.has.loss{background:rgba(210,31,43,.12)!important}
+        .j-cal-cell.has.be{background:rgba(255,255,255,.05)!important}
+        .j-cal-cell.selected{outline:1px solid #fff}
+        .j-cal-pl,.j-cal-day{color:#eee!important}
+        .j-cal-mini span{background:rgba(255,255,255,.04)!important;border-color:rgba(255,255,255,.13)!important}
+        .j-cal-nav{background:#090b0b!important;color:#eee!important;border-color:rgba(255,255,255,.2)!important;border-radius:2px!important}
 
-        /* ================================================================
-           SCREENSHOT MATCH — SHINOBI COMMAND CENTER SHELL
-           ================================================================ */
-        .j-app-frame{
-          min-height:100vh;
-          display:grid;
-          grid-template-columns:248px minmax(0,1fr);
-          position:relative;
-          z-index:1;
-        }
-        .j-sidebar{
-          position:sticky;
-          top:0;
-          height:100vh;
-          border-right:1px solid rgba(255,255,255,.15);
-          background:
-            radial-gradient(circle at 50% 78%,rgba(255,255,255,.09),transparent 19%),
-            linear-gradient(180deg,rgba(4,5,5,.97),rgba(8,9,9,.985));
-          overflow:hidden;
-          display:flex;
-          flex-direction:column;
-          padding:28px 20px 18px;
-        }
-        .j-sidebar:before{
-          content:'';
-          position:absolute;inset:auto -25% -2% -25%;height:46%;
-          background:
-            radial-gradient(circle at 50% 30%,rgba(245,245,240,.18) 0 14%,transparent 14.5%),
-            linear-gradient(155deg,transparent 0 38%,rgba(255,255,255,.05) 38% 40%,transparent 40% 58%,rgba(255,255,255,.035) 58% 60%,transparent 60%),
-            radial-gradient(ellipse at 50% 100%,rgba(255,255,255,.06),transparent 60%);
-          opacity:.65;
-          pointer-events:none;
-        }
-        .j-sidebar:after{
-          content:'';
-          position:absolute;right:-12px;top:16%;width:105px;height:54%;
-          background:repeating-linear-gradient(80deg,transparent 0 18px,rgba(255,255,255,.025) 18px 20px);
-          transform:rotate(13deg);opacity:.6;pointer-events:none;
-        }
-        .j-sidebar-brand{
-          position:relative;z-index:2;padding:5px 8px 24px;
-          border-bottom:1px solid rgba(255,255,255,.11);
-        }
-        .j-sidebar-brand-top{
-          font-family:'Montserrat',sans-serif;font-size:19px;letter-spacing:6px;font-weight:600;line-height:1.45;color:#fff
-        }
-        .j-sidebar-brand-mark{
-          display:inline-flex;width:27px;height:27px;align-items:center;justify-content:center;
-          margin-top:10px;background:#c9232c;color:#fff;font-family:serif;font-size:18px;font-weight:700
-        }
-        .j-sidebar-code{
-          margin-top:18px;font-family:'DM Mono';font-size:8px;letter-spacing:3px;line-height:2.1;color:#727675
-        }
-        .j-side-nav{position:relative;z-index:2;display:flex;flex-direction:column;gap:6px;margin-top:24px}
-        .j-side-btn{
-          width:100%;display:flex;align-items:center;gap:13px;padding:12px 12px;
-          border:1px solid transparent;background:transparent;color:#8e9290;text-align:left;
-          font-family:'Noto Sans Thai','Inter',sans-serif;font-size:12px;cursor:pointer;border-radius:2px;transition:.16s
-        }
-        .j-side-btn:hover{background:rgba(255,255,255,.045);color:#fff;border-color:rgba(255,255,255,.08)}
-        .j-side-btn.active{
-          color:#fff;background:linear-gradient(90deg,rgba(255,255,255,.09),rgba(255,255,255,.025));
-          border-color:rgba(255,255,255,.5);box-shadow:inset 2px 0 #fff
-        }
-        .j-side-icon{
-          width:22px;text-align:center;font-family:'DM Mono';font-size:18px;line-height:1;color:#dcdedb
-        }
-        .j-sidebar-footer{
-          position:relative;z-index:2;margin-top:auto;padding:18px 8px 3px;
-          border-top:1px solid rgba(255,255,255,.1)
-        }
-        .j-sidebar-footer-main{font-family:'DM Mono';font-size:8px;letter-spacing:2.8px;line-height:1.9;color:#7c807e}
-        .j-sidebar-footer-sub{font-family:'Montserrat';font-size:7px;letter-spacing:2px;color:#565a58;margin-top:7px}
-        .j-sidebar-line{width:24px;height:1px;background:#fff;margin-top:10px;opacity:.65}
-        .j-app-main{min-width:0;position:relative}
-        .j-app-main:before{
-          content:'';
-          position:absolute;inset:0;pointer-events:none;z-index:0;
-          background:
-            radial-gradient(circle at 86% 17%,rgba(255,255,255,.045),transparent 20%),
-            linear-gradient(125deg,transparent 0 73%,rgba(255,255,255,.025) 73% 73.2%,transparent 73.2%),
-            radial-gradient(ellipse at 100% 36%,rgba(255,255,255,.035),transparent 32%);
-        }
-        .j-app-main .j-header-wrap,.j-app-main .j-page-shell{position:relative;z-index:2}
-        .j-app-main .j-header-wrap{padding:22px 22px 0!important}
-        .j-app-main .j-page-shell{max-width:1180px!important;padding:18px 22px 0!important}
-        .j-app-main .j-tabs-wrap{max-width:1180px!important;padding-left:0!important;padding-right:0!important;margin-top:16px!important}
-        .j-app-main .j-header-wrap > .j-win{max-width:1180px!important}
-        .j-app-main .j-shinobi-header{
-          min-height:126px;padding:25px 30px!important;
-          background:
-            radial-gradient(circle at 72% 0,rgba(255,255,255,.035),transparent 28%),
-            linear-gradient(90deg,rgba(255,255,255,.025),transparent 45%);
-        }
-        .j-app-main .j-brand-name{font-size:clamp(28px,3vw,44px);letter-spacing:6px}
-        .j-app-main .j-brand-mark{width:54px;height:54px;font-size:34px}
-        .j-app-main .j-execution-heading{font-size:clamp(32px,4vw,48px)}
-        .j-app-main .j-execution-card{box-shadow:0 22px 60px rgba(0,0,0,.32)}
-        .j-app-main .j-win{box-shadow:0 20px 55px rgba(0,0,0,.24)}
-        .j-app-main .j-quote-strip{max-width:1180px;margin-top:15px;padding:0 4px}
-        .j-theme-select{min-width:178px}
-        .j-sidebar-hero{
-          position:absolute;left:-25px;right:-25px;bottom:26px;height:220px;z-index:1;opacity:.88;pointer-events:none
-        }
-        .j-sidebar-hero svg{width:100%;height:100%;display:block}
-        .j-sidebar-hero .moon{fill:#d7d7d2;opacity:.82}
-        .j-sidebar-hero .ink{fill:#050606}
-        .j-sidebar-hero .mist{fill:#fff;opacity:.045}
-        .j-sidebar-hero .blade{fill:#fff;opacity:.72}
-        .j-sidebar-hero .red{fill:#c9232c}
+        /* ---------- Mobile bottom navigation ---------- */
+        .j-mobile-nav{display:none}
+        .j-mobile-brand{display:none}
 
-        @media(max-width:900px){
+        @media(max-width:980px){
           .j-app-frame{grid-template-columns:78px minmax(0,1fr)}
-          .j-sidebar{padding:20px 10px 14px}
+          .j-sidebar{padding:20px 10px 15px}
+          .j-sidebar-brand{display:flex;justify-content:center;padding:0 0 18px}
           .j-sidebar-brand-top{font-size:0;letter-spacing:0}
-          .j-sidebar-brand-top:after{content:'忍';font-family:serif;font-size:28px;color:#fff}
-          .j-sidebar-code,.j-sidebar-footer-main,.j-sidebar-footer-sub{display:none}
-          .j-side-btn{justify-content:center;padding:12px 7px}
+          .j-sidebar-brand-top:after{content:'忍';font-family:serif;font-size:29px;color:#fff}
+          .j-sidebar-brand-mark{display:none}
+          .j-sidebar-code,.j-sidebar-footer,.j-sidebar-hero{display:none}
+          .j-side-btn{justify-content:center;padding:11px 6px}
           .j-side-btn span:last-child{display:none}
-          .j-side-icon{font-size:20px}
-          .j-sidebar-brand{display:flex;justify-content:center;padding-bottom:20px}
-          .j-sidebar-brand-mark{margin-top:0}
-          .j-sidebar-hero{display:none}
-          .j-app-main .j-header-wrap{padding:14px 14px 0!important}
-          .j-app-main .j-page-shell{padding:14px 14px 0!important}
+          .j-side-icon{font-size:19px}
+          .j-app-main .j-header-wrap{padding:12px 16px 0!important}
+          .j-page-shell{padding:15px 16px 30px!important}
         }
-        @media(max-width:640px){
+
+        @media(max-width:680px){
+          .j-root{padding-bottom:68px}
+          .j-root::after{font-size:220px;right:-35px;bottom:20px}
           .j-app-frame{display:block}
           .j-sidebar{
-            position:sticky;top:0;height:auto;min-height:58px;z-index:100;
-            border-right:0;border-bottom:1px solid rgba(255,255,255,.16);
-            padding:7px 8px;background:rgba(5,6,6,.96);backdrop-filter:blur(12px)
+            position:sticky;top:0;height:57px;min-height:57px;width:100%;
+            z-index:100;border:0;border-bottom:1px solid rgba(255,255,255,.16);
+            padding:0 10px;background:rgba(4,5,5,.94);backdrop-filter:blur(14px)
           }
-          .j-sidebar-brand{display:flex;align-items:center;justify-content:space-between;padding:0 4px;border:0}
-          .j-sidebar-brand-top{display:block;font-size:13px;letter-spacing:2.5px}
+          .j-sidebar-brand{
+            display:flex;align-items:center;justify-content:flex-start;height:57px;padding:0;border:0
+          }
+          .j-sidebar-brand-top{font-size:13px!important;letter-spacing:3px!important;line-height:1!important}
           .j-sidebar-brand-top:after{display:none}
-          .j-sidebar-brand-mark{width:26px;height:26px;font-size:17px;margin:0}
+          .j-sidebar-brand-mark{
+            display:flex;width:25px;height:25px;margin:0 0 0 8px;font-size:16px
+          }
           .j-sidebar-code,.j-sidebar-footer,.j-sidebar-hero{display:none}
-          .j-side-nav{flex-direction:row;gap:5px;margin:0 0 0 8px;overflow-x:auto}
-          .j-side-btn{width:auto;flex:0 0 auto;justify-content:center;padding:8px 9px;gap:5px;font-size:0}
+          .j-side-nav{
+            position:absolute;right:7px;top:7px;margin:0;display:flex;flex-direction:row;gap:3px;
+            overflow:visible
+          }
+          .j-side-btn{
+            width:36px;height:42px;min-height:42px;padding:0;justify-content:center;
+            border-radius:2px;background:transparent
+          }
           .j-side-btn span:last-child{display:none}
-          .j-side-icon{font-size:16px}
-          .j-app-main .j-header-wrap{padding:8px 8px 0!important}
-          .j-app-main .j-page-shell{padding:10px 8px 0!important}
-          .j-app-main .j-tabs-wrap{display:none}
-          .j-app-main .j-brand-name{font-size:20px;letter-spacing:3px}
-          .j-app-main .j-brand-mark{width:40px;height:40px;font-size:25px}
+          .j-side-icon{font-size:16px;width:auto;flex:0 0 auto}
+          .j-side-btn.active{box-shadow:none;background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.34)}
+          .j-app-main{width:100%}
+          .j-app-main .j-header-wrap{padding:9px 8px 0!important}
+          .j-app-main .j-page-shell{padding:9px 8px 20px!important}
+          .j-app-main .j-header-wrap > .j-win{width:100%!important}
+          .j-app-main .j-shinobi-header{
+            display:block;min-height:auto;padding:17px 15px!important
+          }
+          .j-brand{gap:9px}
+          .j-brand-mark{width:39px;height:39px;font-size:24px}
+          .j-brand-name{font-size:21px;letter-spacing:2.2px;line-height:1.05}
+          .j-brand-sub{font-size:6px;letter-spacing:1px;margin-top:5px;white-space:nowrap}
+          .j-brand-kicker{font-size:6px;letter-spacing:1.8px;margin-bottom:7px}
+          .j-mantra{
+            margin-top:13px;max-width:none;text-align:left;font-size:7px;line-height:1.7;
+            letter-spacing:1px;padding-left:48px
+          }
+          .j-mantra strong{font-size:8px}
+          .j-theme-box{justify-content:flex-start;margin-top:10px;padding-left:48px}
+          .j-theme-select{min-width:155px;max-width:100%;font-size:8px;padding:7px 26px 7px 8px}
+          .j-quote-strip{margin-top:9px;padding:0 2px;gap:7px}
+          .j-quote-strip i{width:18px}
+          .j-quote-strip span{display:none}
+          .j-quote-strip b{font-size:6px;letter-spacing:.8px}
+          .j-tabs-wrap{display:none!important}
+          .j-win{border-radius:2px}
+          .j-body{padding:13px!important}
+          .j-bar{padding:7px 9px}
+          .j-t{font-size:7px;letter-spacing:.8px}
+          .j-execution-title{font-size:7px;letter-spacing:1.8px}
+          .j-execution-heading{font-size:30px;line-height:1.3;margin-top:3px}
+          .j-execution-sub{font-size:10px;line-height:1.7}
+          .j-ninja-divider{margin:12px 0 14px!important}
+          .j-lab{font-size:7px;letter-spacing:1.1px;margin-bottom:5px}
+          .j-in{min-height:41px;font-size:12px!important;padding:9px 10px!important}
+          .j-result-row{gap:5px}
+          .j-result-btn{min-height:41px;font-size:9px}
+          .j-rr-fixed{min-height:41px}
+          .j-rr-fixed b{font-size:24px}
+          textarea.j-in{min-height:92px!important}
+          .j-upload-box{min-height:126px;padding:11px}
+          .j-upload-icon{font-size:25px}
+          .j-upload-title{font-size:11px}
+          .j-upload-sub{font-size:6.5px}
+          .j-save-primary{min-height:47px!important;font-size:12px!important}
+          .j-mobile-nav{
+            position:fixed;left:0;right:0;bottom:0;height:62px;z-index:110;
+            display:flex;align-items:stretch;justify-content:space-around;
+            background:rgba(5,6,6,.96);border-top:1px solid rgba(255,255,255,.16);
+            backdrop-filter:blur(14px);padding-bottom:env(safe-area-inset-bottom)
+          }
+          .j-mobile-nav button{
+            flex:1;border:0;background:transparent;color:#6d726f;display:flex;flex-direction:column;
+            align-items:center;justify-content:center;gap:3px;font-family:'Noto Sans Thai';font-size:7px;cursor:pointer
+          }
+          .j-mobile-nav button b{font-family:'DM Mono';font-size:17px;font-weight:400;line-height:1}
+          .j-mobile-nav button.active{color:#fff}
+          .j-mobile-nav button.active b{color:var(--j-red)}
+          .j-cal-weekdays{font-size:7px;gap:3px}
+          .j-cal-grid{gap:3px}
+          .j-cal-cell{min-height:53px;padding:4px}
+          .j-cal-pl{font-size:8px}
+          .j-cal-count,.j-cal-mini{display:none}
+          .j-cal-day{font-size:9px}
+          .j-cal-summary-grid{grid-template-columns:1fr 1fr!important}
+          .j-open-edit-grid,.j-open-edit-grid.two{grid-template-columns:1fr!important}
         }
+
+        @media(min-width:681px){
+          .j-mobile-nav{display:none!important}
+        }
+
+        @media(max-width:390px){
+          .j-sidebar-brand-top{font-size:11px!important;letter-spacing:2px!important}
+          .j-side-nav{right:4px}
+          .j-side-btn{width:32px}
+          .j-brand-name{font-size:18px}
+          .j-brand-sub{font-size:5.5px}
+          .j-mantra{padding-left:43px}
+          .j-theme-box{padding-left:43px}
+          .j-theme-select{min-width:145px}
+          .j-execution-heading{font-size:27px}
+          .j-body{padding:11px!important}
+        }
+
+        /* Small utility animation */
+        @keyframes blink{50%{opacity:.65}}
+        @keyframes savepulse{0%,100%{box-shadow:none}50%{box-shadow:0 0 22px rgba(255,255,255,.14)}}
+        .j-saving{animation:savepulse .2s steps(2,end) 4}
+        .open-badge{animation:blink .8s step-end infinite}
       `}</style>
       {/* Boot */}
       {booting&&(<div className={`j-boot ${bootDone?"done":""}`}><div className="j-boot-logo">YOKIMURA</div><div style={{fontFamily:"'DM Mono',monospace",fontSize:13,color:"#c0e6d4",minHeight:40,whiteSpace:"pre"}}>{bootText}<span className="j-boot-cursor"/></div><div className="j-boot-bar"><div className="j-boot-fill"/></div><div style={{fontFamily:"'DM Mono',monospace",fontSize:9,color:"#8b8f8e",opacity:.8,letterSpacing:2}}>YOKIMURA SHINOBI · WYCKOFF · TRUST YOUR PROCESS</div></div>)}
@@ -2074,6 +1967,28 @@ export default function JournalPage() {
         })()}
       </section>
       </div>
+      {/* Mobile bottom navigation */}
+      <nav className="j-mobile-nav" aria-label="Mobile navigation">
+        <button onClick={()=>setView("checklist" as any)} className={view==="checklist"?"active":""}>
+          <b>✎</b><span>บันทึก</span>
+        </button>
+        <button onClick={()=>setView("dashboard")} className={view==="dashboard"?"active":""}>
+          <b>▮</b><span>ภาพรวม</span>
+        </button>
+        <button onClick={()=>setView("calendar" as any)} className={view==="calendar"?"active":""}>
+          <b>▦</b><span>ปฏิทิน</span>
+        </button>
+        <button onClick={()=>setView("list")} className={view==="list"?"active":""}>
+          <b>◔</b><span>สถิติ</span>
+        </button>
+        <button onClick={()=>{
+          const el=document.querySelector(".j-theme-select") as HTMLSelectElement|null;
+          el?.focus();
+          el?.scrollIntoView({behavior:"smooth",block:"center"});
+        }}>
+          <b>⚙</b><span>ตั้งค่า</span>
+        </button>
+      </nav>
       {/* Alert Popup */}
       {showAlert&&(dailyStatus.isHardStop||dailyStatus.isDayDone)&&(
         <div style={{position:"fixed",inset:0,zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center",padding:20,background:"rgba(42,31,20,.85)",backdropFilter:"blur(3px)"}}>
