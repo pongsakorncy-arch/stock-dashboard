@@ -1346,56 +1346,6 @@ export default function JournalPage() {
     <main className="j-root theme-ninja">
       
 
-<style id="yokimura-equity-final">
-  .j-equity-chart svg{display:block;min-height:260px}
-  @media(max-width:680px){
-    .j-equity-chart svg{min-height:185px}
-    .j-equity-chart>div:first-child{height:36px}
-    .j-equity-chart button{min-width:78px!important;padding:7px 9px!important;font-size:8px!important}
-  }
-</style>
-
-<style id="yokimura-dashboard-theme">
-  .j-dashboard .j-stat{
-    background:linear-gradient(145deg,#101212 0%,#070808 100%)!important;
-    border:1px solid rgba(255,255,255,.11)!important;
-    border-radius:6px!important;
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.025),0 8px 24px rgba(0,0,0,.18)!important;
-    color:#eee!important;
-    position:relative;
-    overflow:hidden;
-  }
-  .j-dashboard .j-stat::before{
-    content:"";
-    position:absolute;
-    left:0;top:0;bottom:0;width:3px;
-    background:#d92332;
-    opacity:.9;
-  }
-  .j-dashboard .j-num{color:#f1f1ef!important}
-  .j-dashboard .j-statlab{color:#747978!important}
-  .j-dashboard .j-win,
-  .j-dashboard .j-win .j-body{
-    background:linear-gradient(145deg,#0a0b0b 0%,#050606 100%)!important;
-    border-color:rgba(255,255,255,.10)!important;
-  }
-  .j-dashboard .j-bar{
-    color:#f1f1ef!important;
-  }
-  .j-dashboard .j-bar .j-t{
-    letter-spacing:.12em!important;
-    text-shadow:0 1px 10px rgba(217,35,50,.18);
-  }
-  .j-dashboard .j-body{
-    padding:10px!important;
-  }
-  @media(max-width:680px){
-    .j-dashboard{gap:10px!important}
-    .j-dashboard .j-stat{min-height:78px!important}
-    .j-dashboard .j-num{font-size:27px!important}
-  }
-</style>
-
 <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@500;600;700;800&family=Noto+Sans+Thai:wght@400;500;600;700;800&family=Noto+Serif+JP:wght@400;500;600;700;800&family=Shippori+Mincho:wght@400;500;600;700;800&display=swap');
 
