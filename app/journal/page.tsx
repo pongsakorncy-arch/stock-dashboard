@@ -918,11 +918,6 @@ export default function JournalPage() {
       authListener.subscription.unsubscribe();
     };
   },[]);
-    // ── โหลดสถานะ lock ที่ค้างไว้จาก localStorage ──
-    setCooldownUntil(loadCooldownUntil());
-    setHardlock(loadHardlock());
-    setForcedLockDates(loadForcedLockDates());
-  },[]);
   // ── Countdown ticker (อัปเดตทุกวินาทีตอน cooldown ทำงาน) ────────────────────
   useEffect(()=>{
     if (cooldownRemainingMs <= 0) return;
