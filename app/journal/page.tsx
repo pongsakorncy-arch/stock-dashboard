@@ -1481,7 +1481,7 @@ export default function JournalPage() {
         @media(min-width:1400px){
           .j-app-main .j-shinobi-header{min-height:150px;padding:32px 40px!important}
           .j-brand-mark{width:82px;height:82px}
-          .j-brand-logo-img{height:100px}
+          .j-brand-logo-img{height:200px}
           .j-brand-sub{font-size:9px;letter-spacing:2.4px}
           .j-brand-kicker{font-size:9px;margin-bottom:10px}
           .j-mantra{max-width:420px;font-size:9px}
@@ -1587,8 +1587,8 @@ export default function JournalPage() {
             display:block;min-height:auto;padding:17px 15px!important
           }
           .j-brand{gap:9px}
-          .j-brand-mark{width:100px;height:50px}
-          .j-brand-logo-img{height:44px}
+          .j-brand-mark{width:100px;height:100px}
+          .j-brand-logo-img{height:200px}
           .j-brand-sub{font-size:6px;letter-spacing:1px;margin-top:5px;white-space:nowrap}
           .j-brand-kicker{font-size:6px;letter-spacing:1.8px;margin-bottom:7px}
           .j-mantra{
@@ -1655,7 +1655,7 @@ export default function JournalPage() {
           .j-sidebar-brand-top{font-size:11px!important;letter-spacing:2px!important}
           .j-side-nav{right:4px}
           .j-side-btn{width:32px}
-          .j-brand-logo-img{height:34px}
+          .j-brand-logo-img{height:80px}
           .j-brand-sub{font-size:5.5px}
           .j-mantra{padding-left:43px}
           .j-theme-box{padding-left:43px}
